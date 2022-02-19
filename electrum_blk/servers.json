@@ -1,0 +1,20 @@
+{
+    "electrum1.blackcoin.nl": {
+        "pruning": "-",
+        "s": "10002",
+        "t": "10001",
+        "version": "1.4"
+    },
+    "electrum2.blackcoin.nl": {
+        "pruning": "-",
+        "s": "20002",
+        "t": "20001",
+        "version": "1.4"
+    },
+    "electrum3.blackcoin.nl": {
+        "pruning": "-",
+        "s": "30002",
+        "t": "30001",
+        "version": "1.4"
+    }
+}

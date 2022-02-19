@@ -6,7 +6,7 @@ PROJECT_ROOT="$(dirname "$(readlink -e "$0")")/../../.."
 CONTRIB="$PROJECT_ROOT/contrib"
 CONTRIB_SDIST="$CONTRIB/build-linux/sdist"
 DISTDIR="$PROJECT_ROOT/dist"
-LOCALE="$PROJECT_ROOT/electrum/locale/"
+LOCALE="$PROJECT_ROOT/electrum_blk/locale/"
 
 . "$CONTRIB"/build_tools_util.sh
 
@@ -24,7 +24,7 @@ python3 -m pip install --upgrade pip
 git submodule update --init
 
 (
-    cd "$CONTRIB/deterministic-build/electrum-locale/"
+    cd "$CONTRIB/deterministic-build/electrum-blk-locale/"
     if ! which msgfmt > /dev/null 2>&1; then
         echo "Please install gettext"
         exit 1
@@ -34,10 +34,10 @@ git submodule update --init
     # (also see MANIFEST.in)
     rm -rf "$LOCALE"
     for i in ./locale/*; do
-        dir="$PROJECT_ROOT/electrum/$i/LC_MESSAGES"
+        dir="$PROJECT_ROOT/electrum_blk/$i/LC_MESSAGES"
         mkdir -p "$dir"
         msgfmt --output-file="$dir/electrum.mo" "$i/electrum.po" || true
-        cp $i/electrum.po "$PROJECT_ROOT/electrum/$i/electrum.po"
+        cp $i/electrum.po "$PROJECT_ROOT/electrum_blk/$i/electrum.po"
     done
 )
 

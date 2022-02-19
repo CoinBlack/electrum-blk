@@ -1,23 +1,14 @@
-Electrum - Lightweight Bitcoin client
+Electrum-BLK - Lightweight Blackcoin client
 =====================================
 
 ::
 
   Licence: MIT Licence
-  Author: Thomas Voegtlin
+  Original Author: Thomas Voegtlin
+  BLK Port Maintainer: lateminer
   Language: Python (>= 3.8)
-  Homepage: https://electrum.org/
+  Homepage: https://blackcoin.org/
 
-
-.. image:: https://api.cirrus-ci.com/github/spesmilo/electrum.svg?branch=master
-    :target: https://cirrus-ci.com/github/spesmilo/electrum
-    :alt: Build Status
-.. image:: https://coveralls.io/repos/github/spesmilo/electrum/badge.svg?branch=master
-    :target: https://coveralls.io/github/spesmilo/electrum?branch=master
-    :alt: Test coverage statistics
-.. image:: https://d322cqt584bo4o.cloudfront.net/electrum/localized.svg
-    :target: https://crowdin.com/project/electrum
-    :alt: Help translate Electrum online
 
 
 
@@ -26,11 +17,11 @@ Electrum - Lightweight Bitcoin client
 Getting started
 ===============
 
-(*If you've come here looking to simply run Electrum,* `you may download it here`_.)
+(*If you've come here looking to simply run Electrum-BLK,* `you may download it here`_.)
 
-.. _you may download it here: https://electrum.org/#download
+.. _you may download it here: https://blackcoin.org/#downloads
 
-Electrum itself is pure Python, and so are most of the required dependencies,
+Electrum-BLK itself is pure Python, and so are most of the required dependencies,
 but not everything. The following sections describe how to run from source, but here
 is a TL;DR::
 
@@ -72,20 +63,20 @@ Running from tar.gz
 -------------------
 
 If you downloaded the official package (tar.gz), you can run
-Electrum from its root directory without installing it on your
+Electrum-BLK from its root directory without installing it on your
 system; all the pure python dependencies are included in the 'packages'
-directory. To run Electrum from its root directory, just do::
+directory. To run Electrum-BLK from its root directory, just do::
 
     ./run_electrum
 
-You can also install Electrum on your system, by running this command::
+You can also install Electrum-BLK on your system, by running this command::
 
     sudo apt-get install python3-setuptools python3-pip
     python3 -m pip install --user .
 
 This will download and install the Python dependencies used by
-Electrum instead of using the 'packages' directory.
-It will also place an executable named :code:`electrum` in :code:`~/.local/bin`,
+Electrum-BLK instead of using the 'packages' directory.
+It will also place an executable named :code:`electrum-blk` in :code:`~/.local/bin`,
 so make sure that is on your :code:`PATH` variable.
 
 

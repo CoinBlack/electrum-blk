@@ -1,0 +1,22 @@
+# If you want Electrum to appear in a Linux app launcher ("start menu"), install this by doing:
+# sudo desktop-file-install electrum-blk.desktop
+
+[Desktop Entry]
+Comment=Lightweight Blackcoin Client
+Exec=sh -c "PATH=\"\\$HOME/.local/bin:\\$PATH\"; electrum-blk %u"
+GenericName[en_US]=Blackcoin Wallet
+GenericName=Blackcoin Wallet
+Icon=electrum-blk
+Name[en_US]=Electrum Blackcoin Wallet
+Name=Electrum Blackcoin Wallet
+Categories=Finance;Network;
+StartupNotify=true
+StartupWMClass=electrum-blk
+Terminal=false
+Type=Application
+MimeType=x-scheme-handler/blackcoin;
+Actions=Testnet;
+
+[Desktop Action Testnet]
+Exec=sh -c "PATH=\"\\$HOME/.local/bin:\\$PATH\"; electrum-blk --testnet %u"
+Name=Testnet mode
