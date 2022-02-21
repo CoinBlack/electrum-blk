@@ -798,10 +798,10 @@ def time_difference(distance_in_time, include_seconds):
 mainnet_block_explorers = {
     'Bitinfocharts.com': ('https://bitinfocharts.com/blackcoin/',
                         {'tx': 'tx/', 'addr': 'address/'}),
-    'cryptoID': ('https://chainz.cryptoid.info/',
-                        {'tx': 'tx/', 'addr': 'address/'}),
-    'system default': ('https://chainz.cryptoid.info/',
-                        {'tx': 'tx/', 'addr': 'address/'}),
+    'cryptoID': ('https://chainz.cryptoid.info/blk',
+                        {'tx': 'tx.dws?', 'addr': 'address.dws?'}),
+    'system default': ('https://chainz.cryptoid.info/blk',
+                        {'tx': 'tx.dws?', 'addr': 'address.dws?'}),
 }
 
 testnet_block_explorers = {
