@@ -88,7 +88,7 @@ ${genisoimage} \
     -o Electrum-BLK_uncompressed.dmg \
     /tmp/electrum-blk-macos/image || fail "Unable to create uncompressed dmg"
 
-dmg dmg Electrum-BLK_uncompressed.dmg electrum-ltc-$VERSION.dmg || fail "Unable to create compressed dmg"
+dmg dmg Electrum-BLK_uncompressed.dmg electrum-blk-$VERSION.dmg || fail "Unable to create compressed dmg"
 rm Electrum-BLK_uncompressed.dmg
 
 echo "Done."

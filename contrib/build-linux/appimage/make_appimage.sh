@@ -135,8 +135,8 @@ cp "/usr/lib/x86_64-linux-gnu/libzbar.so.0" "$APPDIR/usr/lib/libzbar.so.0"
 
 
 info "desktop integration."
-cp "$PROJECT_ROOT/electrum-ltc.desktop" "$APPDIR/electrum-blk.desktop"
-cp "$PROJECT_ROOT/electrum-ltc/gui/icons/electrum.png" "$APPDIR/electrum.png"
+cp "$PROJECT_ROOT/electrum-blk.desktop" "$APPDIR/electrum-blk.desktop"
+cp "$PROJECT_ROOT/electrum-blk/gui/icons/electrum.png" "$APPDIR/electrum.png"
 
 
 # add launcher
