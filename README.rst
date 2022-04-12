@@ -26,7 +26,7 @@ but not everything. The following sections describe how to run from source, but 
 is a TL;DR::
 
     sudo apt-get install libsecp256k1-0
-    python3 -m pip install --user .[gui,crypto]
+    python3 -m pip install --user ".[gui,crypto]"
 
 
 Not pure-python dependencies
@@ -103,7 +103,13 @@ Finally, to start Electrum::
 
     ./run_electrum
 
+Run unit tests with `pytest`:
 
+    pytest electrum_blk/tests -v
+
+To run a single file, specify it directly like this:
+
+    pytest electrum_blk/tests/test_bitcoin.py -v
 
 Creating Binaries
 =================

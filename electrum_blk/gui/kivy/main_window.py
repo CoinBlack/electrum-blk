@@ -927,7 +927,7 @@ class ElectrumWindow(App, Logger):
             self.num_blocks = self.network.get_local_height()
             server_height = self.network.get_server_height()
             server_lag = self.num_blocks - server_height
-            if not self.wallet.up_to_date or server_height == 0:
+            if not self.wallet.is_up_to_date() or server_height == 0:
                 num_sent, num_answered = self.wallet.get_history_sync_state_details()
                 status = ("{} [size=18dp]({}/{})[/size]"
                           .format(_("Synchronizing..."), num_answered, num_sent))
@@ -951,7 +951,7 @@ class ElectrumWindow(App, Logger):
     def update_wallet_synchronizing_progress(self, *dt):
         if not self.wallet:
             return
-        if not self.wallet.up_to_date:
+        if not self.wallet.is_up_to_date():
             self._trigger_update_status()
 
     def get_max_amount(self):
@@ -1010,7 +1010,7 @@ class ElectrumWindow(App, Logger):
     #@profiler
     def update_wallet(self, *dt):
         self._trigger_update_status()
-        if self.wallet and (self.wallet.up_to_date or not self.network or not self.network.is_connected()):
+        if self.wallet and (self.wallet.is_up_to_date() or not self.network or not self.network.is_connected()):
             self.update_tabs()
 
     def notify(self, message):
@@ -1373,9 +1373,14 @@ class ElectrumWindow(App, Logger):
             if not grant_results or not grant_results[0]:
                 self.show_error(_("Cannot save backup without STORAGE permission"))
                 return
+            try:
+                backup_dir = util.android_backup_dir()
+            except OSError as e:
+                self.logger.exception("Cannot save backup")
+                self.show_error(f"Cannot save backup: {e!r}")
+                return
             # note: Clock.schedule_once is a hack so that we get called on a non-daemon thread
             #       (needed for WalletDB.write)
-            backup_dir = util.android_backup_dir()
             Clock.schedule_once(lambda dt: self._save_backup(backup_dir))
         request_permissions([Permission.WRITE_EXTERNAL_STORAGE], cb)
 

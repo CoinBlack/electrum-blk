@@ -6,7 +6,7 @@ import locale
 from decimal import Decimal
 import getpass
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import electrum_blk as electrum
 from electrum_blk.gui import BaseElectrumGui
@@ -14,7 +14,7 @@ from electrum_blk import util
 from electrum_blk.util import format_satoshis
 from electrum_blk.bitcoin import is_address, COIN
 from electrum_blk.transaction import PartialTxOutput
-from electrum_blk.wallet import Wallet
+from electrum_blk.wallet import Wallet, Abstract_Wallet
 from electrum_blk.wallet_db import WalletDB
 from electrum_blk.storage import WalletStorage
 from electrum_blk.network import NetworkParameters, TxBroadcastError, BestEffortRequestFailed
@@ -42,7 +42,7 @@ class ElectrumGui(BaseElectrumGui):
             password = getpass.getpass('Password:', stream=None)
             storage.decrypt(password)
         db = WalletDB(storage.read(), manual_upgrades=False)
-        self.wallet = Wallet(db, storage, config=config)
+        self.wallet = Wallet(db, storage, config=config)  # type: Optional[Abstract_Wallet]
         self.wallet.start_network(self.network)
         self.contacts = self.wallet.contacts
 
@@ -148,7 +148,7 @@ class ElectrumGui(BaseElectrumGui):
         if not self.network:
             msg = _("Offline")
         elif self.network.is_connected():
-            if not self.wallet.up_to_date:
+            if not self.wallet.is_up_to_date():
                 msg = _("Synchronizing...")
             else:
                 c, u, x =  self.wallet.get_balance()

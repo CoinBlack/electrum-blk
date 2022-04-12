@@ -152,7 +152,7 @@ BASE_FEATURES = LnFeatures(0)\
     | LnFeatures.OPTION_STATIC_REMOTEKEY_OPT\
     | LnFeatures.VAR_ONION_OPT\
     | LnFeatures.PAYMENT_SECRET_OPT\
-    | LnFeatures.OPTION_UPFRONT_SHUTDOWN_SCRIPT_OPT
+    | LnFeatures.OPTION_UPFRONT_SHUTDOWN_SCRIPT_OPT\
 
 # we do not want to receive unrequested gossip (see lnpeer.maybe_save_remote_update)
 LNWALLET_FEATURES = BASE_FEATURES\
@@ -162,10 +162,11 @@ LNWALLET_FEATURES = BASE_FEATURES\
     | LnFeatures.BASIC_MPP_OPT\
     | LnFeatures.OPTION_TRAMPOLINE_ROUTING_OPT\
     | LnFeatures.OPTION_SHUTDOWN_ANYSEGWIT_OPT\
+    | LnFeatures.OPTION_CHANNEL_TYPE_OPT\
 
 LNGOSSIP_FEATURES = BASE_FEATURES\
     | LnFeatures.GOSSIP_QUERIES_OPT\
-    | LnFeatures.GOSSIP_QUERIES_REQ
+    | LnFeatures.GOSSIP_QUERIES_REQ\
 
 
 class LNWorker(Logger, NetworkRetryManager[LNPeerAddr]):
@@ -892,7 +893,10 @@ class LNWallet(LNWorker):
                 amount_msat = 0
             label = 'Reverse swap' if swap.is_reverse else 'Forward swap'
             delta = current_height - swap.locktime
-            if not swap.is_redeemed and swap.spending_txid is None and delta < 0:
+            tx_height = self.lnwatcher.get_tx_height(swap.funding_txid)
+            if swap.is_reverse and tx_height.height <=0:
+                label += ' (%s)' % _('waiting for funding tx confirmation')
+            if not swap.is_reverse and not swap.is_redeemed and swap.spending_txid is None and delta < 0:
                 label += f' (refundable in {-delta} blocks)' # fixme: only if unspent
             out[txid] = {
                 'txid': txid,
@@ -950,7 +954,7 @@ class LNWallet(LNWorker):
 
         if chan.get_state() == ChannelState.OPEN and chan.should_be_closed_due_to_expiring_htlcs(self.network.get_local_height()):
             self.logger.info(f"force-closing due to expiring htlcs")
-            await self.try_force_closing(chan.channel_id)
+            await self.schedule_force_closing(chan.channel_id)
 
         elif chan.get_state() == ChannelState.FUNDED:
             peer = self._peers.get(chan.node_id)
@@ -1009,9 +1013,6 @@ class LNWallet(LNWorker):
             self.wallet.set_reserved_state_of_address(addr, reserved=True)
         try:
             self.save_channel(chan)
-            backup_dir = self.config.get_backup_dir()
-            if backup_dir is not None:
-                self.wallet.save_backup(backup_dir)
         except:
             chan.set_state(ChannelState.REDEEMED)
             self.remove_channel(chan.channel_id)
@@ -1093,7 +1094,9 @@ class LNWallet(LNWorker):
         self.save_payment_info(info)
         self.wallet.set_label(key, lnaddr.get_description())
 
+        self.logger.info(f"pay_invoice starting session for RHASH={payment_hash.hex()}")
         self.set_invoice_status(key, PR_INFLIGHT)
+        success = False
         try:
             await self.pay_to_node(
                 node_pubkey=invoice_pubkey,
@@ -1108,8 +1111,9 @@ class LNWallet(LNWorker):
             success = True
         except PaymentFailure as e:
             self.logger.info(f'payment failure: {e!r}')
-            success = False
             reason = str(e)
+        finally:
+            self.logger.info(f"pay_invoice ending session for RHASH={payment_hash.hex()}. {success=}")
         if success:
             self.set_invoice_status(key, PR_PAID)
             util.trigger_callback('payment_succeeded', self.wallet, key)
@@ -1540,7 +1544,7 @@ class LNWallet(LNWorker):
 
             if not self.channel_db:
                 # in the case of a legacy payment, we don't allow splitting via different
-                # trampoline nodes, as currently no forwarder supports this
+                # trampoline nodes, because of https://github.com/ACINQ/eclair/issues/2127
                 use_single_node, _ = is_legacy_relay(invoice_features, r_tags)
                 split_configurations = suggest_splits(
                     amount_msat,
@@ -1718,16 +1722,7 @@ class LNWallet(LNWorker):
         route[-1].node_features |= invoice_features
         return route
 
-    def add_request(self, amount_sat, message, expiry) -> str:
-        coro = self._add_request_coro(amount_sat, message, expiry)
-        fut = asyncio.run_coroutine_threadsafe(coro, self.network.asyncio_loop)
-        try:
-            return fut.result(timeout=5)
-        except concurrent.futures.TimeoutError:
-            raise Exception(_("add invoice timed out"))
-
-    @log_exceptions
-    async def create_invoice(
+    def create_invoice(
             self, *,
             amount_msat: Optional[int],
             message: str,
@@ -1736,7 +1731,7 @@ class LNWallet(LNWorker):
     ) -> Tuple[LnAddr, str]:
 
         timestamp = int(time.time())
-        routing_hints = await self._calc_routing_hints_for_invoice(amount_msat)
+        routing_hints = self.calc_routing_hints_for_invoice(amount_msat)
         if not routing_hints:
             self.logger.info(
                 "Warning. No routing hints added to invoice. "
@@ -1773,9 +1768,9 @@ class LNWallet(LNWorker):
             self.wallet.save_db()
         return lnaddr, invoice
 
-    async def _add_request_coro(self, amount_sat: Optional[int], message, expiry: int) -> str:
+    def add_request(self, amount_sat: Optional[int], message, expiry: int) -> str:
         amount_msat = amount_sat * 1000 if amount_sat is not None else None
-        lnaddr, invoice = await self.create_invoice(
+        lnaddr, invoice = self.create_invoice(
             amount_msat=amount_msat,
             message=message,
             expiry=expiry,
@@ -1965,7 +1960,7 @@ class LNWallet(LNWorker):
             self.set_invoice_status(key, PR_UNPAID)
             util.trigger_callback('payment_failed', self.wallet, key, '')
 
-    async def _calc_routing_hints_for_invoice(self, amount_msat: Optional[int]):
+    def calc_routing_hints_for_invoice(self, amount_msat: Optional[int]):
         """calculate routing hints (BOLT-11 'r' field)"""
         routing_hints = []
         channels = list(self.channels.values())
@@ -2093,16 +2088,21 @@ class LNWallet(LNWorker):
         """Force-close the channel. Network-related exceptions are propagated to the caller.
         (automatic rebroadcasts will be scheduled)
         """
+        # note: as we are async, it can take a few event loop iterations between the caller
+        #       "calling us" and us getting to run, and we only set the channel state now:
         tx = self._force_close_channel(chan_id)
         await self.network.broadcast_transaction(tx)
         return tx.txid()
 
-    async def try_force_closing(self, chan_id: bytes) -> None:
-        """Force-close the channel. Network-related exceptions are suppressed.
+    def schedule_force_closing(self, chan_id: bytes) -> 'asyncio.Task[None]':
+        """Schedules a task to force-close the channel and returns it.
+        Network-related exceptions are suppressed.
         (automatic rebroadcasts will be scheduled)
+        Note: this method is intentionally not async so that callers have a guarantee
+              that the channel state is set immediately.
         """
         tx = self._force_close_channel(chan_id)
-        await self.network.try_broadcasting(tx, 'force-close')
+        return asyncio.create_task(self.network.try_broadcasting(tx, 'force-close'))
 
     def remove_channel(self, chan_id):
         chan = self.channels[chan_id]

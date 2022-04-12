@@ -498,6 +498,9 @@ def standardize_path(path):
 
 
 def get_new_wallet_name(wallet_folder: str) -> str:
+    """Returns a file basename for a new wallet to be used.
+    Can raise OSError.
+    """
     i = 1
     while True:
         filename = "wallet_%d" % i
@@ -1272,6 +1275,7 @@ class NetworkJobOnDefaultServer(Logger, ABC):
         server connection changes.
         """
         self.taskgroup = OldTaskGroup()
+        self.reset_request_counters()
 
     async def _start(self, interface: 'Interface'):
         self.interface = interface
@@ -1302,6 +1306,13 @@ class NetworkJobOnDefaultServer(Logger, ABC):
             await self.stop(full_shutdown=False)
             self._reset()
             await self._start(interface)
+
+    def reset_request_counters(self):
+        self._requests_sent = 0
+        self._requests_answered = 0
+
+    def num_requests_sent_and_answered(self) -> Tuple[int, int]:
+        return self._requests_sent, self._requests_answered
 
     @property
     def session(self):
