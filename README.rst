@@ -85,8 +85,8 @@ Development version (git clone)
 
 Check out the code from GitHub::
 
-    git clone git://github.com/spesmilo/electrum.git
-    cd electrum
+    git clone git://github.com/CoinBlack/electrum-blk.git
+    cd electrum-blk
     git submodule update --init
 
 Run install (this should install dependencies)::
