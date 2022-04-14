@@ -3,7 +3,7 @@
 set -e
 
 # Parameterize
-PYTHON_VERSION=3.9.11
+PYTHON_VERSION=3.9.12
 BUILDDIR=/tmp/electrum-blk-build
 PACKAGE=Electrum-BLK
 GIT_REPO=https://github.com/spesmilo/electrum
@@ -72,7 +72,7 @@ PKG_FILE="python-${PYTHON_VERSION}-macosx10.9.pkg"
 if [ ! -f "$CACHEDIR/$PKG_FILE" ]; then
     curl -o "$CACHEDIR/$PKG_FILE" "https://www.python.org/ftp/python/${PYTHON_VERSION}/$PKG_FILE"
 fi
-echo "c2073d44c404c661dadbf0cbda55c6e7d681baba9178ed1bdb126d34caa898a9  $CACHEDIR/$PKG_FILE" | shasum -a 256 -c \
+echo "7888174c6fe441b00448c7ab3e9cbf0e6c3c7dea0750577baf09e1383fc44656  $CACHEDIR/$PKG_FILE" | shasum -a 256 -c \
      || fail "python pkg checksum mismatched"
 sudo installer -pkg "$CACHEDIR/$PKG_FILE" -target / \
     || fail "failed to install python"
@@ -234,14 +234,14 @@ plutil -insert 'CFBundleURLTypes' \
 
 DoCodeSignMaybe "app bundle" "dist/${PACKAGE}.app"
 
-if [ ! -z "$CODESIGN_CERT" ]; then
-    if [ ! -z "$APPLE_ID_USER" ]; then
-        info "Notarizing .app with Apple's central server..."
-        "${CONTRIB_OSX}/notarize_app.sh" "dist/${PACKAGE}.app" || fail "Could not notarize binary."
-    else
-        warn "AppleID details not set! Skipping Apple notarization."
-    fi
-fi
+#if [ ! -z "$CODESIGN_CERT" ]; then
+#    if [ ! -z "$APPLE_ID_USER" ]; then
+#        info "Notarizing .app with Apple's central server..."
+#        "${CONTRIB_OSX}/notarize_app.sh" "dist/${PACKAGE}.app" || fail "Could not notarize binary."
+#    else
+#        warn "AppleID details not set! Skipping Apple notarization."
+#    fi
+#fi
 
 info "Creating .DMG"
 hdiutil create -fs HFS+ -volname $PACKAGE -srcfolder dist/$PACKAGE.app dist/electrum-blk-$VERSION.dmg || fail "Could not create .DMG"

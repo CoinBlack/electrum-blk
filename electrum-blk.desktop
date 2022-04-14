@@ -6,7 +6,7 @@ Comment=Lightweight Blackcoin Client
 Exec=sh -c "PATH=\"\\$HOME/.local/bin:\\$PATH\"; electrum-blk %u"
 GenericName[en_US]=Blackcoin Wallet
 GenericName=Blackcoin Wallet
-Icon=electrum-blk
+Icon=electrum
 Name[en_US]=Electrum Blackcoin Wallet
 Name=Electrum Blackcoin Wallet
 Categories=Finance;Network;
