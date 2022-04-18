@@ -4,7 +4,7 @@
 title = Electrum-BLK
 
 # (str) Package name
-package.name = Electrum-BLK
+package.name = Electrum_BLK
 
 # (str) Package domain (needed for android/ios packaging)
 package.domain = org.electrum_blk
@@ -123,7 +123,7 @@ android.accept_sdk_license = True
 #android.add_jars = foo.jar,bar.jar,path/to/more/*.jar
 #android.add_jars = lib/android/zbar.jar
 
-android.add_jars = .buildozer/android/platform/*/build/libs_collections/Electrum/jar/*.jar
+android.add_jars = .buildozer/android/platform/*/build/libs_collections/Electrum_BLK/jar/*.jar
 
 
 # (list) List of Java files to add to the android project (can be java or a
@@ -132,7 +132,7 @@ android.add_src = electrum_blk/gui/kivy/data/java-classes/
 
 android.gradle_dependencies = me.dm7.barcodescanner:zxing:1.9.8
 
-android.add_activities = org.electrum.qr.SimpleScannerActivity
+android.add_activities = org.electrum_blk.qr.SimpleScannerActivity
 
 # (str) python-for-android branch to use, if not master, useful to try
 # not yet merged features.

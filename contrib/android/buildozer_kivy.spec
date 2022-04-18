@@ -4,7 +4,7 @@
 title = Electrum-BLK
 
 # (str) Package name
-package.name = Electrum-BLK
+package.name = Electrum_BLK
 
 # (str) Package domain (needed for android/ios packaging)
 package.domain = org.electrum_blk
