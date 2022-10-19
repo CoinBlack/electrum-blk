@@ -1,3 +1,4 @@
+from time import time
 import traceback
 import sys
 from typing import NamedTuple, Any, Optional, Dict, Union, List, Tuple, TYPE_CHECKING
@@ -365,6 +366,7 @@ class TrezorPlugin(HW_PluginBase):
                                        inputs, outputs,
                                        lock_time=tx.locktime,
                                        version=tx.version,
+                                       timestamp=tx.time,
                                        amount_unit=self.get_trezor_amount_unit(),
                                        prev_txes=prev_tx)
         signatures = [(bh2u(x) + '01') for x in signatures]
@@ -503,6 +505,7 @@ class TrezorPlugin(HW_PluginBase):
         tx.deserialize()
         t.version = tx.version
         t.lock_time = tx.locktime
+        t.timestamp = tx.time
         t.inputs = self.tx_inputs(tx)
         t.bin_outputs = [
             TxOutputBinType(amount=o.value, script_pubkey=o.scriptpubkey)
