@@ -234,14 +234,14 @@ plutil -insert 'CFBundleURLTypes' \
 
 DoCodeSignMaybe "app bundle" "dist/${PACKAGE}.app"
 
-#if [ ! -z "$CODESIGN_CERT" ]; then
-#    if [ ! -z "$APPLE_ID_USER" ]; then
-#        info "Notarizing .app with Apple's central server..."
-#        "${CONTRIB_OSX}/notarize_app.sh" "dist/${PACKAGE}.app" || fail "Could not notarize binary."
-#    else
-#        warn "AppleID details not set! Skipping Apple notarization."
-#    fi
-#fi
+if [ ! -z "$CODESIGN_CERT" ]; then
+    if [ ! -z "$APPLE_ID_USER" ]; then
+        info "Notarizing .app with Apple's central server..."
+        "${CONTRIB_OSX}/notarize_app.sh" "dist/${PACKAGE}.app" || fail "Could not notarize binary."
+    else
+        warn "AppleID details not set! Skipping Apple notarization."
+    fi
+fi
 
 info "Creating .DMG"
 hdiutil create -fs HFS+ -volname $PACKAGE -srcfolder dist/$PACKAGE.app dist/electrum-blk-$VERSION.dmg || fail "Could not create .DMG"
