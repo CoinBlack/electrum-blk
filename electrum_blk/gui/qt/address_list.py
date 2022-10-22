@@ -163,11 +163,11 @@ class AddressList(MyTreeView):
         self.refresh_headers()
         fx = self.parent.fx
         set_address = None
-        addresses_beyond_gap_limit = self.wallet.get_all_known_addresses_beyond_gap_limit()
+        self.addresses_beyond_gap_limit = self.wallet.get_all_known_addresses_beyond_gap_limit()
         for address in addr_list:
             c, u, x = self.wallet.get_addr_balance(address)
             balance = c + u + x
-            is_used_and_empty = self.wallet.is_used(address) and balance == 0
+            is_used_and_empty = self.wallet.adb.is_used(address) and balance == 0
             if self.show_used == AddressUsageStateFilter.UNUSED and (balance or is_used_and_empty):
                 continue
             if self.show_used == AddressUsageStateFilter.FUNDED and balance == 0:
@@ -198,8 +198,6 @@ class AddressList(MyTreeView):
             address_path_str = self.wallet.get_address_path_str(address)
             if address_path_str is not None:
                 address_item[self.Columns.TYPE].setToolTip(address_path_str)
-            if address in addresses_beyond_gap_limit:
-                address_item[self.Columns.ADDRESS].setBackground(ColorScheme.RED.as_color(True))
             # add item
             count = self.std_model.rowCount()
             self.std_model.insertRow(count, address_item)
@@ -217,9 +215,10 @@ class AddressList(MyTreeView):
         self.proxy.setDynamicSortFilter(True)
 
     def refresh_row(self, key, row):
+        assert row is not None
         address = key
-        label = self.wallet.get_label(address)
-        num = self.wallet.get_address_history_len(address)
+        label = self.wallet.get_label_for_address(address)
+        num = self.wallet.adb.get_address_history_len(address)
         c, u, x = self.wallet.get_addr_balance(address)
         balance = c + u + x
         balance_text = self.parent.format_amount(balance, whitespaces=True)
@@ -236,8 +235,10 @@ class AddressList(MyTreeView):
         address_item[self.Columns.COIN_BALANCE].setData(balance, self.ROLE_SORT_ORDER)
         address_item[self.Columns.FIAT_BALANCE].setText(fiat_balance_str)
         address_item[self.Columns.NUM_TXS].setText("%d"%num)
-        c = ColorScheme.BLUE if self.wallet.is_frozen_address(address) else ColorScheme.DEFAULT
-        address_item[self.Columns.ADDRESS].setBackground(c.as_color(True))
+        c = ColorScheme.BLUE.as_color(True) if self.wallet.is_frozen_address(address) else self._default_bg_brush
+        address_item[self.Columns.ADDRESS].setBackground(c)
+        if address in self.addresses_beyond_gap_limit:
+            address_item[self.Columns.ADDRESS].setBackground(ColorScheme.RED.as_color(True))
 
     def create_menu(self, position):
         from electrum_blk.wallet import Multisig_Wallet

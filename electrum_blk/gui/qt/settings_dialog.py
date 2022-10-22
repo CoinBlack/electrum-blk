@@ -27,19 +27,19 @@ import ast
 from typing import Optional, TYPE_CHECKING
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import (QComboBox,  QTabWidget,
+from PyQt5.QtWidgets import (QComboBox,  QTabWidget, QDialog,
                              QSpinBox,  QFileDialog, QCheckBox, QLabel,
                              QVBoxLayout, QGridLayout, QLineEdit,
                              QPushButton, QWidget, QHBoxLayout)
 
 from electrum_blk.i18n import _, languages
 from electrum_blk import util, coinchooser, paymentrequest
-from electrum_blk.util import base_units_list
+from electrum_blk.util import base_units_list, event_listener
 
 from electrum_blk.gui import messages
 
 from .util import (ColorScheme, WindowModalDialog, HelpLabel, Buttons,
-                   CloseButton)
+                   CloseButton, QtEventListener)
 
 
 if TYPE_CHECKING:
@@ -47,16 +47,22 @@ if TYPE_CHECKING:
     from .main_window import ElectrumWindow
 
 
-class SettingsDialog(WindowModalDialog):
+class SettingsDialog(QDialog, QtEventListener):
 
-    def __init__(self, parent: 'ElectrumWindow', config: 'SimpleConfig'):
-        WindowModalDialog.__init__(self, parent, _('Preferences'))
+    def __init__(self, window: 'ElectrumWindow', config: 'SimpleConfig'):
+        QDialog.__init__(self)
+        self.setWindowTitle(_('Preferences'))
+        self.setMinimumWidth(500)
         self.config = config
-        self.window = parent
+        self.network = window.network
+        self.app = window.app
         self.need_restart = False
-        self.fx = self.window.fx
-        self.wallet = self.window.wallet
-        
+        self.fx = window.fx
+        self.wallet = window.wallet
+
+        self.register_callbacks()
+        self.app.alias_received_signal.connect(self.set_alias_color)
+
         vbox = QVBoxLayout()
         tabs = QTabWidget()
 
@@ -94,12 +100,29 @@ class SettingsDialog(WindowModalDialog):
             if self.config.num_zeros != value:
                 self.config.num_zeros = value
                 self.config.set_key('num_zeros', value, True)
-                self.window.refresh_tabs()
+                self.app.refresh_tabs_signal.emit()
         nz.valueChanged.connect(on_nz)
+
+        # invoices
+        bolt11_fallback_cb = QCheckBox(_('Add on-chain fallback to lightning invoices'))
+        bolt11_fallback_cb.setEnabled(False) # Blackcoin: disable
+        bolt11_fallback_cb.setChecked(bool(self.config.get('bolt11_fallback', True)))
+        bolt11_fallback_cb.setToolTip(_('Add fallback addresses to BOLT11 lightning invoices.'))
+        def on_bolt11_fallback(x):
+            self.config.set_key('bolt11_fallback', bool(x))
+        bolt11_fallback_cb.stateChanged.connect(on_bolt11_fallback)
+
+        bip21_lightning_cb = QCheckBox(_('Add lightning invoice to blackcoin URIs'))
+        bip21_lightning_cb.setEnabled(False) # Blackcoin: disable
+        bip21_lightning_cb.setChecked(bool(self.config.get('bip21_lightning', False)))
+        bip21_lightning_cb.setToolTip(_('This may create larger qr codes.'))
+        def on_bip21_lightning(x):
+            self.config.set_key('bip21_lightning', bool(x))
+        bip21_lightning_cb.stateChanged.connect(on_bip21_lightning)
 
         use_rbf = bool(self.config.get('use_rbf', False))
         use_rbf_cb = QCheckBox(_('Use Replace-By-Fee'))
-        use_rbf_cb.setEnabled(False)
+        use_rbf_cb.setEnabled(False) # Blackcoin: disable
         use_rbf_cb.setChecked(use_rbf)
         use_rbf_cb.setToolTip(
             _('If you check this box, your transactions will be marked as non-final,') + '\n' + \
@@ -140,10 +163,10 @@ class SettingsDialog(WindowModalDialog):
             use_gossip = not bool(use_trampoline)
             self.config.set_key('use_gossip', use_gossip)
             if use_gossip:
-                self.window.network.start_gossip()
+                self.network.start_gossip()
             else:
-                self.window.network.run_from_another_thread(
-                    self.window.network.stop_gossip())
+                self.network.run_from_another_thread(
+                    self.network.stop_gossip())
             util.trigger_callback('ln_gossip_sync_progress')
             # FIXME: update all wallet windows
             util.trigger_callback('channels_updated', self.wallet)
@@ -156,7 +179,7 @@ class SettingsDialog(WindowModalDialog):
         instant_swaps_cb = QCheckBox(_("Allow instant swaps"))
         instant_swaps_cb.setEnabled(False)
         instant_swaps_cb.setToolTip(messages.to_rtf(help_instant_swaps))
-        trampoline_cb.setChecked(not bool(self.config.get('allow_instant_swaps', False)))
+        instant_swaps_cb.setChecked(bool(self.config.get('allow_instant_swaps', False)))
         def on_instant_swaps_checked(allow_instant_swaps):
             self.config.set_key('allow_instant_swaps', bool(allow_instant_swaps))
         instant_swaps_cb.stateChanged.connect(on_instant_swaps_checked)
@@ -200,7 +223,7 @@ class SettingsDialog(WindowModalDialog):
             if self.config.amt_precision_post_satoshi != prec:
                 self.config.amt_precision_post_satoshi = prec
                 self.config.set_key('amt_precision_post_satoshi', prec)
-                self.window.refresh_tabs()
+                self.app.refresh_tabs_signal.emit()
         msat_cb.stateChanged.connect(on_msat_checked)
 
         # units
@@ -211,19 +234,16 @@ class SettingsDialog(WindowModalDialog):
         unit_label = HelpLabel(_('Base unit') + ':', msg)
         unit_combo = QComboBox()
         unit_combo.addItems(units)
-        unit_combo.setCurrentIndex(units.index(self.window.base_unit()))
+        unit_combo.setCurrentIndex(units.index(self.config.get_base_unit()))
         def on_unit(x, nz):
             unit_result = units[unit_combo.currentIndex()]
-            if self.window.base_unit() == unit_result:
+            if self.config.get_base_unit() == unit_result:
                 return
-            edits = self.window.amount_e, self.window.receive_amount_e
-            amounts = [edit.get_amount() for edit in edits]
             self.config.set_base_unit(unit_result)
             nz.setMaximum(self.config.decimal_point)
-            self.window.update_tabs()
-            for edit, amount in zip(edits, amounts):
-                edit.setAmount(amount)
-            self.window.update_status()
+            self.app.refresh_tabs_signal.emit()
+            self.app.update_status_signal.emit()
+            self.app.refresh_amount_edits_signal.emit()
         unit_combo.currentIndexChanged.connect(lambda x: on_unit(x, nz))
 
         thousandsep_cb = QCheckBox(_("Add thousand separators to bitcoin amounts"))
@@ -233,7 +253,7 @@ class SettingsDialog(WindowModalDialog):
             if self.config.amt_add_thousands_sep != checked:
                 self.config.amt_add_thousands_sep = checked
                 self.config.set_key('amt_add_thousands_sep', checked)
-                self.window.refresh_tabs()
+                self.app.refresh_tabs_signal.emit()
         thousandsep_cb.stateChanged.connect(on_set_thousandsep)
 
         qr_combo = QComboBox()
@@ -258,7 +278,6 @@ class SettingsDialog(WindowModalDialog):
         colortheme_label = QLabel(_('Color theme') + ':')
         def on_colortheme(x):
             self.config.set_key('qt_gui_color_theme', colortheme_combo.itemData(x), True)
-            #self.window.gui_object.reload_app_stylesheet()
             self.need_restart = True
         colortheme_combo.currentIndexChanged.connect(on_colortheme)
 
@@ -284,14 +303,14 @@ class SettingsDialog(WindowModalDialog):
         preview_cb.stateChanged.connect(on_preview)
 
         usechange_cb = QCheckBox(_('Use change addresses'))
-        usechange_cb.setChecked(self.window.wallet.use_change)
+        usechange_cb.setChecked(self.wallet.use_change)
         if not self.config.is_modifiable('use_change'): usechange_cb.setEnabled(False)
         def on_usechange(x):
             usechange_result = x == Qt.Checked
-            if self.window.wallet.use_change != usechange_result:
-                self.window.wallet.use_change = usechange_result
-                self.window.wallet.db.put('use_change', self.window.wallet.use_change)
-                multiple_cb.setEnabled(self.window.wallet.use_change)
+            if self.wallet.use_change != usechange_result:
+                self.wallet.use_change = usechange_result
+                self.wallet.db.put('use_change', self.wallet.use_change)
+                multiple_cb.setEnabled(self.wallet.use_change)
         usechange_cb.stateChanged.connect(on_usechange)
         usechange_cb.setToolTip(_('Using change addresses makes it more difficult for other people to track your transactions.'))
 
@@ -397,7 +416,8 @@ class SettingsDialog(WindowModalDialog):
         ex_combo = QComboBox()
 
         def update_currencies():
-            if not self.window.fx: return
+            if not self.fx:
+                return
             currencies = sorted(self.fx.get_currencies(self.fx.get_history_config()))
             ccy_combo.clear()
             ccy_combo.addItems([_('None')] + currencies)
@@ -443,7 +463,7 @@ class SettingsDialog(WindowModalDialog):
                 self.fx.set_currency(ccy)
             update_history_cb()
             update_exchanges()
-            self.window.update_fiat()
+            self.app.update_fiat_signal.emit()
 
         def on_exchange(idx):
             exchange = str(ex_combo.currentText())
@@ -454,21 +474,20 @@ class SettingsDialog(WindowModalDialog):
             if not self.fx: return
             self.fx.set_history_config(checked)
             update_exchanges()
-            self.window.history_model.refresh('on_history')
             if self.fx.is_enabled() and checked:
                 self.fx.trigger_update()
             update_history_capgains_cb()
+            self.app.update_fiat_signal.emit()
 
         def on_history_capgains(checked):
             if not self.fx: return
             self.fx.set_history_capital_gains_config(checked)
-            self.window.history_model.refresh('on_history_capgains')
+            self.app.update_fiat_signal.emit()
 
         def on_fiat_address(checked):
             if not self.fx: return
             self.fx.set_fiat_address_config(checked)
-            self.window.address_list.refresh_headers()
-            self.window.address_list.update()
+            self.app.update_fiat_signal.emit()
 
         update_currencies()
         update_history_cb()
@@ -488,6 +507,9 @@ class SettingsDialog(WindowModalDialog):
         gui_widgets.append((nz_label, nz))
         gui_widgets.append((msat_cb, None))
         gui_widgets.append((thousandsep_cb, None))
+        invoices_widgets = []
+        invoices_widgets.append((bolt11_fallback_cb, None))
+        invoices_widgets.append((bip21_lightning_cb, None))
         tx_widgets = []
         tx_widgets.append((usechange_cb, None))
         tx_widgets.append((use_rbf_cb, None))
@@ -519,6 +541,7 @@ class SettingsDialog(WindowModalDialog):
         tabs_info = [
             (gui_widgets, _('Appearance')),
             (tx_widgets, _('Transactions')),
+            (invoices_widgets, _('Invoices')),
             (lightning_widgets, _('Lightning')),
             (fiat_widgets, _('Fiat')),
             (misc_widgets, _('Misc')),
@@ -543,13 +566,17 @@ class SettingsDialog(WindowModalDialog):
         vbox.addStretch(1)
         vbox.addLayout(Buttons(CloseButton(self)))
         self.setLayout(vbox)
-        
+
+    @event_listener
+    def on_event_alias_received(self):
+        self.app.alias_received_signal.emit()
+
     def set_alias_color(self):
         if not self.config.get('alias'):
             self.alias_e.setStyleSheet("")
             return
-        if self.window.alias_info:
-            alias_addr, alias_name, validated = self.window.alias_info
+        if self.wallet.contacts.alias_info:
+            alias_addr, alias_name, validated = self.wallet.contacts.alias_info
             self.alias_e.setStyleSheet((ColorScheme.GREEN if validated else ColorScheme.RED).as_stylesheet(True))
         else:
             self.alias_e.setStyleSheet(ColorScheme.RED.as_stylesheet(True))
@@ -559,4 +586,12 @@ class SettingsDialog(WindowModalDialog):
         alias = str(self.alias_e.text())
         self.config.set_key('alias', alias, True)
         if alias:
-            self.window.fetch_alias()
+            self.wallet.contacts.fetch_openalias(self.config)
+
+    def closeEvent(self, event):
+        self.unregister_callbacks()
+        try:
+            self.app.alias_received_signal.disconnect(self.set_alias_color)
+        except TypeError:
+            pass  # 'method' object is not connected
+        event.accept()

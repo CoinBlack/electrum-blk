@@ -33,21 +33,11 @@ version_spec.loader.exec_module(version_module)
 data_files = []
 
 if platform.system() in ['Linux', 'FreeBSD', 'DragonFly']:
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--root=', dest='root_path', metavar='dir', default='/')
-    opts, _ = parser.parse_known_args(sys.argv[1:])
-    usr_share = os.path.join(sys.prefix, "share")
-    icons_dirname = 'pixmaps'
-    if not os.access(opts.root_path + usr_share, os.W_OK) and \
-       not os.access(opts.root_path, os.W_OK):
-        icons_dirname = 'icons'
-        if 'XDG_DATA_HOME' in os.environ.keys():
-            usr_share = os.environ['XDG_DATA_HOME']
-        else:
-            usr_share = os.path.expanduser('~/.local/share')
+    # note: we can't use absolute paths here. see #7787
     data_files += [
-        (os.path.join(usr_share, 'applications/'), ['electrum-blk.desktop']),
-        (os.path.join(usr_share, icons_dirname), ['electrum_blk/gui/icons/electrum.png']),
+        (os.path.join('share', 'applications'),               ['electrum-blk.desktop']),
+        (os.path.join('share', 'pixmaps'),                    ['electrum_blk/gui/icons/electrum.png']),
+        (os.path.join('share', 'icons/hicolor/128x128/apps'), ['electrum_blk/gui/icons/electrum.png']),
     ]
 
 extras_require = {
@@ -70,15 +60,9 @@ setup(
     python_requires='>={}'.format(MIN_PYTHON_VERSION),
     install_requires=requirements,
     extras_require=extras_require,
-    packages=[
-        'electrum_blk',
-        'electrum_blk.qrreader',
-        'electrum_blk.gui',
-        'electrum_blk.gui.qt',
-        'electrum_blk.gui.qt.qrreader',
-        'electrum_blk.gui.qt.qrreader.qtmultimedia',
-        'electrum_blk.plugins',
-    ] + [('electrum_blk.plugins.'+pkg) for pkg in find_packages('electrum_blk/plugins')],
+    packages=(['electrum_blk',]
+              + [('electrum_blk.'+pkg) for pkg in
+                 find_packages('electrum_blk', exclude=["tests", "gui.kivy", "gui.kivy.*"])]),
     package_dir={
         'electrum_blk': 'electrum_blk'
     },

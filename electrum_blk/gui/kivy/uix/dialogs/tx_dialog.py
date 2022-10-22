@@ -261,7 +261,7 @@ class TxDialog(Factory.Popup):
         total_size = parent_tx.estimated_size() + new_tx.estimated_size()
         parent_txid = parent_tx.txid()
         assert parent_txid
-        parent_fee = self.wallet.get_tx_fee(parent_txid)
+        parent_fee = self.wallet.adb.get_tx_fee(parent_txid)
         if parent_fee is None:
             self.app.show_error(_("Can't CPFP: unknown fee for parent transaction."))
             return
@@ -279,7 +279,7 @@ class TxDialog(Factory.Popup):
         if fee is None:
             return  # fee left empty, treat is as "cancel"
         if fee > max_fee:
-            self.show_error(_('Max fee exceeded'))
+            self.app.show_error(_('Max fee exceeded'))
             return
         try:
             new_tx = self.wallet.cpfp(parent_tx, fee)
@@ -348,15 +348,15 @@ class TxDialog(Factory.Popup):
 
     def remove_local_tx(self):
         txid = self.tx.txid()
-        num_child_txs = len(self.wallet.get_depending_transactions(txid))
+        num_child_txs = len(self.wallet.adb.get_depending_transactions(txid))
         question = _("Are you sure you want to remove this transaction?")
         if num_child_txs > 0:
-            question = (_("Are you sure you want to remove this transaction and {} child transactions?")
-                        .format(num_child_txs))
-
+            question = (
+                _("Are you sure you want to remove this transaction and {} child transactions?")
+                .format(num_child_txs))
         def on_prompt(b):
             if b:
-                self.wallet.remove_transaction(txid)
+                self.wallet.adb.remove_transaction(txid)
                 self.wallet.save_db()
                 self.app._trigger_update_wallet()  # FIXME private...
                 self.dismiss()

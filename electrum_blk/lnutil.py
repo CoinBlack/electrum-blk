@@ -24,7 +24,8 @@ from . import segwit_addr
 from .i18n import _
 from .lnaddr import lndecode
 from .bip32 import BIP32Node, BIP32_PRIME
-from .transaction import BCDataStream
+from .transaction import BCDataStream, OPPushDataGeneric
+
 
 if TYPE_CHECKING:
     from .lnchannel import Channel, AbstractChannel
@@ -636,6 +637,68 @@ def make_received_htlc(revocation_pubkey: bytes, remote_htlcpubkey: bytes,
     ]))
     return script
 
+WITNESS_TEMPLATE_OFFERED_HTLC = [
+    opcodes.OP_DUP,
+    opcodes.OP_HASH160,
+    OPPushDataGeneric(None),
+    opcodes.OP_EQUAL,
+    opcodes.OP_IF,
+    opcodes.OP_CHECKSIG,
+    opcodes.OP_ELSE,
+    OPPushDataGeneric(None),
+    opcodes.OP_SWAP,
+    opcodes.OP_SIZE,
+    OPPushDataGeneric(lambda x: x==1),
+    opcodes.OP_EQUAL,
+    opcodes.OP_NOTIF,
+    opcodes.OP_DROP,
+    opcodes.OP_2,
+    opcodes.OP_SWAP,
+    OPPushDataGeneric(None),
+    opcodes.OP_2,
+    opcodes.OP_CHECKMULTISIG,
+    opcodes.OP_ELSE,
+    opcodes.OP_HASH160,
+    OPPushDataGeneric(None),
+    opcodes.OP_EQUALVERIFY,
+    opcodes.OP_CHECKSIG,
+    opcodes.OP_ENDIF,
+    opcodes.OP_ENDIF,
+]
+
+WITNESS_TEMPLATE_RECEIVED_HTLC = [
+    opcodes.OP_DUP,
+    opcodes.OP_HASH160,
+    OPPushDataGeneric(None),
+    opcodes.OP_EQUAL,
+    opcodes.OP_IF,
+    opcodes.OP_CHECKSIG,
+    opcodes.OP_ELSE,
+    OPPushDataGeneric(None),
+    opcodes.OP_SWAP,
+    opcodes.OP_SIZE,
+    OPPushDataGeneric(lambda x: x==1),
+    opcodes.OP_EQUAL,
+    opcodes.OP_IF,
+    opcodes.OP_HASH160,
+    OPPushDataGeneric(None),
+    opcodes.OP_EQUALVERIFY,
+    opcodes.OP_2,
+    opcodes.OP_SWAP,
+    OPPushDataGeneric(None),
+    opcodes.OP_2,
+    opcodes.OP_CHECKMULTISIG,
+    opcodes.OP_ELSE,
+    opcodes.OP_DROP,
+    OPPushDataGeneric(None),
+    opcodes.OP_CHECKLOCKTIMEVERIFY,
+    opcodes.OP_DROP,
+    opcodes.OP_CHECKSIG,
+    opcodes.OP_ENDIF,
+    opcodes.OP_ENDIF,
+]
+
+
 def make_htlc_output_witness_script(is_received_htlc: bool, remote_revocation_pubkey: bytes, remote_htlc_pubkey: bytes,
                                     local_htlc_pubkey: bytes, payment_hash: bytes, cltv_expiry: Optional[int]) -> bytes:
     if is_received_htlc:
@@ -758,7 +821,8 @@ def make_funding_input(local_funding_pubkey: bytes, remote_funding_pubkey: bytes
     c_input._trusted_value_sats = funding_sat
     return c_input
 
-class HTLCOwner(IntFlag):
+
+class HTLCOwner(IntEnum):
     LOCAL = 1
     REMOTE = -LOCAL
 
@@ -769,7 +833,7 @@ class HTLCOwner(IntFlag):
         return HTLCOwner(super().__neg__())
 
 
-class Direction(IntFlag):
+class Direction(IntEnum):
     SENT = -1     # in the context of HTLCs: "offered" HTLCs
     RECEIVED = 1  # in the context of HTLCs: "received" HTLCs
 
@@ -1026,8 +1090,9 @@ class LnFeatures(IntFlag):
     _ln_feature_contexts[OPTION_SUPPORT_LARGE_CHANNEL_OPT] = (LNFC.INIT | LNFC.NODE_ANN)
     _ln_feature_contexts[OPTION_SUPPORT_LARGE_CHANNEL_REQ] = (LNFC.INIT | LNFC.NODE_ANN)
 
-    OPTION_TRAMPOLINE_ROUTING_REQ = 1 << 24
-    OPTION_TRAMPOLINE_ROUTING_OPT = 1 << 25
+    # This is still a temporary number. Also used by Eclair.
+    OPTION_TRAMPOLINE_ROUTING_REQ = 1 << 148
+    OPTION_TRAMPOLINE_ROUTING_OPT = 1 << 149
 
     _ln_feature_contexts[OPTION_TRAMPOLINE_ROUTING_REQ] = (LNFC.INIT | LNFC.NODE_ANN | LNFC.INVOICE)
     _ln_feature_contexts[OPTION_TRAMPOLINE_ROUTING_OPT] = (LNFC.INIT | LNFC.NODE_ANN | LNFC.INVOICE)
@@ -1043,10 +1108,6 @@ class LnFeatures(IntFlag):
 
     _ln_feature_contexts[OPTION_CHANNEL_TYPE_REQ] = (LNFC.INIT | LNFC.NODE_ANN)
     _ln_feature_contexts[OPTION_CHANNEL_TYPE_OPT] = (LNFC.INIT | LNFC.NODE_ANN)
-
-    # temporary
-    OPTION_TRAMPOLINE_ROUTING_REQ_ECLAIR = 1 << 50
-    OPTION_TRAMPOLINE_ROUTING_OPT_ECLAIR = 1 << 51
 
     def validate_transitive_dependencies(self) -> bool:
         # for all even bit set, set corresponding odd bit:
@@ -1116,6 +1177,13 @@ class LnFeatures(IntFlag):
         our_flags = set(list_enabled_bits(self))
         return (flag in our_flags
                 or get_ln_flag_pair_of_bit(flag) in our_flags)
+
+    def get_names(self) -> Sequence[str]:
+        r = []
+        for flag in list_enabled_bits(self):
+            feature_name = LnFeatures(1 << flag).name
+            r.append(feature_name or f"bit_{flag}")
+        return r
 
 
 class ChannelType(IntFlag):

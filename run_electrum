@@ -56,6 +56,12 @@ if is_git_clone:
 if is_local or is_android:
     sys.path.insert(0, os.path.join(script_dir, 'packages'))
 
+if is_pyinstaller:
+    # Keep an open file handle for the binary that started us. On Windows, this
+    # prevents users from moving or renaming the exe file while running (doing which
+    # causes ImportErrors and other runtime failures). (see #4072)
+    _file = open(sys.executable, 'rb')
+
 
 def check_imports():
     # pure-python dependencies need to be imported here for pyinstaller
@@ -92,7 +98,7 @@ from electrum_blk.wallet_db import WalletDB
 from electrum_blk.wallet import Wallet
 from electrum_blk.storage import WalletStorage
 from electrum_blk.util import print_msg, print_stderr, json_encode, json_decode, UserCancelled
-from electrum_blk.util import InvalidPassword, BITCOIN_BIP21_URI_SCHEME, LIGHTNING_URI_SCHEME
+from electrum_blk.util import InvalidPassword
 from electrum_blk.commands import get_parser, known_commands, Commands, config_variables
 from electrum_blk import daemon
 from electrum_blk import keystore
@@ -316,14 +322,16 @@ def main():
 
     # config is an object passed to the various constructors (wallet, interface, gui)
     if is_android:
-        from jnius import autoclass
-        build_config = autoclass("org.electrum_blk.electrum_blk.BuildConfig")
+        import importlib.util
+        android_gui = 'kivy' if importlib.util.find_spec('kivy') else 'qml'
         config_options = {
-            'verbosity': '*' if build_config.DEBUG else '',
             'cmd': 'gui',
-            'gui': 'kivy',
+            'gui': android_gui,
             'single_password':True,
         }
+        if util.get_android_package_name() == "org.electrum_blk.testnet.electrum_blk":
+            # ~hack for easier testnet builds. pkgname subject to change.
+            config_options['testnet'] = True
     else:
         config_options = args.__dict__
         f = lambda key: config_options[key] is not None and key not in config_variables.get(args.cmd, {}).keys()
@@ -356,10 +364,7 @@ def main():
 
     # check uri
     uri = config_options.get('url')
-    if uri and not (
-        uri.lower().startswith(BITCOIN_BIP21_URI_SCHEME + ':') or
-        uri.lower().startswith(LIGHTNING_URI_SCHEME + ':')
-    ):
+    if uri and not util.is_uri(uri):
         print_stderr('unknown command:', uri)
         sys.exit(1)
 
@@ -448,6 +453,7 @@ def handle_cmd(*, cmdname: str, config: 'SimpleConfig', config_options: dict):
             sys_exit(1)
     else:
         # command line
+        configure_logging(config, log_to_file=False)  # don't spam logfiles for each client-side RPC, but support "-v"
         cmd = known_commands[cmdname]
         wallet_path = config.get_wallet_path()
         if not config.get('offline'):

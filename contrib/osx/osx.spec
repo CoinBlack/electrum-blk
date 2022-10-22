@@ -10,11 +10,8 @@ MAIN_SCRIPT='run_electrum'
 ICONS_FILE=PYPKG + '/gui/icons/electrum.icns'
 
 
-for i, x in enumerate(sys.argv):
-    if x == '--name':
-        VERSION = sys.argv[i+1]
-        break
-else:
+VERSION = os.environ.get("ELECTRUM_VERSION")
+if not VERSION:
     raise Exception('no version')
 
 electrum = os.path.abspath(".") + "/"
@@ -30,6 +27,8 @@ hiddenimports += collect_submodules('keepkeylib')
 hiddenimports += collect_submodules('websocket')
 hiddenimports += collect_submodules('ckcc')
 hiddenimports += collect_submodules('bitbox02')
+hiddenimports += ['electrum_blk.plugins.jade.jade']
+hiddenimports += ['electrum_blk.plugins.jade.jadepy.jade']
 hiddenimports += ['_scrypt', 'PyQt5.QtPrintSupport']  # needed by Revealer
 
 datas = [
@@ -68,13 +67,13 @@ a = Analysis([electrum+ MAIN_SCRIPT,
               electrum+'electrum_blk/dnssec.py',
               electrum+'electrum_blk/commands.py',
               electrum+'electrum_blk/plugins/cosigner_pool/qt.py',
-              electrum+'electrum_blk/plugins/email_requests/qt.py',
               electrum+'electrum_blk/plugins/trezor/qt.py',
               electrum+'electrum_blk/plugins/safe_t/client.py',
               electrum+'electrum_blk/plugins/safe_t/qt.py',
               electrum+'electrum_blk/plugins/keepkey/qt.py',
               electrum+'electrum_blk/plugins/ledger/qt.py',
               electrum+'electrum_blk/plugins/coldcard/qt.py',
+              electrum+'electrum_blk/plugins/jade/qt.py',
               ],
              binaries=binaries,
              datas=datas,
@@ -108,6 +107,7 @@ exe = EXE(
     upx=True,
     icon=electrum+ICONS_FILE,
     console=False,
+    target_arch='x86_64',  # TODO investigate building 'universal2'
 )
 
 app = BUNDLE(
@@ -121,6 +121,13 @@ app = BUNDLE(
     bundle_identifier=None,
     info_plist={
         'NSHighResolutionCapable': 'True',
-        'NSSupportsAutomaticGraphicsSwitching': 'True'
+        'NSSupportsAutomaticGraphicsSwitching': 'True',
+        'CFBundleURLTypes':
+            [{
+                'CFBundleURLName': 'bitcoin',
+                'CFBundleURLSchemes': ['bitcoin', 'lightning', ],
+            }],
+        'LSMinimumSystemVersion': '10.13.0',
+        'NSCameraUsageDescription': 'Electrum would like to access the camera to scan for QR codes',
     },
 )

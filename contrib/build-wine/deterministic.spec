@@ -2,12 +2,10 @@
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules, collect_dynamic_libs
 
-import sys
-for i, x in enumerate(sys.argv):
-    if x == '--name':
-        cmdline_name = sys.argv[i+1]
-        break
-else:
+import sys, os
+
+cmdline_name = os.environ.get("ELECTRUM_CMDLINE_NAME")
+if not cmdline_name:
     raise Exception('no name')
 
 home = 'C:\\electrum-blk\\'
@@ -22,6 +20,8 @@ hiddenimports += collect_submodules('keepkeylib')
 hiddenimports += collect_submodules('websocket')
 hiddenimports += collect_submodules('ckcc')
 hiddenimports += collect_submodules('bitbox02')
+hiddenimports += ['electrum_blk.plugins.jade.jade']
+hiddenimports += ['electrum_blk.plugins.jade.jadepy.jade']
 hiddenimports += ['_scrypt', 'PyQt5.QtPrintSupport']  # needed by Revealer
 
 
@@ -62,13 +62,13 @@ a = Analysis([home+'run_electrum',
               home+'electrum_blk/dnssec.py',
               home+'electrum_blk/commands.py',
               home+'electrum_blk/plugins/cosigner_pool/qt.py',
-              home+'electrum_blk/plugins/email_requests/qt.py',
               home+'electrum_blk/plugins/trezor/qt.py',
               home+'electrum_blk/plugins/safe_t/client.py',
               home+'electrum_blk/plugins/safe_t/qt.py',
               home+'electrum_blk/plugins/keepkey/qt.py',
               home+'electrum_blk/plugins/ledger/qt.py',
               home+'electrum_blk/plugins/coldcard/qt.py',
+              home+'electrum_blk/plugins/jade/qt.py',
               #home+'packages/requests/utils.py'
               ],
              binaries=binaries,

@@ -11,6 +11,9 @@ This guide explains how to build Electrum-BLK binaries for macOS systems.
 
 This needs to be done on a system running macOS or OS X.
 
+The script is only tested on Intel-based Macs, and the binary built
+targets `x86_64` currently.
+
 Notes about compatibility with different macOS versions:
 - In general the binary is not guaranteed to run on an older version of macOS
   than what the build machine has. This is due to bundling the compiled Python into
@@ -28,7 +31,7 @@ Notes about compatibility with different macOS versions:
 We currently build the release binaries on macOS 10.14.6, and these seem to run on
 10.13 or newer.
 
-Before starting, you should install `brew`.
+Before starting, you should install [`brew`](https://brew.sh/).
 
 
 #### Notes about reproducibility
@@ -45,7 +48,7 @@ Before starting, you should install `brew`.
   - so full Xcode is needed, to have `altool`.
   - however, brew now consider macOS 10.14 too old, and for some reason it
     requires Xcode CLI tools. (`Error: Xcode alone is not sufficient on Mojave.`)
-  
+
   So, we need *both* full Xcode and Xcode CLI tools. Both with version 11.3.1.
   The two Xcodes should be located exactly as follows:
     ```
@@ -54,6 +57,9 @@ Before starting, you should install `brew`.
     $ xcrun --show-sdk-path
     /Library/Developer/CommandLineTools/SDKs/MacOSX10.14.sdk
     ```
+- Installing extraneous brew packages can result in build differences.
+  For example, pyinstaller seems to pick up and bundle brew-installed `libffi`.
+  So having a dedicated "electrum binary builder macOS VM" is recommended.
 - Make sure that you are building from a fresh clone of electrum-blk
   (or run e.g. `git clean -ffxd` to rm all local changes).
 
@@ -68,40 +74,51 @@ Unfortunately, you need an "Apple ID" account.
 
 (note: the last Xcode that runs on macOS 10.14.6 is Xcode 11.3.1)
 
-The recommended versions are:
+Install full Xcode:
 ```
 $ shasum -a 256 "$HOME/Downloads/Xcode_11.3.1.xip"
 9a92379b90734a9068832f858d594d3c3a30a7ddc3bdb6da49c738aed9ad34b5  /Users/vagrant/Downloads/Xcode_11.3.1.xip
-$ shasum -a 256 "$HOME/Downloads/Command_Line_Tools_for_Xcode_11.3.1.dmg"
-1c4b477285641cca5313f456b712bf726aca8db77f38793420e1d451588673f9  /Users/vagrant/Downloads/Command_Line_Tools_for_Xcode_11.3.1.dmg
+$ xip -x "$HOME/Downloads/Xcode_11.3.1.xip"
+$ sudo xcode-select -s "$HOME/Downloads/Xcode.app/Contents/Developer/"
+$ # agree with licence
+$ sudo xcodebuild -license
 ```
 
-After downloading, uncompress it.
+(note: unsure if needed:)
+```
+$ # try this to install additional component:
+$ sudo xcodebuild -runFirstLaunch
+```
 
-Make sure it is the "selected" xcode (e.g.):
-
-    sudo xcode-select -s $HOME/Downloads/Xcode.app/Contents/Developer/
-
+Install Xcode CLI tools:
+```
+$ sudo rm -rf /Library/Developer/CommandLineTools
+$ shasum -a 256 "$HOME/Downloads/Command_Line_Tools_for_Xcode_11.3.1.dmg"
+1c4b477285641cca5313f456b712bf726aca8db77f38793420e1d451588673f9  /Users/vagrant/Downloads/Command_Line_Tools_for_Xcode_11.3.1.dmg
+$ hdiutil attach "$HOME/Downloads/Command_Line_Tools_for_Xcode_11.3.1.dmg"
+$ sudo installer -package "/Volumes/Command Line Developer Tools/Command Line Tools.pkg" -target /
+$ hdiutil detach "/Volumes/Command Line Developer Tools"
+```
 
 #### 2. Build Electrum-BLK
 
     cd electrum-blk
-    ./contrib/osx/make_osx
+    ./contrib/osx/make_osx.sh
 
 This creates both a folder named Electrum-BLK.app and the .dmg file.
 
 If you want the binaries codesigned for MacOS and notarised by Apple's central server,
-provide these env vars to the `make_osx` script:
+provide these env vars to the `make_osx.sh` script:
 
     CODESIGN_CERT="Developer ID Application: Electrum Technologies GmbH (L6P37P7P56)" \
     APPLE_ID_USER="me@email.com" \
     APPLE_ID_PASSWORD="1234" \
-    ./contrib/osx/make_osx
+    ./contrib/osx/make_osx.sh
 
 
 ## Verifying reproducibility and comparing against official binary
 
-Every user can verify that the official binary was created from the source code in this 
+Every user can verify that the official binary was created from the source code in this
 repository.
 
 1. Build your own binary as described above.

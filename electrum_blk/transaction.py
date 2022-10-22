@@ -476,13 +476,15 @@ def check_scriptpubkey_template_and_dust(scriptpubkey, amount: Optional[int]):
         dust_limit = bitcoin.DUST_LIMIT_P2WSH
     elif match_script_against_template(scriptpubkey, SCRIPTPUBKEY_TEMPLATE_P2WPKH):
         dust_limit = bitcoin.DUST_LIMIT_P2WPKH
+    elif match_script_against_template(scriptpubkey, SCRIPTPUBKEY_TEMPLATE_ANYSEGWIT):
+        dust_limit = bitcoin.DUST_LIMIT_UNKNOWN_SEGWIT
     else:
         raise Exception(f'scriptpubkey does not conform to any template: {scriptpubkey.hex()}')
     if amount < dust_limit:
         raise Exception(f'amount ({amount}) is below dust limit for scriptpubkey type ({dust_limit})')
 
 
-def match_script_against_template(script, template) -> bool:
+def match_script_against_template(script, template, debug=False) -> bool:
     """Returns whether 'script' matches 'template'."""
     if script is None:
         return False
@@ -491,8 +493,14 @@ def match_script_against_template(script, template) -> bool:
         try:
             script = [x for x in script_GetOp(script)]
         except MalformedBitcoinScript:
+            if debug:
+                _logger.debug(f"malformed script")
             return False
+    if debug:
+        _logger.debug(f"match script against template: {script}")
     if len(script) != len(template):
+        if debug:
+            _logger.debug(f"length mismatch {len(script)} != {len(template)}")
         return False
     for i in range(len(script)):
         template_item = template[i]
@@ -502,6 +510,8 @@ def match_script_against_template(script, template) -> bool:
         if OPGeneric.is_instance(template_item) and template_item.match(script_item[0]):
             continue
         if template_item != script_item[0]:
+            if debug:
+                _logger.debug(f"item mismatch at position {i}: {template_item} != {script_item[0]}")
             return False
     return True
 
@@ -681,14 +691,15 @@ class Transaction:
             n_vin = vds.read_compact_size()
         if n_vin < 1:
             raise SerializationError('tx needs to have at least 1 input')
-        self._inputs = [parse_input(vds) for i in range(n_vin)]
+        txins = [parse_input(vds) for i in range(n_vin)]
         n_vout = vds.read_compact_size()
         if n_vout < 1:
             raise SerializationError('tx needs to have at least 1 output')
         self._outputs = [parse_output(vds) for i in range(n_vout)]
         if is_segwit:
-            for txin in self._inputs:
+            for txin in txins:
                 parse_witness(vds, txin)
+        self._inputs = txins  # only expose field after witness is parsed, for sanity
         self._locktime = vds.read_uint32()
         if vds.can_read_more():
             raise SerializationError('extra junk at the end')

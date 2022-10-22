@@ -8,7 +8,7 @@ from kivy.uix.popup import Popup
 from electrum_blk.util import bh2u
 from electrum_blk.logging import Logger
 from electrum_blk.lnutil import LOCAL, REMOTE, format_short_channel_id
-from electrum_blk.lnchannel import AbstractChannel, Channel, ChannelState
+from electrum_blk.lnchannel import AbstractChannel, Channel, ChannelState, ChanCloseOption
 from electrum_blk.gui.kivy.i18n import _
 from electrum_blk.transaction import PartialTxOutput, Transaction
 from electrum_blk.util import NotEnoughFunds, NoDynamicFeeEstimates, format_fee_satoshis, quantize_feerate
@@ -493,10 +493,10 @@ class ChannelDetailsPopup(Popup, Logger):
 
     def update_action_dropdown(self):
         action_dropdown = self.ids.action_dropdown  # type: ActionDropdown
+        close_options = self.chan.get_close_options()
         options = [
             ActionButtonOption(text=_('Backup'), func=lambda btn: self.export_backup()),
-            ActionButtonOption(text=_('Close channel'), func=lambda btn: self.close(), enabled=not self.is_closed),
-            ActionButtonOption(text=_('Force-close'), func=lambda btn: self.force_close(), enabled=not self.is_closed),
+            ActionButtonOption(text=_('Close channel'), func=lambda btn: self.close(close_options), enabled=close_options),
             ActionButtonOption(text=_('Delete'), func=lambda btn: self.remove_channel(), enabled=self.can_be_deleted),
         ]
         if not self.chan.is_closed():
@@ -510,10 +510,18 @@ class ChannelDetailsPopup(Popup, Logger):
                 options.append(ActionButtonOption(text=_("Unfreeze") + "\n(for receiving)", func=lambda btn: self.freeze_for_receiving()))
         action_dropdown.update(options=options)
 
-    def close(self):
+    def close(self, close_options):
+        choices = {}
+        if ChanCloseOption.COOP_CLOSE in close_options:
+            choices[0] = _('Cooperative close')
+        if ChanCloseOption.REQUEST_REMOTE_FCLOSE in close_options:
+            choices[1] = _('Request force-close')
+        if ChanCloseOption.LOCAL_FCLOSE in close_options:
+            choices[2] = _('Local force-close')
         dialog = ChoiceDialog(
             title=_('Close channel'),
-            choices={0:_('Cooperative close'), 1:_('Request force-close')}, key=0,
+            choices=choices,
+            key = min(choices.keys()),
             callback=self._close,
             description=_(messages.MSG_REQUEST_FORCE_CLOSE),
             keep_choice_order=True)
@@ -521,12 +529,15 @@ class ChannelDetailsPopup(Popup, Logger):
 
     def _close(self, choice):
         loop = self.app.wallet.network.asyncio_loop
-        if choice == 1:
-            coro = self.app.wallet.lnworker.request_force_close(self.chan.channel_id)
-            msg = _('Request sent')
-        else:
+        if choice == 0:
             coro = self.app.wallet.lnworker.close_channel(self.chan.channel_id)
             msg = _('Channel closed')
+        elif choice == 1:
+            coro = self.app.wallet.lnworker.request_force_close(self.chan.channel_id)
+            msg = _('Request sent')
+        elif choice == 2:
+            self.force_close()
+            return
         f = asyncio.run_coroutine_threadsafe(coro, loop)
         try:
             f.result(5)
@@ -557,7 +568,8 @@ class ChannelDetailsPopup(Popup, Logger):
         self.app.qr_dialog(_("Channel Backup " + self.chan.short_id_for_GUI()), text, help_text=help_text)
 
     def force_close(self):
-        if self.chan.is_closed():
+        if ChanCloseOption.LOCAL_FCLOSE not in self.chan.get_close_options():
+            # note: likely channel is already closed, or could be unsafe to do local force-close (e.g. we are toxic)
             self.app.show_error(_('Channel already closed'))
             return
         to_self_delay = self.chan.config[REMOTE].to_self_delay
@@ -645,9 +657,8 @@ class LightningChannelsDialog(Factory.Popup):
         if not self.app.wallet:
             return
         lnworker = self.app.wallet.lnworker
-        channels = list(lnworker.channels.values()) if lnworker else []
-        backups = list(lnworker.channel_backups.values()) if lnworker else []
-        for i in channels + backups:
+        channels = lnworker.get_channel_objects().values() if lnworker else []
+        for i in channels:
             item = Factory.LightningChannelItem()
             item.screen = self
             item.active = not i.is_closed()

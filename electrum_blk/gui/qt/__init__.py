@@ -28,14 +28,17 @@ import signal
 import sys
 import traceback
 import threading
-from typing import Optional, TYPE_CHECKING, List
+from typing import Optional, TYPE_CHECKING, List, Sequence
 
+from electrum_blk import GuiImportError
 
 try:
     import PyQt5
     import PyQt5.QtGui
-except Exception:
-    sys.exit("Error: Could not import PyQt5 on Linux systems, you may try 'sudo apt-get install python3-pyqt5'")
+except Exception as e:
+    raise GuiImportError(
+        "Error: Could not import PyQt5 on Linux systems, "
+        "you may try 'sudo apt-get install python3-pyqt5'") from e
 
 from PyQt5.QtGui import QGuiApplication
 from PyQt5.QtWidgets import (QApplication, QSystemTrayIcon, QWidget, QMenu,
@@ -77,14 +80,14 @@ if TYPE_CHECKING:
 
 
 class OpenFileEventFilter(QObject):
-    def __init__(self, windows):
+    def __init__(self, windows: Sequence[ElectrumWindow]):
         self.windows = windows
         super(OpenFileEventFilter, self).__init__()
 
     def eventFilter(self, obj, event):
         if event.type() == QtCore.QEvent.FileOpen:
             if len(self.windows) >= 1:
-                self.windows[0].pay_to_URI(event.url().toString())
+                self.windows[0].handle_payment_identifier(event.url().toString())
                 return True
         return False
 
@@ -92,10 +95,12 @@ class OpenFileEventFilter(QObject):
 class QElectrumApplication(QApplication):
     new_window_signal = pyqtSignal(str, object)
     quit_signal = pyqtSignal()
+    refresh_tabs_signal = pyqtSignal()
+    refresh_amount_edits_signal = pyqtSignal()
+    update_status_signal = pyqtSignal()
+    update_fiat_signal = pyqtSignal()
+    alias_received_signal = pyqtSignal()
 
-
-class QNetworkUpdatedSignalObject(QObject):
-    network_updated_signal = pyqtSignal(str, object)
 
 
 class ElectrumGui(BaseElectrumGui, Logger):
@@ -114,7 +119,6 @@ class ElectrumGui(BaseElectrumGui, Logger):
         # GC-ed when windows are closed
         #network.add_jobs([DebugMem([Abstract_Wallet, SPV, Synchronizer,
         #                            ElectrumWindow], interval=5)])
-        QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_X11InitThreads)
         if hasattr(QtCore.Qt, "AA_ShareOpenGLContexts"):
             QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts)
         if hasattr(QGuiApplication, 'setDesktopFileName'):
@@ -134,7 +138,6 @@ class ElectrumGui(BaseElectrumGui, Logger):
         self.network_dialog = None
         self.lightning_dialog = None
         self.watchtower_dialog = None
-        self.network_updated_signal_obj = QNetworkUpdatedSignalObject()
         self._num_wizards_in_progress = 0
         self._num_wizards_lock = threading.Lock()
         self.dark_icon = self.config.get("dark_icon", False)
@@ -243,7 +246,6 @@ class ElectrumGui(BaseElectrumGui, Logger):
             self.network_dialog.close()
             self.network_dialog.clean_up()
             self.network_dialog = None
-        self.network_updated_signal_obj = None
         if self.lightning_dialog:
             self.lightning_dialog.close()
             self.lightning_dialog = None
@@ -290,14 +292,13 @@ class ElectrumGui(BaseElectrumGui, Logger):
 
     def show_network_dialog(self):
         if self.network_dialog:
-            self.network_dialog.on_update()
+            self.network_dialog.on_event_network_updated()
             self.network_dialog.show()
             self.network_dialog.raise_()
             return
         self.network_dialog = NetworkDialog(
             network=self.daemon.network,
-            config=self.config,
-            network_updated_signal_obj=self.network_updated_signal_obj)
+            config=self.config)
         self.network_dialog.show()
 
     def _create_window_for_wallet(self, wallet):
@@ -380,12 +381,11 @@ class ElectrumGui(BaseElectrumGui, Logger):
                     path = os.path.join(wallet_dir, filename)
                 self.start_new_window(path, uri=None, force_wizard=True)
             return
-        if uri:
-            window.pay_to_URI(uri)
         window.bring_to_top()
         window.setWindowState(window.windowState() & ~QtCore.Qt.WindowMinimized | QtCore.Qt.WindowActive)
-
         window.activateWindow()
+        if uri:
+            window.handle_payment_identifier(uri)
         return window
 
     def _start_wizard_to_select_or_create_wallet(self, path) -> Optional[Abstract_Wallet]:
@@ -469,3 +469,13 @@ class ElectrumGui(BaseElectrumGui, Logger):
     def stop(self):
         self.logger.info('closing GUI')
         self.app.quit_signal.emit()
+
+    @classmethod
+    def version_info(cls):
+        ret = {
+            "qt.version": QtCore.QT_VERSION_STR,
+            "pyqt.version": QtCore.PYQT_VERSION_STR,
+        }
+        if hasattr(PyQt5, "__path__"):
+            ret["pyqt.path"] = ", ".join(PyQt5.__path__ or [])
+        return ret

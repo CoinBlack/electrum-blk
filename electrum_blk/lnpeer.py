@@ -31,7 +31,7 @@ from .lnonion import (new_onion_packet, OnionFailureCode, calc_hops_data_for_pay
                       process_onion_packet, OnionPacket, construct_onion_error, OnionRoutingFailure,
                       ProcessedOnionPacket, UnsupportedOnionPacketVersion, InvalidOnionMac, InvalidOnionPubkey,
                       OnionFailureCodeMetaFlag)
-from .lnchannel import Channel, RevokeAndAck, RemoteCtnTooFarInFuture, ChannelState, PeerState
+from .lnchannel import Channel, RevokeAndAck, RemoteCtnTooFarInFuture, ChannelState, PeerState, ChanCloseOption
 from . import lnutil
 from .lnutil import (Outpoint, LocalConfig, RECEIVED, UpdateAddHtlc, ChannelConfig,
                      RemoteConfig, OnlyPubkeyKeypair, ChannelConstraints, RevocationStore,
@@ -79,22 +79,24 @@ class Peer(Logger):
             transport: LNTransportBase,
             *, is_channel_backup= False):
 
+        self.lnworker = lnworker
+        self.network = lnworker.network
+        self.asyncio_loop = self.network.asyncio_loop
         self.is_channel_backup = is_channel_backup
         self._sent_init = False  # type: bool
         self._received_init = False  # type: bool
-        self.initialized = asyncio.Future()
+        self.initialized = self.asyncio_loop.create_future()
         self.got_disconnected = asyncio.Event()
         self.querying = asyncio.Event()
         self.transport = transport
         self.pubkey = pubkey  # remote pubkey
-        self.lnworker = lnworker
         self.privkey = self.transport.privkey  # local privkey
         self.features = self.lnworker.features  # type: LnFeatures
         self.their_features = LnFeatures(0)  # type: LnFeatures
         self.node_ids = [self.pubkey, privkey_to_pubkey(self.privkey)]
         assert self.node_ids[0] != self.node_ids[1]
-        self.network = lnworker.network
-        self.ping_time = 0
+        self.last_message_time = 0
+        self.pong_event = asyncio.Event()
         self.reply_channel_range = asyncio.Queue()
         # gossip uses a single queue to preserve message order
         self.gossip_queue = asyncio.Queue()
@@ -104,7 +106,7 @@ class Peer(Logger):
         self.funding_signed_sent = set()  # for channels in PREOPENING
         self.shutdown_received = {} # chan_id -> asyncio.Future()
         self.announcement_signatures = defaultdict(asyncio.Queue)
-        self.channel_reestablish_msg = defaultdict(asyncio.Future)
+        self.channel_reestablish_msg = defaultdict(self.asyncio_loop.create_future)
         self.orphan_channel_updates = OrderedDict()  # type: OrderedDict[ShortChannelID, dict]
         Logger.__init__(self)
         self.taskgroup = OldTaskGroup()
@@ -114,6 +116,7 @@ class Peer(Logger):
         self._htlc_switch_iterstart_event = asyncio.Event()
         self._htlc_switch_iterdone_event = asyncio.Event()
         self._received_revack_event = asyncio.Event()
+        self.received_commitsig_event = asyncio.Event()
         self.downstream_htlc_resolved_event = asyncio.Event()
 
     def send_message(self, message_name: str, **kwargs):
@@ -185,10 +188,11 @@ class Peer(Logger):
     def diagnostic_name(self):
         return self.lnworker.__class__.__name__ + ', ' + self.transport.name()
 
-    def ping_if_required(self):
-        if time.time() - self.ping_time > 120:
+    async def ping_if_required(self):
+        if time.time() - self.last_message_time > 30:
             self.send_message('ping', num_pong_bytes=4, byteslen=4)
-            self.ping_time = time.time()
+            self.pong_event.clear()
+            await self.pong_event.wait()
 
     def process_message(self, message):
         try:
@@ -196,6 +200,7 @@ class Peer(Logger):
         except UnknownOptionalMsgType as e:
             self.logger.info(f"received unknown message from peer. ignoring: {e!r}")
             return
+        self.last_message_time = time.time()
         if message_type not in self.SPAMMY_MESSAGES:
             self.logger.debug(f"Received {message_type.upper()}")
         # only process INIT if we are a backup
@@ -208,7 +213,8 @@ class Peer(Logger):
             if message_type not in ('error', 'warning') and 'channel_id' in payload:
                 chan = self.get_channel_by_id(payload['channel_id'])
                 if chan is None:
-                    raise Exception('Got unknown '+ message_type)
+                    self.logger.info(f"Received {message_type} for unknown channel {payload['channel_id'].hex()}")
+                    return
                 args = (chan, payload)
             else:
                 args = (payload,)
@@ -316,7 +322,7 @@ class Peer(Logger):
         self.send_message('pong', byteslen=l)
 
     def on_pong(self, payload):
-        pass
+        self.pong_event.set()
 
     async def wait_for_message(self, expected_name, channel_id):
         q = self.ordered_message_queues[channel_id]
@@ -360,16 +366,16 @@ class Peer(Logger):
         self.maybe_set_initialized()
 
     def on_node_announcement(self, payload):
-        if self.lnworker.channel_db:
+        if not self.lnworker.uses_trampoline():
             self.gossip_queue.put_nowait(('node_announcement', payload))
 
     def on_channel_announcement(self, payload):
-        if self.lnworker.channel_db:
+        if not self.lnworker.uses_trampoline():
             self.gossip_queue.put_nowait(('channel_announcement', payload))
 
     def on_channel_update(self, payload):
         self.maybe_save_remote_update(payload)
-        if self.lnworker.channel_db:
+        if not self.lnworker.uses_trampoline():
             self.gossip_queue.put_nowait(('channel_update', payload))
 
     def maybe_save_remote_update(self, payload):
@@ -378,7 +384,7 @@ class Peer(Logger):
         for chan in self.channels.values():
             if chan.short_channel_id == payload['short_channel_id']:
                 chan.set_remote_update(payload)
-                self.logger.info("saved remote_update")
+                self.logger.info(f"saved remote channel_update gossip msg for chan {chan.get_id_for_log()}")
                 break
         else:
             # Save (some bounded number of) orphan channel updates for later
@@ -594,9 +600,6 @@ class Peer(Logger):
     def is_shutdown_anysegwit(self):
         return self.features.supports(LnFeatures.OPTION_SHUTDOWN_ANYSEGWIT_OPT)
 
-    def is_static_remotekey(self):
-        return self.features.supports(LnFeatures.OPTION_STATIC_REMOTEKEY_OPT)
-
     def is_channel_type(self):
         return self.features.supports(LnFeatures.OPTION_CHANNEL_TYPE_OPT)
 
@@ -625,13 +628,12 @@ class Peer(Logger):
         # flexibility to decide an address at closing time
         upfront_shutdown_script = b''
 
-        if channel_type & channel_type.OPTION_STATIC_REMOTEKEY:
-            wallet = self.lnworker.wallet
-            assert wallet.txin_type == 'p2wpkh'
-            addr = wallet.get_new_sweep_address_for_channel()
-            static_remotekey = bfh(wallet.get_public_key(addr))
-        else:
-            static_remotekey = None
+        assert channel_type & channel_type.OPTION_STATIC_REMOTEKEY
+        wallet = self.lnworker.wallet
+        assert wallet.txin_type == 'p2wpkh'
+        addr = wallet.get_new_sweep_address_for_channel()
+        static_remotekey = bytes.fromhex(wallet.get_public_key(addr))
+
         dust_limit_sat = bitcoin.DUST_LIMIT_P2PKH
         reserve_sat = max(funding_sat // 100, dust_limit_sat)
         # for comparison of defaults, see
@@ -696,16 +698,15 @@ class Peer(Logger):
         # will raise if init fails
         await asyncio.wait_for(self.initialized, LN_P2P_NETWORK_TIMEOUT)
         # trampoline is not yet in features
-        if not self.lnworker.channel_db and not self.lnworker.is_trampoline_peer(self.pubkey):
+        if self.lnworker.uses_trampoline() and not self.lnworker.is_trampoline_peer(self.pubkey):
             raise Exception('Not a trampoline node: ' + str(self.their_features))
 
         feerate = self.lnworker.current_feerate_per_kw()
         # we set a channel type for internal bookkeeping
         open_channel_tlvs = {}
-        if self.their_features.supports(LnFeatures.OPTION_STATIC_REMOTEKEY_OPT):
-            our_channel_type = ChannelType(ChannelType.OPTION_STATIC_REMOTEKEY)
-        else:
-            our_channel_type = ChannelType(0)
+        assert self.their_features.supports(LnFeatures.OPTION_STATIC_REMOTEKEY_OPT)
+        our_channel_type = ChannelType(ChannelType.OPTION_STATIC_REMOTEKEY)
+
         # if option_channel_type is negotiated: MUST set channel_type
         if self.is_channel_type():
             # if it includes channel_type: MUST set it to a defined type representing the type it wants.
@@ -841,7 +842,6 @@ class Peer(Logger):
             channel_id, outpoint, local_config, remote_config, constraints, our_channel_type)
         chan = Channel(
             storage,
-            sweep_address=self.lnworker.sweep_address,
             lnworker=self.lnworker,
             initial_feerate=feerate
         )
@@ -1020,7 +1020,6 @@ class Peer(Logger):
             channel_id, outpoint, local_config, remote_config, constraints, channel_type)
         chan = Channel(
             chan_dict,
-            sweep_address=self.lnworker.sweep_address,
             lnworker=self.lnworker,
             initial_feerate=feerate
         )
@@ -1043,8 +1042,11 @@ class Peer(Logger):
         chan.set_state(ChannelState.OPENING)
         self.lnworker.add_new_channel(chan)
 
-    async def trigger_force_close(self, channel_id: bytes):
+    async def request_force_close(self, channel_id: bytes):
+        """Try to trigger the remote peer to force-close."""
         await self.initialized
+        # First, we intentionally send a "channel_reestablish" msg with an old state.
+        # Many nodes (but not all) automatically force-close when seeing this.
         latest_point = secret_to_pubkey(42) # we need a valid point (BOLT2)
         self.send_message(
             "channel_reestablish",
@@ -1053,6 +1055,13 @@ class Peer(Logger):
             next_revocation_number=0,
             your_last_per_commitment_secret=0,
             my_current_per_commitment_point=latest_point)
+        # Newish nodes that have lightning/bolts/pull/950 force-close upon receiving an "error" msg,
+        # so send that too. E.g. old "channel_reestablish" is not enough for eclair 0.7+,
+        # but "error" is. see https://github.com/ACINQ/eclair/pull/2036
+        # The receiving node:
+        #   - upon receiving `error`:
+        #     - MUST fail the channel referred to by `channel_id`, if that channel is with the sending node.
+        self.send_message("error", channel_id=channel_id, data=b"", len=0)
 
     def schedule_force_closing(self, channel_id: bytes):
         """ wrapper of lnworker's method, that raises if channel is not with this peer """
@@ -1060,10 +1069,14 @@ class Peer(Logger):
         channels_with_peer.extend(self.temp_id_to_id.values())
         if channel_id not in channels_with_peer:
             raise ValueError(f"channel {channel_id.hex()} does not belong to this peer")
-        if channel_id in self.channels:
+        chan = self.channels.get(channel_id)
+        if not chan:
+            self.logger.warning(f"tried to force-close channel {channel_id.hex()} but it is not in self.channels yet")
+        if ChanCloseOption.LOCAL_FCLOSE in chan.get_close_options():
             self.lnworker.schedule_force_closing(channel_id)
         else:
-            self.logger.warning(f"tried to force-close channel {channel_id.hex()} but it is not in self.channels yet")
+            self.logger.info(f"tried to force-close channel {chan.get_id_for_log()} "
+                             f"but close option is not allowed. {chan.get_state()=!r}")
 
     def on_channel_reestablish(self, chan, msg):
         their_next_local_ctn = msg["next_commitment_number"]
@@ -1134,18 +1147,7 @@ class Peer(Logger):
                     f"channel_reestablish ({chan.get_id_for_log()}): "
                     f"(DLP) local PCS mismatch: {bh2u(our_pcs)} != {bh2u(their_claim_of_our_last_per_commitment_secret)}")
                 return False
-            if chan.is_static_remotekey_enabled():
-                return True
-            try:
-                __, our_remote_pcp = chan.get_secret_and_point(REMOTE, their_next_local_ctn - 1)
-            except RemoteCtnTooFarInFuture:
-                pass
-            else:
-                if our_remote_pcp != their_local_pcp:
-                    self.logger.error(
-                        f"channel_reestablish ({chan.get_id_for_log()}): "
-                        f"(DLP) remote PCP mismatch: {bh2u(our_remote_pcp)} != {bh2u(their_local_pcp)}")
-                    return False
+            assert chan.is_static_remotekey_enabled()
             return True
         if not are_datalossprotect_fields_valid():
             raise RemoteMisbehaving("channel_reestablish: data loss protect fields invalid")
@@ -1156,6 +1158,7 @@ class Peer(Logger):
                 f"remote is ahead of us! They should force-close. Remote PCP: {bh2u(their_local_pcp)}")
             # data_loss_protect_remote_pcp is used in lnsweep
             chan.set_data_loss_protect_remote_pcp(their_next_local_ctn - 1, their_local_pcp)
+            chan.set_state(ChannelState.WE_ARE_TOXIC)
             self.lnworker.save_channel(chan)
             chan.peer_state = PeerState.BAD
             # raise after we send channel_reestablish, so the remote can realize they are ahead
@@ -1172,7 +1175,8 @@ class Peer(Logger):
         await self.initialized
         chan_id = chan.channel_id
         if chan.should_request_force_close:
-            await self.trigger_force_close(chan_id)
+            chan.set_state(ChannelState.REQUESTED_FCLOSE)
+            await self.request_force_close(chan_id)
             chan.should_request_force_close = False
             return
         assert ChannelState.PREOPENING < chan.get_state() < ChannelState.FORCE_CLOSING
@@ -1193,10 +1197,8 @@ class Peer(Logger):
         # BOLT-02: "A node [...] upon disconnection [...] MUST reverse any uncommitted updates sent by the other side"
         chan.hm.discard_unsigned_remote_updates()
         # send message
-        if chan.is_static_remotekey_enabled():
-            latest_secret, latest_point = chan.get_secret_and_point(LOCAL, 0)
-        else:
-            latest_secret, latest_point = chan.get_secret_and_point(LOCAL, latest_local_ctn)
+        assert chan.is_static_remotekey_enabled()
+        latest_secret, latest_point = chan.get_secret_and_point(LOCAL, 0)
         if oldest_unrevoked_remote_ctn == 0:
             last_rev_secret = 0
         else:
@@ -1219,25 +1221,28 @@ class Peer(Logger):
         await fut
         we_must_resend_revoke_and_ack, their_next_local_ctn = fut.result()
 
-        # Replay un-acked local updates (including commitment_signed) byte-for-byte.
-        # If we have sent them a commitment signature that they "lost" (due to disconnect),
-        # we need to make sure we replay the same local updates, as otherwise they could
-        # end up with two (or more) signed valid commitment transactions at the same ctn.
-        # Multiple valid ctxs at the same ctn is a major headache for pre-signing spending txns,
-        # e.g. for watchtowers, hence we must ensure these ctxs coincide.
-        # We replay the local updates even if they were not yet committed.
-        unacked = chan.hm.get_unacked_local_updates()
-        n_replayed_msgs = 0
-        for ctn, messages in unacked.items():
-            if ctn < their_next_local_ctn:
-                # They claim to have received these messages and the corresponding
-                # commitment_signed, hence we must not replay them.
-                continue
-            for raw_upd_msg in messages:
-                self.transport.send_bytes(raw_upd_msg)
-                n_replayed_msgs += 1
-        self.logger.info(f'channel_reestablish ({chan.get_id_for_log()}): replayed {n_replayed_msgs} unacked messages')
-        if we_must_resend_revoke_and_ack:
+        def replay_updates_and_commitsig():
+            # Replay un-acked local updates (including commitment_signed) byte-for-byte.
+            # If we have sent them a commitment signature that they "lost" (due to disconnect),
+            # we need to make sure we replay the same local updates, as otherwise they could
+            # end up with two (or more) signed valid commitment transactions at the same ctn.
+            # Multiple valid ctxs at the same ctn is a major headache for pre-signing spending txns,
+            # e.g. for watchtowers, hence we must ensure these ctxs coincide.
+            # We replay the local updates even if they were not yet committed.
+            unacked = chan.hm.get_unacked_local_updates()
+            replayed_msgs = []
+            for ctn, messages in unacked.items():
+                if ctn < their_next_local_ctn:
+                    # They claim to have received these messages and the corresponding
+                    # commitment_signed, hence we must not replay them.
+                    continue
+                for raw_upd_msg in messages:
+                    self.transport.send_bytes(raw_upd_msg)
+                    replayed_msgs.append(raw_upd_msg)
+            self.logger.info(f'channel_reestablish ({chan.get_id_for_log()}): replayed {len(replayed_msgs)} unacked messages. '
+                             f'{[decode_msg(raw_upd_msg)[0] for raw_upd_msg in replayed_msgs]}')
+
+        def resend_revoke_and_ack():
             last_secret, last_point = chan.get_secret_and_point(LOCAL, oldest_unrevoked_local_ctn - 1)
             next_secret, next_point = chan.get_secret_and_point(LOCAL, oldest_unrevoked_local_ctn + 1)
             self.send_message(
@@ -1245,6 +1250,21 @@ class Peer(Logger):
                 channel_id=chan.channel_id,
                 per_commitment_secret=last_secret,
                 next_per_commitment_point=next_point)
+
+        # We need to preserve relative order of last revack and commitsig.
+        # note: it is not possible to recover and reestablish a channel if we are out-of-sync by
+        # more than one ctns, i.e. we will only ever retransmit up to one commitment_signed message.
+        # Hence, if we need to retransmit a revack, without loss of generality, we can either replay
+        # it as the first message or as the last message.
+        was_revoke_last = chan.hm.was_revoke_last()
+        if we_must_resend_revoke_and_ack and not was_revoke_last:
+            self.logger.info(f'channel_reestablish ({chan.get_id_for_log()}): replaying a revoke_and_ack first.')
+            resend_revoke_and_ack()
+        replay_updates_and_commitsig()
+        if we_must_resend_revoke_and_ack and was_revoke_last:
+            self.logger.info(f'channel_reestablish ({chan.get_id_for_log()}): replaying a revoke_and_ack last.')
+            resend_revoke_and_ack()
+
         chan.peer_state = PeerState.GOOD
         if chan.is_funded() and their_next_local_ctn == next_local_ctn == 1:
             self.send_funding_locked(chan)
@@ -1289,7 +1309,7 @@ class Peer(Logger):
             chan.config[LOCAL].was_announced = True
             self.lnworker.save_channel(chan)
             coro = self.handle_announcements(chan)
-            asyncio.run_coroutine_threadsafe(coro, self.network.asyncio_loop)
+            asyncio.run_coroutine_threadsafe(coro, self.asyncio_loop)
 
     @log_exceptions
     async def handle_announcements(self, chan: Channel):
@@ -1476,6 +1496,8 @@ class Peer(Logger):
         htlc_sigs = list(chunks(data, 64))
         chan.receive_new_commitment(payload["signature"], htlc_sigs)
         self.send_revoke_and_ack(chan)
+        self.received_commitsig_event.set()
+        self.received_commitsig_event.clear()
 
     def on_update_fulfill_htlc(self, chan: Channel, payload):
         preimage = payload["payment_preimage"]
@@ -1581,14 +1603,17 @@ class Peer(Logger):
         if htlc.amount_msat - next_amount_msat_htlc < forwarding_fees:
             data = next_amount_msat_htlc.to_bytes(8, byteorder="big") + outgoing_chan_upd_message
             raise OnionRoutingFailure(code=OnionFailureCode.FEE_INSUFFICIENT, data=data)
-        self.logger.info(f'forwarding htlc to {next_chan.node_id}')
+        self.logger.info(f'forwarding htlc to {next_chan.node_id.hex()}')
+        next_peer = self.lnworker.peers.get(next_chan.node_id)
+        if next_peer is None:
+            self.logger.info(f"failed to forward htlc: next_peer offline ({next_chan.node_id.hex()})")
+            raise OnionRoutingFailure(code=OnionFailureCode.TEMPORARY_CHANNEL_FAILURE, data=outgoing_chan_upd_message)
         next_htlc = UpdateAddHtlc(
             amount_msat=next_amount_msat_htlc,
             payment_hash=htlc.payment_hash,
             cltv_expiry=next_cltv_expiry,
             timestamp=int(time.time()))
         next_htlc = next_chan.add_htlc(next_htlc)
-        next_peer = self.lnworker.peers[next_chan.node_id]
         try:
             next_peer.send_message(
                 "update_add_htlc",
@@ -1851,7 +1876,7 @@ class Peer(Logger):
             self.logger.info("FEES HAVE FALLEN")
         elif feerate_per_kw > chan_fee * 2:
             self.logger.info("FEES HAVE RISEN")
-        elif chan.get_oldest_unrevoked_ctn(REMOTE) == 0:
+        elif chan.get_latest_ctn(REMOTE) == 0:
             # workaround eclair issue https://github.com/ACINQ/eclair/issues/1730
             self.logger.info("updating fee to bump remote ctn")
             if feerate_per_kw == chan_fee:
@@ -1870,7 +1895,7 @@ class Peer(Logger):
     @log_exceptions
     async def close_channel(self, chan_id: bytes):
         chan = self.channels[chan_id]
-        self.shutdown_received[chan_id] = asyncio.Future()
+        self.shutdown_received[chan_id] = self.asyncio_loop.create_future()
         await self.send_shutdown(chan)
         payload = await self.shutdown_received[chan_id]
         try:
@@ -1971,7 +1996,7 @@ class Peer(Logger):
     @log_exceptions
     async def _shutdown(self, chan: Channel, payload, *, is_local: bool):
         # wait until no HTLCs remain in either commitment transaction
-        while len(chan.hm.htlcs(LOCAL)) + len(chan.hm.htlcs(REMOTE)) > 0:
+        while chan.has_unsettled_htlcs():
             self.logger.info(f'(chan: {chan.short_channel_id}) waiting for htlcs to settle...')
             await asyncio.sleep(1)
         # if no HTLCs remain, we must not send updates
@@ -2137,7 +2162,7 @@ class Peer(Logger):
             sig=bh2u(der_sig_from_sig_string(their_sig) + b'\x01'))
         # save local transaction and set state
         try:
-            self.lnworker.wallet.add_transaction(closing_tx)
+            self.lnworker.wallet.adb.add_transaction(closing_tx)
         except UnrelatedTransactionException:
             pass  # this can happen if (~all the balance goes to REMOTE)
         chan.set_state(ChannelState.CLOSING)
@@ -2148,6 +2173,7 @@ class Peer(Logger):
     async def htlc_switch(self):
         await self.initialized
         while True:
+            await self.ping_if_required()
             self._htlc_switch_iterdone_event.set()
             self._htlc_switch_iterdone_event.clear()
             # We poll every 0.1 sec to check if there is work to do,
@@ -2161,7 +2187,6 @@ class Peer(Logger):
                     await group.spawn(self.downstream_htlc_resolved_event.wait())
             self._htlc_switch_iterstart_event.set()
             self._htlc_switch_iterstart_event.clear()
-            self.ping_if_required()
             self._maybe_cleanup_received_htlcs_pending_removal()
             for chan_id, chan in self.channels.items():
                 if not chan.can_send_ctx_updates():
