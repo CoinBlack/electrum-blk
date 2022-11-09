@@ -28,8 +28,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Dict, Optional, Set, Tuple, NamedTuple, Sequence, List
 
 from .crypto import sha256
-from . import bitcoin, util
-from .bitcoin import COINBASE_MATURITY
+from . import bitcoin, constants, util
 from .util import profiler, bfh, TxMinedInfo, UnrelatedTransactionException, with_lock, OldTaskGroup
 from .transaction import Transaction, TxOutput, TxInput, PartialTxInput, TxOutpoint, PartialTransaction
 from .synchronizer import Synchronizer
@@ -847,7 +846,7 @@ class AddressSynchronizer(Logger, EventListener):
             v = utxo.value_sats()
             tx_height = utxo.block_height
             is_cb = utxo._is_coinbase_output
-            if is_cb and tx_height + COINBASE_MATURITY > mempool_height:
+            if is_cb and tx_height + constants.net.COINBASE_MATURITY > mempool_height:
                 x += v
             elif tx_height > 0:
                 c += v
@@ -914,7 +913,7 @@ class AddressSynchronizer(Logger, EventListener):
                 if nonlocal_only and txo.block_height in (TX_HEIGHT_LOCAL, TX_HEIGHT_FUTURE):
                     continue
                 if (mature_only and txo.is_coinbase_output()
-                        and txo.block_height + COINBASE_MATURITY > mempool_height):
+                        and txo.block_height + constants.net.COINBASE_MATURITY > mempool_height):
                     continue
                 coins.append(txo)
                 continue

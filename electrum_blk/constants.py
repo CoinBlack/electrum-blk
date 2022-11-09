@@ -84,6 +84,7 @@ class BitcoinMainnet(AbstractNet):
     DEFAULT_SERVERS = read_json('servers.json', {})
     CHECKPOINTS = read_json('checkpoints.json', {})
     BLOCK_HEIGHT_FIRST_LIGHTNING_CHANNELS = 0
+    COINBASE_MATURITY = 500
 
     POW_LIMIT = 0x00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
     POS_LIMIT = 0x00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
@@ -129,6 +130,7 @@ class BitcoinTestnet(AbstractNet):
     DEFAULT_SERVERS = read_json('servers_testnet.json', {})
     CHECKPOINTS = read_json('checkpoints_testnet.json', {})
     BLOCK_HEIGHT_FIRST_LIGHTNING_CHANNELS = 0
+    COINBASE_MATURITY = 10
 
     POW_LIMIT = 0x0000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
     POS_LIMIT = 0x00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
