@@ -39,7 +39,7 @@ from electrum_blk.bip32 import BIP32Node
 from electrum_blk.plugin import BasePlugin, hook
 from electrum_blk.i18n import _
 from electrum_blk.wallet import Multisig_Wallet, Abstract_Wallet
-from electrum.util import bh2u, bfh
+from electrum_blk.util import bh2u, bfh
 from electrum_blk.logging import Logger
 
 from electrum_blk.gui.qt.transaction_dialog import show_transaction, TxDialog
