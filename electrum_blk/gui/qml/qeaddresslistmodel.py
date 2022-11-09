@@ -16,6 +16,7 @@ class QEAddressListModel(QAbstractListModel):
     def __init__(self, wallet: 'Abstract_Wallet', parent=None):
         super().__init__(parent)
         self.wallet = wallet
+        self.setDirty()
         self.init_model()
 
     _logger = get_logger(__name__)
@@ -60,12 +61,19 @@ class QEAddressListModel(QAbstractListModel):
         item['held'] = self.wallet.is_frozen_address(address)
         return item
 
+    @pyqtSlot()
+    def setDirty(self):
+        self._dirty = True
+
     # initial model data
     @pyqtSlot()
     def init_model(self):
+        if not self._dirty:
+            return
+
         r_addresses = self.wallet.get_receiving_addresses()
         c_addresses = self.wallet.get_change_addresses()
-        n_addresses = len(r_addresses) + len(c_addresses)
+        n_addresses = len(r_addresses) + len(c_addresses) if self.wallet.use_change else 0
 
         def insert_row(atype, alist, address, iaddr):
             item = self.addr_to_model(address)
@@ -80,10 +88,12 @@ class QEAddressListModel(QAbstractListModel):
             insert_row('receive', self.receive_addresses, address, i)
             i = i + 1
         i = 0
-        for address in c_addresses:
+        for address in c_addresses if self.wallet.use_change else []:
             insert_row('change', self.change_addresses, address, i)
             i = i + 1
         self.endInsertRows()
+
+        self._dirty = False
 
     @pyqtSlot(str)
     def update_address(self, address):

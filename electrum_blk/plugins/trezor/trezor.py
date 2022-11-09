@@ -161,6 +161,11 @@ class TrezorPlugin(HW_PluginBase):
 
     @runs_in_hwd_thread
     def enumerate(self):
+        # Set lower timeout for UDP enumeration (used for emulator).
+        # The default of 10 sec is very long, and I often hit it for some reason on Windows (no emu running),
+        # blocking the whole enumeration.
+        from trezorlib.transport.udp import UdpTransport
+        trezorlib.transport.udp.SOCKET_TIMEOUT = 1
         # If there is a bridge, prefer that.
         # On Windows, the bridge runs as Admin (and Electrum usually does not),
         # so the bridge has better chances of finding devices. see #5420
@@ -365,6 +370,7 @@ class TrezorPlugin(HW_PluginBase):
                                        version=tx.version,
                                        timestamp=tx.time,
                                        amount_unit=self.get_trezor_amount_unit(),
+                                       serialize=False,
                                        prev_txes=prev_tx)
         signatures = [(bh2u(x) + '01') for x in signatures]
         tx.update_signatures(signatures)

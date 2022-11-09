@@ -918,7 +918,7 @@ def parse_URI(uri: str, on_pr: Callable = None, *, loop=None) -> dict:
     """Raises InvalidBitcoinURI on malformed URI."""
     from . import bitcoin
     from .bitcoin import COIN, TOTAL_COIN_SUPPLY_LIMIT_IN_BTC
-    from .lnaddr import lndecode
+    from .lnaddr import lndecode, LnDecodeException
 
     if not isinstance(uri, str):
         raise InvalidBitcoinURI(f"expected string, not {repr(uri)}")
@@ -984,14 +984,18 @@ def parse_URI(uri: str, on_pr: Callable = None, *, loop=None) -> dict:
     if 'lightning' in out:
         try:
             lnaddr = lndecode(out['lightning'])
-            amount_sat = out.get('amount')
-            if amount_sat:
-                assert int(lnaddr.get_amount_sat()) == amount_sat
-            address = out.get('address')
-            if address:
-                assert lnaddr.get_fallback_address() == address
-        except Exception as e:
-            raise InvalidBitcoinURI(f"Inconsistent lightning field: {repr(e)}") from e
+        except LnDecodeException as e:
+            raise InvalidBitcoinURI(f"Failed to decode 'lightning' field: {e!r}") from e
+        amount_sat = out.get('amount')
+        if amount_sat:
+            # allow small leeway due to msat precision
+            if abs(amount_sat - int(lnaddr.get_amount_sat())) > 1:
+                raise InvalidBitcoinURI("Inconsistent lightning field in bip21: amount")
+        address = out.get('address')
+        ln_fallback_addr = lnaddr.get_fallback_address()
+        if address and ln_fallback_addr:
+            if ln_fallback_addr != address:
+                raise InvalidBitcoinURI("Inconsistent lightning field in bip21: address")
 
     r = out.get('r')
     sig = out.get('sig')
@@ -1680,12 +1684,12 @@ class EventListener:
 
     def register_callbacks(self):
         for name, method in self._list_callbacks():
-            _logger.info(f'registering callback {method}')
+            #_logger.debug(f'registering callback {method}')
             register_callback(method, [name])
 
     def unregister_callbacks(self):
         for name, method in self._list_callbacks():
-            _logger.info(f'unregistering callback {method}')
+            #_logger.debug(f'unregistering callback {method}')
             unregister_callback(method)
 
 

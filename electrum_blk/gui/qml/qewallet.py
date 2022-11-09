@@ -3,6 +3,7 @@ import queue
 import threading
 import time
 from typing import Optional, TYPE_CHECKING
+from functools import partial
 
 from PyQt5.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject, QTimer
 
@@ -13,6 +14,7 @@ from electrum_blk.logging import get_logger
 from electrum_blk.network import TxBroadcastError, BestEffortRequestFailed
 from electrum_blk.transaction import PartialTxOutput
 from electrum_blk.util import (parse_max_spend, InvalidPassword, event_listener)
+from electrum_blk.plugin import run_hook
 
 from .auth import AuthMixin, auth_protect
 from .qeaddresslistmodel import QEAddressListModel
@@ -60,9 +62,12 @@ class QEWallet(AuthMixin, QObject, QtEventListener):
     paymentFailed = pyqtSignal([str,str], arguments=['key','reason'])
     requestNewPassword = pyqtSignal()
     transactionSigned = pyqtSignal([str], arguments=['txid'])
-    #broadcastSucceeded = pyqtSignal([str], arguments=['txid'])
+    broadcastSucceeded = pyqtSignal([str], arguments=['txid'])
     broadcastFailed = pyqtSignal([str,str,str], arguments=['txid','code','reason'])
     labelsUpdated = pyqtSignal()
+    otpRequested = pyqtSignal()
+    otpSuccess = pyqtSignal()
+    otpFailed = pyqtSignal([str,str], arguments=['code','message'])
 
     _network_signal = pyqtSignal(str, object)
 
@@ -166,7 +171,9 @@ class QEWallet(AuthMixin, QObject, QtEventListener):
     @qt_event_listener
     def on_event_new_transaction(self, wallet, tx):
         if wallet == self.wallet:
+            self._logger.info(f'new transaction {tx.txid()}')
             self.add_tx_notification(tx)
+            self.addressModel.setDirty()
             self.historyModel.init_model() # TODO: be less dramatic
 
     @qt_event_listener
@@ -294,9 +301,18 @@ class QEWallet(AuthMixin, QObject, QtEventListener):
     def isLightning(self):
         return bool(self.wallet.lnworker)
 
+    billingInfoChanged = pyqtSignal()
+    @pyqtProperty('QVariantMap', notify=billingInfoChanged)
+    def billingInfo(self):
+        return {} if self.wallet.wallet_type != '2fa' else self.wallet.billing_info
+
     @pyqtProperty(bool, notify=dataChanged)
     def canHaveLightning(self):
         return self.wallet.can_have_lightning()
+
+    @pyqtProperty(str, notify=dataChanged)
+    def walletType(self):
+        return self.wallet.wallet_type
 
     @pyqtProperty(bool, notify=dataChanged)
     def hasSeed(self):
@@ -304,6 +320,8 @@ class QEWallet(AuthMixin, QObject, QtEventListener):
 
     @pyqtProperty(str, notify=dataChanged)
     def txinType(self):
+        if self.wallet.wallet_type == 'imported':
+            return self.wallet.txin_type
         return self.wallet.get_txin_type(self.wallet.dummy_address())
 
     @pyqtProperty(bool, notify=dataChanged)
@@ -327,11 +345,20 @@ class QEWallet(AuthMixin, QObject, QtEventListener):
         keystores = self.wallet.get_keystores()
         if len(keystores) > 1:
             self._logger.debug('multiple keystores not supported yet')
+        if len(keystores) == 0:
+            self._logger.debug('no keystore')
+            return ''
+        if not self.isDeterministic:
+            return ''
         return keystores[0].get_derivation_prefix()
 
     @pyqtProperty(str, notify=dataChanged)
     def masterPubkey(self):
         return self.wallet.get_master_public_key()
+
+    @pyqtProperty(bool, notify=dataChanged)
+    def canSignWithoutServer(self):
+        return self.wallet.can_sign_without_server() if self.wallet.wallet_type == '2fa' else True
 
     balanceChanged = pyqtSignal()
 
@@ -413,6 +440,17 @@ class QEWallet(AuthMixin, QObject, QtEventListener):
 
     @auth_protect
     def sign(self, tx, *, broadcast: bool = False):
+        sign_hook = run_hook('tc_sign_wrapper', self.wallet, tx, partial(self.on_sign_complete, broadcast),
+                             self.on_sign_failed)
+        if sign_hook:
+            self.do_sign(tx, False)
+            self._logger.debug('plugin needs to sign tx too')
+            sign_hook(tx)
+            return
+
+        self.do_sign(tx, broadcast)
+
+    def do_sign(self, tx, broadcast):
         tx = self.wallet.sign_transaction(tx, self.password)
 
         if tx is None:
@@ -431,24 +469,45 @@ class QEWallet(AuthMixin, QObject, QtEventListener):
         if broadcast:
             self.broadcast(tx)
 
+    # this assumes a 2fa wallet, but there are no other tc_sign_wrapper hooks, so that's ok
+    def on_sign_complete(self, broadcast, tx):
+        self.otpSuccess.emit()
+        if broadcast:
+            self.broadcast(tx)
+
+    def on_sign_failed(self, error):
+        self.otpFailed.emit('error', error)
+
+    def request_otp(self, on_submit):
+        self._otp_on_submit = on_submit
+        self.otpRequested.emit()
+
+    @pyqtSlot(str)
+    def submitOtp(self, otp):
+        self._otp_on_submit(otp)
+
     def broadcast(self, tx):
         assert tx.is_complete()
 
-        self.network = self.wallet.network # TODO not always defined?
+        network = self.wallet.network # TODO not always defined?
 
-        try:
-            self._logger.info('running broadcast in thread')
-            self.network.run_from_another_thread(self.network.broadcast_transaction(tx))
-            self._logger.info('broadcast submit done')
-        except TxBroadcastError as e:
-            self.broadcastFailed.emit(tx.txid(),'',repr(e))
-            self._logger.error(e)
-        except BestEffortRequestFailed as e:
-            self.broadcastFailed.emit(tx.txid(),'',repr(e))
-            self._logger.error(e)
+        def broadcast_thread():
+            try:
+                self._logger.info('running broadcast in thread')
+                result = network.run_from_another_thread(network.broadcast_transaction(tx))
+                self._logger.info(repr(result))
+            except TxBroadcastError as e:
+                self._logger.error(repr(e))
+                self.broadcastFailed.emit(tx.txid(),'',repr(e))
+            except BestEffortRequestFailed as e:
+                self._logger.error(repr(e))
+                self.broadcastFailed.emit(tx.txid(),'',repr(e))
+            else:
+                self.broadcastSucceeded.emit(tx.txid())
+
+        threading.Thread(target=broadcast_thread).start()
 
         #TODO: properly catch server side errors, e.g. bad-txns-inputs-missingorspent
-        #might need callback from network.py
 
     paymentAuthRejected = pyqtSignal()
     def ln_auth_rejected(self):
@@ -544,7 +603,10 @@ class QEWallet(AuthMixin, QObject, QtEventListener):
                 addr = None
                 if self.wallet.config.get('bolt11_fallback', True):
                     addr = self.wallet.get_unused_address()
-                    # if addr is None, we ran out of addresses. for lightning enabled wallets, ignore for now
+                    # if addr is None, we ran out of addresses
+                    if addr is None:
+                        # TODO: remove oldest unpaid request having a fallback address and try again
+                        pass
                 key = self.wallet.create_request(None, None, default_expiry, addr)
             else:
                 key, addr = self.create_bitcoin_request(None, None, default_expiry, ignore_gap)
@@ -600,3 +662,12 @@ class QEWallet(AuthMixin, QObject, QtEventListener):
             self.password = password
         except InvalidPassword as e:
             self._logger.exception(repr(e))
+
+    @pyqtSlot(str)
+    def importAddresses(self, addresslist):
+        self.wallet.import_addresses(addresslist.split())
+
+    @pyqtSlot(str)
+    def importPrivateKeys(self, keyslist):
+        self.wallet.import_private_keys(keyslist.split(), self.password)
+
