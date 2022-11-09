@@ -615,6 +615,7 @@ class Transaction:
         self._outputs = None  # type: List[TxOutput]
         self._time = 0
         self._locktime = 0
+        # Blackcoin ToDo: set to 2 after PoS 3.1 fork
         self._version = 1
 
         self._cached_txid = None  # type: Optional[str]

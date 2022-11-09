@@ -1668,6 +1668,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             outputs[i].value += (amount - distr_amount)
             tx = PartialTransaction.from_io(list(coins), list(outputs))
 
+        # Blackcoin ToDo: remove after PoS 3.1 fork
         tx.time = calendar.timegm(datetime.datetime.utcnow().utctimetuple())
 
         # Timelock tx to current height.
