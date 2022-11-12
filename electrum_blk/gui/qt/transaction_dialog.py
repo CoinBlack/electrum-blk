@@ -821,6 +821,7 @@ class PreviewTxDialog(BaseTxDialog, TxEditor):
         self.fee_slider = FeeSlider(self, self.config, self.fee_slider_callback)
         self.fee_combo = FeeComboBox(self.fee_slider)
         self.fee_slider.setFixedWidth(self.fee_e.width())
+        self.fee_combo.setEnabled(False) # Blackcoin: disable FeeComboBox
 
         def feerounding_onclick():
             text = (self.feerounding_text + '\n\n' +

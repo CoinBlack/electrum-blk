@@ -167,6 +167,7 @@ class ConfirmTxDialog(TxEditor, WindowModalDialog):
         grid.addWidget(HelpLabel(_("Fee rate") + ": ", self.fee_combo.help_msg), 5, 0)
         grid.addWidget(self.fee_slider, 5, 1)
         grid.addWidget(self.fee_combo, 5, 2)
+        self.fee_combo.setEnabled(False) # Blackcoin: disable FeeComboBox
 
         self.message_label = WWLabel(self.default_message())
         grid.addWidget(self.message_label, 6, 0, 1, -1)
