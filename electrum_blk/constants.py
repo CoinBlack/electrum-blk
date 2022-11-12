@@ -25,6 +25,7 @@
 
 import os
 import json
+import sys
 
 from .util import inv_dict, all_subclasses
 from . import bitcoin
@@ -93,6 +94,7 @@ class BitcoinMainnet(AbstractNet):
     FIRST_POSV1RF_BLOCK = 38425
     FIRST_POSV2_BLOCK = 319002
     FIRST_POSV3_BLOCK = 872456
+    FIRST_POSV3_1_BLOCK_TIME = sys.maxsize
 
     XPRV_HEADERS = {
         'standard':    0x0488ade4,  # xprv
@@ -139,6 +141,7 @@ class BitcoinTestnet(AbstractNet):
     FIRST_POSV1RF_BLOCK = 38425
     FIRST_POSV2_BLOCK = 319002
     FIRST_POSV3_BLOCK = 872456
+    FIRST_POSV3_1_BLOCK_TIME = 1667779200
 
     XPRV_HEADERS = {
         'standard':    0x04358394,  # tprv

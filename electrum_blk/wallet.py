@@ -54,13 +54,14 @@ from aiorpcx import timeout_after, TaskTimeout, ignore_after, run_in_thread
 from .i18n import _
 from .bip32 import BIP32Node, convert_bip32_intpath_to_strpath, convert_bip32_path_to_list_of_uint32
 from .crypto import sha256
+from . import constants
 from . import util
 from .util import (NotEnoughFunds, UserCancelled, profiler, OldTaskGroup, ignore_exceptions,
                    format_satoshis, format_fee_satoshis, NoDynamicFeeEstimates,
                    WalletFileException, BitcoinException,
                    InvalidPassword, format_time, timestamp_to_datetime, Satoshis,
                    Fiat, bfh, bh2u, TxMinedInfo, quantize_feerate, create_bip21_uri, OrderedDictWithIndex, parse_max_spend)
-from .simple_config import SimpleConfig, FEE_RATIO_HIGH_WARNING, FEERATE_WARNING_HIGH_FEE
+from .simple_config import SimpleConfig, FEE_RATIO_HIGH_WARNING, FEERATE_WARNING_HIGH_FEE, MIN_TX_FEE_PER_KB
 from .bitcoin import COIN, TYPE_ADDRESS
 from .bitcoin import is_address, address_to_script, is_minikey, relayfee, dust_threshold
 from .crypto import sha256d
@@ -2789,11 +2790,14 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         long_warning = None
         short_warning = None
         allow_send = True
-        if feerate < self.relayfee() / 1000:
+
+        # Blackcoin: check minimum fee before/after fork
+        is_low_fee = feerate < self.relayfee() / 1000 if calendar.timegm(datetime.datetime.utcnow().utctimetuple()) < constants.net.FIRST_POSV3_1_BLOCK_TIME else fee < ((1 + tx_size // 1000) * MIN_TX_FEE_PER_KB) 
+        if is_low_fee:
             long_warning = (
                     _("This transaction requires a higher fee, or it will not be propagated by your current server.") + " "
-                    + _("Try to raise your transaction fee, or use a server with a lower relay fee."))
-            short_warning = _("below relay fee") + "!"
+                    + _("Try to raise your transaction fee."))
+            short_warning = _("below minimum fee") + "!"
             allow_send = False
         elif fee_ratio >= FEE_RATIO_HIGH_WARNING:
             long_warning = (

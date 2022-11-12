@@ -43,6 +43,8 @@ FEERATE_PER_KW_MIN_RELAY_LIGHTNING = 253
 
 FEE_RATIO_HIGH_WARNING = 0.05  # warn user if fee/amount for on-chain tx is higher than this
 
+# Blackcoin: minimum fee for transactions after 3.1 fork
+MIN_TX_FEE_PER_KB = 100000
 
 _logger = get_logger(__name__)
 
