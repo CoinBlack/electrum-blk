@@ -828,8 +828,9 @@ class PreviewTxDialog(BaseTxDialog, TxEditor):
                     _('To somewhat protect your privacy, Electrum tries to create change with similar precision to other outputs.') + ' ' +
                     _('At most 100 satoshis might be lost due to this rounding.') + ' ' +
                     _("You can disable this setting in '{}'.").format(_('Preferences')) + '\n' +
-                    _('Also, dust is not kept as change, but added to the fee.')  + '\n' +
-                    _('Also, when batching RBF transactions, BIP 125 imposes a lower bound on the fee.'))
+                    _('Also, dust is not kept as change, but added to the fee.'))
+                    # Blackcoin doesn't have RBF
+                    # _('Also, when batching RBF transactions, BIP 125 imposes a lower bound on the fee.'))
             self.show_message(title=_('Fee rounding'), msg=text)
 
         self.feerounding_icon = QToolButton()
