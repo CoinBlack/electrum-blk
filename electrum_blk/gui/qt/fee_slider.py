@@ -56,9 +56,13 @@ class FeeSlider(QSlider):
         mempool = self.config.use_mempool_fees()
         target, estimate = self.config.get_fee_text(pos, self.dyn, mempool, fee_rate)
         if self.dyn:
-            return _('Target') + ': ' + target + '\n' + _('Current rate') + ': ' + estimate
+            # Blackcoin
+            # return _('Target') + ': ' + target + '\n' + _('Current rate') + ': ' + estimate
+            return _('Target') + ': ' + target
         else:
-            return _('Fixed rate') + ': ' + target + '\n' + _('Estimate') + ': ' + estimate
+            # Blackcoin
+            # return _('Fixed rate') + ': ' + target + '\n' + _('Estimate') + ': ' + estimate
+            return _('Fixed rate') + ': ' + target
 
     def update(self):
         with self.lock:
