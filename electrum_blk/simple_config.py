@@ -34,6 +34,18 @@ FEERATE_MAX_RELAY = 50000
 FEERATE_STATIC_VALUES = [50000, 70000, 100000, 150000, 200000, 300000, 435000, 500000]
 FEERATE_REGTEST_HARDCODED = 180000  # for eclair compat
 
+# Blackcoin ToDo: increase the values after 3.1 fork
+'''
+FEERATE_MAX_DYNAMIC = 1000000
+FEERATE_WARNING_HIGH_FEE = 1000000
+FEERATE_FALLBACK_STATIC_FEE = 100000
+FEERATE_DEFAULT_RELAY = 100000
+FEERATE_MAX_RELAY = 1000000
+FEERATE_STATIC_VALUES = [435000, 500000, 700000, 1000000]
+FEERATE_REGTEST_HARDCODED = 180000  # for eclair compat
+
+'''
+
 # The min feerate_per_kw that can be used in lightning so that
 # the resulting onchain tx pays the min relay fee.
 # This would be FEERATE_DEFAULT_RELAY / 4 if not for rounding errors,
