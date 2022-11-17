@@ -3,7 +3,7 @@
 ```
 Licence: MIT Licence
 Original Author: Thomas Voegtlin
-BLK Port Maintainer: lateminer
+BLK Port Maintainers: lateminer, BlackcoinDev
 Language: Python (>= 3.8)
 Homepage: https://blackcoin.org/
 ```
@@ -50,6 +50,13 @@ Install from your package manager (or from pip):
 ```
 $ sudo apt-get install python3-cryptography
 ```
+
+For fast blockchain verification,
+[scrypt](https://github.com/holgern/py-scrypt) is required.
+Install from your package manager (or from pip):
+```
+$ sudo apt-get install python3-scrypt
+
 
 If you would like hardware wallet support,
 [see this](https://github.com/spesmilo/electrum-docs/blob/master/hardware-linux.rst).
@@ -100,7 +107,7 @@ $ sudo apt-get install python-requests gettext
 $ ./contrib/pull_locale
 ```
 
-Finally, to start Electrum:
+Finally, to start Electrum-BLK:
 ```
 $ ./run_electrum
 ```
@@ -134,7 +141,7 @@ Implementing new features, or improving/refactoring the codebase, is of course
 also welcome, but to avoid wasted effort, especially for larger changes,
 we encourage discussing these on the issue tracker or IRC first.
 
-Besides [GitHub](https://github.com/spesmilo/electrum),
+Besides [GitHub](https://github.com/coinblack/electrum-blk),
 most communication about Electrum development happens on IRC, in the
 `#electrum` channel on Libera Chat. The easiest way to participate on IRC is
 with the web client, [web.libera.chat](https://web.libera.chat/#electrum).

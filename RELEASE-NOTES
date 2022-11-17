@@ -119,7 +119,7 @@
      Existing users can keep using version 4.1.5 for now, but should
      consider upgrading or changing their OS.
      Win8.1 still works but only Win10 is regularly tested.
-   - bump bundled Python version (win, mac, appimage) to 3.9.12,
+   - bump bundled Python version (win, mac, appimage) to 3.9.11,
      (android) to 3.8.13 (1bb7ef92, #7721)
      (note these include a fix to an openssl DOS-vector CVE-2022-0778)
    - windows: bump pyinstaller to 4.10 and wine to 7.0 (#7721)

@@ -50,7 +50,7 @@ files = {
 }
 
 # default signers
-signers = ['ThomasV', 'SomberNight']
+signers = ['blackcoindev', 'SomberNight']
 
 # detect extra signers
 list_dir = os.listdir('dist')
@@ -69,13 +69,13 @@ for k, v in detected_sigs.items():
 print("signers:", signers)
 
 gpg_name = lambda x: 'sombernight_releasekey' if x=='SomberNight' else x
-signers_list = ', '.join("<a href=\"https://raw.githubusercontent.com/spesmilo/electrum/master/pubkeys/%s.asc\">%s</a>"%(gpg_name(x), x) for x in signers)
+signers_list = ', '.join("<a href=\"https://raw.githubusercontent.com/coinblack/electrum-blk/master/pubkeys/%s.asc\">%s</a>"%(gpg_name(x), x) for x in signers)
 string = string.replace("##signers_list##", signers_list)
 
 for k, filename in files.items():
     path = "dist/%s"%filename
     assert filename in list_dir
-    link = "https://download.electrum.org/%s/%s"%(version, filename)
+    link = "https://download.blackcoin.nl/%s/%s"%(version, filename)
     string = string.replace("##link_%s##"%k, link)
     string = string.replace("##sigs_%s##"%k, link+'.asc')
 

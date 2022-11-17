@@ -147,7 +147,7 @@ PYINSTALLER_COMMIT="fbf7948be85177dd44b41217e9f039e1d176de6b"
     echo "const char *electrum_tag = \"tagged by Electrum@$ELECTRUM_COMMIT_HASH\";" >> ./bootloader/src/pyi_main.c
     pushd bootloader
     # compile bootloader
-    python3 ./waf all CFLAGS="-static"
+    python3 ./waf --no-universal2 all CFLAGS="-static"
     popd
     # sanity check bootloader is there:
     [[ -e "PyInstaller/bootloader/Darwin-64bit/runw" ]] || fail "Could not find runw in target dir!"
@@ -219,7 +219,7 @@ info "Installing dependencies specific to binaries..."
 brew install openssl
 export CFLAGS="-I$(brew --prefix openssl)/include $CFLAGS"
 export LDFLAGS="-L$(brew --prefix openssl)/lib $LDFLAGS"
-python3 -m pip install --no-build-isolation --no-dependencies --no-binary :all: --only-binary PyQt5,PyQt5-Qt5,cryptography \
+python3 -m pip install --no-build-isolation --no-dependencies --no-binary :all: --only-binary PyQt5,PyQt5-Qt5,cryptography,scrypt \
     --no-warn-script-location \
     -Ir ./contrib/deterministic-build/requirements-binaries-mac.txt \
     || fail "Could not install dependencies specific to binaries"
@@ -234,7 +234,7 @@ find "$VENV_DIR/lib/python$PY_VER_MAJOR/site-packages/" -type f -name '*.so' -pr
     | xargs -0 -t strip -x
 
 info "Faking timestamps..."
-find . -exec touch -t '200101220000' {} + || true
+sudo find . -exec touch -t '200101220000' {} + || true
 
 VERSION=$(git describe --tags --dirty --always)
 
@@ -243,14 +243,16 @@ ELECTRUM_VERSION=$VERSION pyinstaller --noconfirm --ascii --clean contrib/osx/os
 
 DoCodeSignMaybe "app bundle" "dist/${PACKAGE}.app"
 
-if [ ! -z "$CODESIGN_CERT" ]; then
-    if [ ! -z "$APPLE_ID_USER" ]; then
-        info "Notarizing .app with Apple's central server..."
-        "${CONTRIB_OSX}/notarize_app.sh" "dist/${PACKAGE}.app" || fail "Could not notarize binary."
-    else
-        warn "AppleID details not set! Skipping Apple notarization."
-    fi
-fi
+### Blackcoin: do not notarize, this is done manually
+#if [ ! -z "$CODESIGN_CERT" ]; then
+#    if [ ! -z "$APPLE_ID_USER" ]; then
+#        info "Notarizing .app with Apple's central server..."
+#        "${CONTRIB_OSX}/notarize_app.sh" "dist/${PACKAGE}.app" || fail "Could not notarize binary."
+#    else
+#        warn "AppleID details not set! Skipping Apple notarization."
+#    fi
+#fi
+###
 
 info "Creating .DMG"
 hdiutil create -fs HFS+ -volname $PACKAGE -srcfolder dist/$PACKAGE.app dist/electrum-blk-$VERSION.dmg || fail "Could not create .DMG"

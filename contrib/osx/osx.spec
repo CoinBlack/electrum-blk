@@ -48,9 +48,9 @@ datas += collect_data_files('ckcc')
 datas += collect_data_files('bitbox02')
 
 # Add libusb so Trezor and Safe-T mini will work
-binaries = [(electrum + "electrum/libusb-1.0.dylib", ".")]
-binaries += [(electrum + "electrum/libsecp256k1.0.dylib", ".")]
-binaries += [(electrum + "electrum/libzbar.0.dylib", ".")]
+binaries = [(electrum + "electrum_blk/libusb-1.0.dylib", ".")]
+binaries += [(electrum + "electrum_blk/libsecp256k1.0.dylib", ".")]
+binaries += [(electrum + "electrum_blk/libzbar.0.dylib", ".")]
 
 # Workaround for "Retro Look":
 binaries += [b for b in collect_dynamic_libs('PyQt5') if 'macstyle' in b[0]]
@@ -64,6 +64,7 @@ a = Analysis([electrum+ MAIN_SCRIPT,
               electrum+'electrum_blk/wallet.py',
               electrum+'electrum_blk/simple_config.py',
               electrum+'electrum_blk/bitcoin.py',
+              electrum+'electrum_blk/blockchain.py',
               electrum+'electrum_blk/dnssec.py',
               electrum+'electrum_blk/commands.py',
               electrum+'electrum_blk/plugins/cosigner_pool/qt.py',
@@ -124,8 +125,8 @@ app = BUNDLE(
         'NSSupportsAutomaticGraphicsSwitching': 'True',
         'CFBundleURLTypes':
             [{
-                'CFBundleURLName': 'bitcoin',
-                'CFBundleURLSchemes': ['bitcoin', 'lightning', ],
+                'CFBundleURLName': 'blackcoin',
+                'CFBundleURLSchemes': ['blackcoin', ],
             }],
         'LSMinimumSystemVersion': '10.13.0',
         'NSCameraUsageDescription': 'Electrum would like to access the camera to scan for QR codes',

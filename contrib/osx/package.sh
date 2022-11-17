@@ -2,7 +2,7 @@
 
 set -ex
 
-PROJECT_ROOT="$(dirname "$(readlink -e "$0")")/../.."
+PROJECT_ROOT="$(dirname "$(greadlink -e "$0")")/../.."
 CONTRIB="$PROJECT_ROOT/contrib"
 . "$CONTRIB"/build_tools_util.sh
 
