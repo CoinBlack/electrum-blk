@@ -3,7 +3,7 @@
 ```
 Licence: MIT Licence
 Original Author: Thomas Voegtlin
-BLK Port Maintainers: lateminer, BlackcoinDev
+BLK Port Maintainers: lateminer & BlackcoinDev
 Language: Python (>= 3.8)
 Homepage: https://blackcoin.org/
 ```
