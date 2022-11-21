@@ -2,7 +2,7 @@ from PyQt5.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject
 
 from electrum_blk.i18n import _
 from electrum_blk.logging import get_logger
-from electrum_blk.util import format_time
+from electrum_blk.util import format_time, AddTransactionException
 from electrum_blk.transaction import tx_from_any
 
 from .qewallet import QEWallet
