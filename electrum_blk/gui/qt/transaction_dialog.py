@@ -980,7 +980,7 @@ class PreviewTxDialog(BaseTxDialog, TxEditor):
         assert self.tx
         self.finalized = True
         self.stop_editor_updates()
-        self.tx.set_rbf(True)
+        self.tx.set_rbf(False)
         locktime = self.locktime_e.get_locktime()
         if locktime is not None:
             self.tx.locktime = locktime
