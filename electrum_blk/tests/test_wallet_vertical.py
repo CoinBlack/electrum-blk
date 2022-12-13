@@ -12,7 +12,7 @@ from electrum_blk import SimpleConfig
 from electrum_blk import util
 from electrum_blk.address_synchronizer import TX_HEIGHT_UNCONFIRMED, TX_HEIGHT_UNCONF_PARENT
 from electrum_blk.wallet import (sweep, Multisig_Wallet, Standard_Wallet, Imported_Wallet,
-                             restore_wallet_from_text, Abstract_Wallet, BumpFeeStrategy)
+                             restore_wallet_from_text, Abstract_Wallet)
 from electrum_blk.util import (
     bfh, bh2u, NotEnoughFunds, UnrelatedTransactionException,
     UserFacingException)
@@ -723,7 +723,7 @@ class TestWalletSending(TestCaseForTestnet):
 
         # wallet1 -> wallet2
         outputs = [PartialTxOutput.from_address_and_value(wallet2.get_receiving_address(), 250000)]
-        tx = wallet1.mktx(outputs=outputs, password=None, fee=5000, tx_version=1)
+        tx = wallet1.mktx(outputs=outputs, password=None, fee=5000, tx_version=1, rbf=False)
 
         self.assertTrue(tx.is_complete())
         self.assertTrue(tx.is_segwit())
@@ -743,7 +743,7 @@ class TestWalletSending(TestCaseForTestnet):
 
         # wallet2 -> wallet1
         outputs = [PartialTxOutput.from_address_and_value(wallet1.get_receiving_address(), 100000)]
-        tx = wallet2.mktx(outputs=outputs, password=None, fee=5000, tx_version=1)
+        tx = wallet2.mktx(outputs=outputs, password=None, fee=5000, tx_version=1, rbf=False)
 
         self.assertTrue(tx.is_complete())
         self.assertFalse(tx.is_segwit())
@@ -797,7 +797,7 @@ class TestWalletSending(TestCaseForTestnet):
 
         # wallet1 -> wallet2
         outputs = [PartialTxOutput.from_address_and_value(wallet2.get_receiving_address(), 370000)]
-        tx = wallet1a.mktx(outputs=outputs, password=None, fee=5000, tx_version=1)
+        tx = wallet1a.mktx(outputs=outputs, password=None, fee=5000, tx_version=1, rbf=False)
         partial_tx = tx.serialize_as_bytes().hex()
         self.assertEqual("70736274ff01007501000000017120d4e1f2cdfe7df000d632cff74167fb354f0546d5cfc228e5c98756d55cb20100000000feffffff0250a50500000000001976a9149cd3dfb0d87a861770ae4e268e74b45335cf00ab88ac2862b1000000000017a9142e517854aa54668128c0e9a3fdd4dec13ad571368700000000000100e0010000000001014121f99dc02f0364d2dab3d08905ff4c36fc76c55437fd90b769c35cc18618280100000000fdffffff02d4c22d00000000001600143fd1bc5d32245850c8cb5be5b09c73ccbb9a0f75001bb7000000000017a91480c2353f6a7bc3c71e99e062655b19adb3dd2e4887024830450221008781c78df0c9d4b5ea057333195d5d76bc29494d773f14fa80e27d2f288b2c360220762531614799b6f0fb8d539b18cb5232ab4253dd4385435157b28a44ff63810d0121033de77d21926e09efd04047ae2d39dbd3fb9db446e8b7ed53e0f70f9c9478f735dac11300220202afb4af9a91264e1c6dce3ebe5312801723270ac0ba8134b7b49129328fcb0f284730440220751ee3599e59debb8b2aeef61bb5f574f26379cd961caf382d711a507bc632390220598d53e62557c4a5ab8cfb2f8948f37cca06a861714b55c781baf2c3d7a580b501010469522102afb4af9a91264e1c6dce3ebe5312801723270ac0ba8134b7b49129328fcb0f2821030b482838721a38d94847699fed8818b5c5f56500ef72f13489e365b65e5749cf2103e5db7969ae2f2576e6a061bf3bb2db16571e77ffb41e0b27170734359235cbce53ae220602afb4af9a91264e1c6dce3ebe5312801723270ac0ba8134b7b49129328fcb0f280c0036e9ac00000000000000002206030b482838721a38d94847699fed8818b5c5f56500ef72f13489e365b65e5749cf0c48adc7a00000000000000000220603e5db7969ae2f2576e6a061bf3bb2db16571e77ffb41e0b27170734359235cbce0cdb692427000000000000000000000100695221022ec6f62b0f3b7c2446f44346bff0a6f06b5fdbc27368be8a36478e0287fe47be21024238f21f90527dc87e945f389f3d1711943b06f0a738d5baab573fc0ab6c98582102b7139e93747d7c77f62af5a38b8a2b009f3456aa94dea9bf21f73a6298c867a253ae2202022ec6f62b0f3b7c2446f44346bff0a6f06b5fdbc27368be8a36478e0287fe47be0cdb69242701000000000000002202024238f21f90527dc87e945f389f3d1711943b06f0a738d5baab573fc0ab6c98580c0036e9ac0100000000000000220202b7139e93747d7c77f62af5a38b8a2b009f3456aa94dea9bf21f73a6298c867a20c48adc7a0010000000000000000",
                          partial_tx)
@@ -823,7 +823,7 @@ class TestWalletSending(TestCaseForTestnet):
 
         # wallet2 -> wallet1
         outputs = [PartialTxOutput.from_address_and_value(wallet1a.get_receiving_address(), 100000)]
-        tx = wallet2.mktx(outputs=outputs, password=None, fee=5000, tx_version=1)
+        tx = wallet2.mktx(outputs=outputs, password=None, fee=5000, tx_version=1, rbf=False)
 
         self.assertTrue(tx.is_complete())
         self.assertFalse(tx.is_segwit())
@@ -894,7 +894,7 @@ class TestWalletSending(TestCaseForTestnet):
 
         # wallet1 -> wallet2
         outputs = [PartialTxOutput.from_address_and_value(wallet2a.get_receiving_address(), 165000)]
-        tx = wallet1a.mktx(outputs=outputs, password=None, fee=5000, tx_version=1)
+        tx = wallet1a.mktx(outputs=outputs, password=None, fee=5000, tx_version=1, rbf=False)
         txid = tx.txid()
         partial_tx = tx.serialize_as_bytes().hex()
         self.assertEqual("70736274ff01007e0100000001213e1012a461e056752fab5a6414a2fb63f950cd21a50ac5e2b82d339d6cbdd20000000000feffffff023075000000000000220020cc5e4cc05a76d0648cd0742768556317e9f8cc729aed077134287909035dba88888402000000000017a914187842cea9c15989a51ce7ca889a08b824bf874387000000000001012b400d0300000000002200203c43ac80d6e3015cf378bf6bac0c22456723d6050bef324ec641e7762440c63c0100eb01000000000101a41aae475d026c9255200082c7fad26dc47771275b0afba238dccda98a597bd20000000000fdffffff02400d0300000000002200203c43ac80d6e3015cf378bf6bac0c22456723d6050bef324ec641e7762440c63c9dcd410000000000160014824626055515f3ed1d2cfc9152d2e70685c71e8f02483045022100b9f39fad57d07ce1e18251424034f21f10f20e59931041b5167ae343ce973cf602200fefb727fa0ffd25b353f1bcdae2395898fe407b692c62f5885afbf52fa06f5701210301a28f68511ace43114b674371257bb599fd2c686c4b19544870b1799c954b40e9c1130022020223f815ab09f6bfc8519165c5232947ae89d9d43d678fb3486f3b28382a2371fa473044022055cb04fa71c4b5955724d7ac5da90436d75212e7847fc121cb588f54bcdffdc4022064eca1ad639b7c748101059dc69f2893abb3b396bcf9c13f670415076f93ddbf0101056952210223f815ab09f6bfc8519165c5232947ae89d9d43d678fb3486f3b28382a2371fa210273c529c2c9a99592f2066cebc2172a48991af2b471cb726b9df78c6497ce984e2102aa8fc578b445a1e4257be6b978fcece92980def98dce0e1eb89e7364635ae94153ae22060223f815ab09f6bfc8519165c5232947ae89d9d43d678fb3486f3b28382a2371fa10b2e35a7d01000080000000000000000022060273c529c2c9a99592f2066cebc2172a48991af2b471cb726b9df78c6497ce984e1053b77ddb010000800000000000000000220602aa8fc578b445a1e4257be6b978fcece92980def98dce0e1eb89e7364635ae9411043067d6301000080000000000000000000010169522102174696a58a8dcd6c6455bd25e0749e9a6fc7d84ee09e192ab37b0d0b18c2de1a2102c807a19ca6783261f8c198ffcc437622e7ecba8d6c5692f3a5e7f1e45af53fd52102eee40c7e24d89639182db32f5e9188613e4bc212da2ee9b4ccc85d9b82e1a98053ae220202174696a58a8dcd6c6455bd25e0749e9a6fc7d84ee09e192ab37b0d0b18c2de1a1053b77ddb010000800100000000000000220202c807a19ca6783261f8c198ffcc437622e7ecba8d6c5692f3a5e7f1e45af53fd51043067d63010000800100000000000000220202eee40c7e24d89639182db32f5e9188613e4bc212da2ee9b4ccc85d9b82e1a98010b2e35a7d0100008001000000000000000000",
@@ -923,7 +923,7 @@ class TestWalletSending(TestCaseForTestnet):
 
         # wallet2 -> wallet1
         outputs = [PartialTxOutput.from_address_and_value(wallet1a.get_receiving_address(), 100000)]
-        tx = wallet2a.mktx(outputs=outputs, password=None, fee=5000, tx_version=1)
+        tx = wallet2a.mktx(outputs=outputs, password=None, fee=5000, tx_version=1, rbf=False)
         txid = tx.txid()
         partial_tx = tx.serialize_as_bytes().hex()
         self.assertEqual("70736274ff01007e010000000149d077be0ee9d52776211e9b4fec1cc02bd53661a04e120a97db8b78d83c9c6e0100000000feffffff0260ea00000000000017a9143025051b6b5ccd4baf30dfe2de8aa84f0dd567ed87a086010000000000220020f7b6b30c3073ae2680a7e90c589bbfec5303331be68bbab843eed5d51ba012390000000000010120888402000000000017a914187842cea9c15989a51ce7ca889a08b824bf8743870100fd7c0101000000000101213e1012a461e056752fab5a6414a2fb63f950cd21a50ac5e2b82d339d6cbdd20000000000feffffff023075000000000000220020cc5e4cc05a76d0648cd0742768556317e9f8cc729aed077134287909035dba88888402000000000017a914187842cea9c15989a51ce7ca889a08b824bf8743870400473044022055cb04fa71c4b5955724d7ac5da90436d75212e7847fc121cb588f54bcdffdc4022064eca1ad639b7c748101059dc69f2893abb3b396bcf9c13f670415076f93ddbf01473044022009230e456724f2a4c10d886c836eeec599b21db0bf078aa8fc8c95868b8920ec02200dfda835a66acb5af50f0d95fcc4b76c6e8f4789a7184c182275b087d1efe556016952210223f815ab09f6bfc8519165c5232947ae89d9d43d678fb3486f3b28382a2371fa210273c529c2c9a99592f2066cebc2172a48991af2b471cb726b9df78c6497ce984e2102aa8fc578b445a1e4257be6b978fcece92980def98dce0e1eb89e7364635ae94153ae00000000220202119f899075a131d4d519d4cdcf5de5907dc2df3b93d54b53ded852211d2b6cb14730440220091ea67af7c1131f51f62fe9596dff0a60c8b45bfc5be675389e193912e8a71802201bf813bbf83933a35ecc46e2d5b0442bd8758fa82e0f8ed16392c10d51f7f7660101042200204311edae835c7a5aa712c8ca644180f13a3b2f3b420fa879b181474724d6163c010547522102119f899075a131d4d519d4cdcf5de5907dc2df3b93d54b53ded852211d2b6cb12102fdb0f6775d4b6619257c43343ba5e7807b0164f1eb3f00f2b594ab9e53ab812652ae220602119f899075a131d4d519d4cdcf5de5907dc2df3b93d54b53ded852211d2b6cb10cd1dbcc210000000000000000220602fdb0f6775d4b6619257c43343ba5e7807b0164f1eb3f00f2b594ab9e53ab81260c17cea9140000000000000000000100220020717ab7037b81797cb3e192a8a1b4d88083444bbfcd26934cadf3bcf890f14e05010147522102987c184fcd8ace2e2a314250e04a15a4b8c885fb4eb778ab82c45838bcbcbdde21034084c4a0493c248783e60d8415cd30b3ba2c3b7a79201e38b953adea2bc44f9952ae220202987c184fcd8ace2e2a314250e04a15a4b8c885fb4eb778ab82c45838bcbcbdde0c17cea91401000000000000002202034084c4a0493c248783e60d8415cd30b3ba2c3b7a79201e38b953adea2bc44f990cd1dbcc2101000000000000000000",
@@ -981,7 +981,7 @@ class TestWalletSending(TestCaseForTestnet):
 
         # wallet1 -> wallet2
         outputs = [PartialTxOutput.from_address_and_value(wallet2.get_receiving_address(), 1000000)]
-        tx = wallet1a.mktx(outputs=outputs, password=None, fee=5000, tx_version=1)
+        tx = wallet1a.mktx(outputs=outputs, password=None, fee=5000, tx_version=1, rbf=False)
 
         self.assertTrue(tx.is_complete())
         self.assertFalse(tx.is_segwit())
@@ -1001,7 +1001,7 @@ class TestWalletSending(TestCaseForTestnet):
 
         # wallet2 -> wallet1
         outputs = [PartialTxOutput.from_address_and_value(wallet1a.get_receiving_address(), 300000)]
-        tx = wallet2.mktx(outputs=outputs, password=None, fee=5000, tx_version=1)
+        tx = wallet2.mktx(outputs=outputs, password=None, fee=5000, tx_version=1, rbf=False)
 
         self.assertTrue(tx.is_complete())
         self.assertTrue(tx.is_segwit())
@@ -1199,7 +1199,7 @@ class TestWalletSending(TestCaseForTestnet):
         tx = wallet.bump_fee(
             tx=tx_from_any(orig_rbf_tx.serialize()),
             new_fee_rate=60,
-            strategies=[BumpFeeStrategy.DECREASE_PAYMENT],
+            decrease_payment=True,
         )
         tx.locktime = 1936085
         tx.version = 2
@@ -1241,7 +1241,7 @@ class TestWalletSending(TestCaseForTestnet):
         tx = wallet.bump_fee(
             tx=tx_from_any(orig_rbf_tx.serialize()),
             new_fee_rate=60,
-            strategies=[BumpFeeStrategy.DECREASE_PAYMENT],
+            decrease_payment=True,
         )
         tx.locktime = 1936095
         tx.version = 2
@@ -1574,7 +1574,7 @@ class TestWalletSending(TestCaseForTestnet):
         self.assertEqual((0, 0, 0), wallet.get_balance())
 
         # bump tx
-        tx = wallet.bump_fee(tx=tx_from_any(tx.serialize()), new_fee_rate=70.0)
+        tx = wallet.bump_fee(tx=tx_from_any(tx.serialize()), new_fee_rate=70.0, decrease_payment=True)
         tx.locktime = 1325500
         tx.version = 1
         if simulate_moving_txs:
@@ -1868,7 +1868,7 @@ class TestWalletSending(TestCaseForTestnet):
 
         # wallet1 creates tx1, with output back to himself
         outputs = [PartialTxOutput.from_address_and_value("tb1qhye4wfp26kn0l7ynpn5a4hvt539xc3zf0n76t3", 10_000_000)]
-        tx1 = wallet1.mktx(outputs=outputs, fee=5000, tx_version=2, rbf=True, sign=False)
+        tx1 = wallet1.mktx(outputs=outputs, fee=5000, tx_version=2, rbf=False, sign=False)
         tx1.locktime = 1607022
         partial_tx1 = tx1.serialize_as_bytes().hex()
         self.assertEqual("70736274ff0100710200000001d5bd4f8ebe63f0521f94e2d174b95d4327757a7e74fda3c9ff5c08796318f8d80000000000fdffffff02b82e0f0000000000160014250dbabd5761d7e0773d6147699938dd08ec2eb88096980000000000160014b93357242ad5a6fff8930ce9dadd8ba44a6c44496e8518000001011fc0d8a70000000000160014aba1c9faecc3f8882e641583e8734a3f9d01b15a0100df0200000000010162ecbac2f0c8662f53505d9410fdc56c84c5642ddbd3358d9a27d564e26731130200000000fdffffff02c0d8a70000000000160014aba1c9faecc3f8882e641583e8734a3f9d01b15ab89ed5000000000016001470afbd97b2dc351bd167f714e294b2fd3b60aedf02483045022100c93449989510e279eb14a0193d5c262ae93034b81376a1f6be259c6080d3ba5d0220536ab394f7c20f301d7ec2ef11be6e7b6d492053dce56458931c1b54218ec0fd012103b8f5a11df8e68cf335848e83a41fdad3c7413dc42148248a3799b58c93919ca01085180022060205e8db1b1906219782fadb18e763c0874a3118a17ce931e01707cbde194e041510775087560000008000000000000000000022020240ef5d2efee3b04b313a254df1b13a0b155451581e73943b21f3346bf6e1ba351077508756000000800100000000000000002202024a410b1212e88573561887b2bc38c90c074e4be425b9f3d971a9207825d9d3c8107750875600000080000000000100000000",
@@ -1880,7 +1880,7 @@ class TestWalletSending(TestCaseForTestnet):
 
         # wallet2 creates tx2, with output back to himself
         outputs = [PartialTxOutput.from_address_and_value("tb1qufnj5k2rrsnpjq7fg6d2pq3q9um6skdyyehw5m", 10_000_000)]
-        tx2 = wallet2.mktx(outputs=outputs, fee=5000, tx_version=2, rbf=True, sign=False)
+        tx2 = wallet2.mktx(outputs=outputs, fee=5000, tx_version=2, rbf=False, sign=False)
         tx2.locktime = 1607023
         partial_tx2 = tx2.serialize_as_bytes().hex()
         self.assertEqual("70736274ff0100710200000001e546bc0a7c9736e82a07df5c24fe6d05df58a310dc376cf09302842ca7264f930100000000fdffffff02988d07000000000016001453675a59be834aa6d139c3ebea56646a9b160c4c8096980000000000160014e2672a59431c261903c9469aa082202f37a859a46f8518000001011fa037a000000000001600140719d12228c61cab793ecd659c09cfe565a845c30100df02000000000101d5bd4f8ebe63f0521f94e2d174b95d4327757a7e74fda3c9ff5c08796318f8d80100000000fdffffff025066350000000000160014e3aa82aa2e754507d5585c0b6db06cc0cb4927b7a037a000000000001600140719d12228c61cab793ecd659c09cfe565a845c302483045022100f42e27519bd2379c22951c16b038fa6d49164fe6802854f2fdc7ee87fe31a8bc02204ea71e9324781b44bf7fea2f318caf3bedc5b497cbd1b4313fa71f833500bcb7012103a7853e1ee02a1629c8e870ec694a1420aeb98e6f5d071815257028f62d6f784169851800220602275b4fba18bb34e5198a9cfb3e940306658839079b3bda50d504a9cf2bae36f41067f36697000000800000000001000000002202036e4d0a5fb845b2f1c3c868c2ce7212b155b73e91c05be1b7a77c48830831ba4f1067f366970000008001000000000000000022020200062fdea2b0a056b17fa6b91dd87f5b5d838fe1ee84d636a5022f9a340eebcc1067f3669700000080000000000000000000",
@@ -2476,7 +2476,7 @@ class TestWalletSending(TestCaseForTestnet):
         coins = wallet.get_spendable_coins(domain=None)
 
         # create spending tx
-        tx = wallet.make_unsigned_transaction(coins=coins, outputs=outputs, fee=5000, rbf=True)
+        tx = wallet.make_unsigned_transaction(coins=coins, outputs=outputs, fee=5000, rbf=False)
         tx.version = 2
         tx.locktime = 2378363
         self.assertEqual("04cf670cc809560ab6b1a362c119dbd59ea6a7621d00a4a05c0ef1839e65c035", tx.txid())
@@ -2503,7 +2503,7 @@ class TestWalletSending(TestCaseForTestnet):
 
         # create spending tx again, but now we have full key origin info
         wallet.get_keystores()[0].add_key_origin(derivation_prefix="m/48'/1'/0'/2'", root_fingerprint="30cf1be5")
-        tx = wallet.make_unsigned_transaction(coins=coins, outputs=outputs, fee=5000, rbf=True)
+        tx = wallet.make_unsigned_transaction(coins=coins, outputs=outputs, fee=5000, rbf=False)
         tx.version = 2
         tx.locktime = 2378363
         self.assertEqual("04cf670cc809560ab6b1a362c119dbd59ea6a7621d00a4a05c0ef1839e65c035", tx.txid())
@@ -2541,7 +2541,7 @@ class TestWalletSending(TestCaseForTestnet):
         coins = wallet.get_spendable_coins(domain=None)
 
         # create spending tx
-        tx = wallet.make_unsigned_transaction(coins=coins, outputs=outputs, fee=5000, rbf=True)
+        tx = wallet.make_unsigned_transaction(coins=coins, outputs=outputs, fee=5000, rbf=False)
         tx.version = 2
         tx.locktime = 2378367
         self.assertEqual("5c0d5eea8c2c12a383406bb37e6158167e44bfe6cd1ad590b7d97002cdfc9fff", tx.txid())
@@ -2585,8 +2585,7 @@ class TestWalletOfflineSigning(TestCaseForTestnet):
 
         # create unsigned tx
         outputs = [PartialTxOutput.from_address_and_value('tb1qyw3c0rvn6kk2c688y3dygvckn57525y8qnxt3a', 2500000)]
-        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000)
-        tx.set_rbf(True)
+        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000, rbf=False)
         tx.locktime = 1446655
         tx.version = 1
 
@@ -2632,8 +2631,7 @@ class TestWalletOfflineSigning(TestCaseForTestnet):
 
         # create unsigned tx
         outputs = [PartialTxOutput.from_address_and_value('tb1qp0mv2sxsyxxfj5gl0332f9uyez93su9cf26757', 2500000)]
-        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000)
-        tx.set_rbf(True)
+        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000, rbf=False)
         tx.locktime = 1325340
         tx.version = 1
 
@@ -2687,8 +2685,7 @@ class TestWalletOfflineSigning(TestCaseForTestnet):
 
         # create unsigned tx
         outputs = [PartialTxOutput.from_address_and_value('tb1qp0mv2sxsyxxfj5gl0332f9uyez93su9cf26757', 2500000)]
-        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000)
-        tx.set_rbf(True)
+        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000, rbf=False)
         tx.locktime = 1325341
         tx.version = 1
 
@@ -2733,8 +2730,7 @@ class TestWalletOfflineSigning(TestCaseForTestnet):
 
         # create unsigned tx
         outputs = [PartialTxOutput.from_address_and_value('tb1qp0mv2sxsyxxfj5gl0332f9uyez93su9cf26757', 2500000)]
-        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000)
-        tx.set_rbf(True)
+        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000, rbf=False)
         tx.locktime = 1325341
         tx.version = 1
 
@@ -2789,8 +2785,7 @@ class TestWalletOfflineSigning(TestCaseForTestnet):
 
         # create unsigned tx
         outputs = [PartialTxOutput.from_address_and_value('tb1qp0mv2sxsyxxfj5gl0332f9uyez93su9cf26757', 2500000)]
-        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000)
-        tx.set_rbf(True)
+        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000, rbf=False)
         tx.locktime = 1325341
         tx.version = 1
 
@@ -2849,8 +2844,7 @@ class TestWalletOfflineSigning(TestCaseForTestnet):
 
         # create unsigned tx
         outputs = [PartialTxOutput.from_address_and_value('tb1quk7ahlhr3qmjndy0uvu9y9hxfesrtahtta9ghm', 2500000)]
-        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000)
-        tx.set_rbf(True)
+        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000, rbf=False)
         tx.locktime = 1325340
         tx.version = 1
 
@@ -2887,8 +2881,7 @@ class TestWalletOfflineSigning(TestCaseForTestnet):
 
         # create unsigned tx
         outputs = [PartialTxOutput.from_address_and_value('tb1quk7ahlhr3qmjndy0uvu9y9hxfesrtahtta9ghm', 2500000)]
-        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000)
-        tx.set_rbf(True)
+        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000, rbf=False)
         tx.locktime = 1325340
         tx.version = 1
 
@@ -2925,8 +2918,7 @@ class TestWalletOfflineSigning(TestCaseForTestnet):
 
         # create unsigned tx
         outputs = [PartialTxOutput.from_address_and_value('tb1quk7ahlhr3qmjndy0uvu9y9hxfesrtahtta9ghm', 2500000)]
-        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000)
-        tx.set_rbf(True)
+        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000, rbf=False)
         tx.locktime = 1325340
         tx.version = 1
 
@@ -2967,8 +2959,7 @@ class TestWalletOfflineSigning(TestCaseForTestnet):
 
         # create unsigned tx
         outputs = [PartialTxOutput.from_address_and_value('tb1quk7ahlhr3qmjndy0uvu9y9hxfesrtahtta9ghm', 2500000)]
-        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000)
-        tx.set_rbf(True)
+        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000, rbf=False)
         tx.locktime = 1325340
         tx.version = 1
 
@@ -3009,8 +3000,7 @@ class TestWalletOfflineSigning(TestCaseForTestnet):
 
         # create unsigned tx
         outputs = [PartialTxOutput.from_address_and_value('tb1quk7ahlhr3qmjndy0uvu9y9hxfesrtahtta9ghm', 2500000)]
-        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000)
-        tx.set_rbf(True)
+        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000, rbf=False)
         tx.locktime = 1325340
         tx.version = 1
 
@@ -3051,8 +3041,7 @@ class TestWalletOfflineSigning(TestCaseForTestnet):
 
         # create unsigned tx
         outputs = [PartialTxOutput.from_address_and_value('tb1quk7ahlhr3qmjndy0uvu9y9hxfesrtahtta9ghm', 2500000)]
-        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000)
-        tx.set_rbf(True)
+        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000, rbf=False)
         tx.locktime = 1325340
         tx.version = 1
 
@@ -3106,8 +3095,7 @@ class TestWalletOfflineSigning(TestCaseForTestnet):
 
         # create unsigned tx
         outputs = [PartialTxOutput.from_address_and_value('2MuCQQHJNnrXzQzuqfUCfAwAjPqpyEHbgue', 2500000)]
-        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000)
-        tx.set_rbf(True)
+        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000, rbf=False)
         tx.locktime = 1325503
         tx.version = 1
 
@@ -3172,8 +3160,7 @@ class TestWalletOfflineSigning(TestCaseForTestnet):
 
         # create unsigned tx
         outputs = [PartialTxOutput.from_address_and_value('2N8CtJRwxb2GCaiWWdSHLZHHLoZy53CCyxf', 2500000)]
-        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000)
-        tx.set_rbf(True)
+        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000, rbf=False)
         tx.locktime = 1325504
         tx.version = 1
 
@@ -3243,8 +3230,7 @@ class TestWalletOfflineSigning(TestCaseForTestnet):
 
         # create unsigned tx
         outputs = [PartialTxOutput.from_address_and_value('2MyoZVy8T1t94yLmyKu8DP1SmbWvnxbkwRA', 2500000)]
-        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000)
-        tx.set_rbf(True)
+        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000, rbf=False)
         tx.locktime = 1325505
         tx.version = 1
 

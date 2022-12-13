@@ -113,8 +113,7 @@ class TxEditor:
             self.tx = None
             self.main_window.show_error(str(e))
             raise
-        use_rbf = bool(self.config.get('use_rbf', False))
-        self.tx.set_rbf(use_rbf)
+        self.tx.set_rbf(False)
 
     def have_enough_funds_assuming_zero_fees(self) -> bool:
         try:

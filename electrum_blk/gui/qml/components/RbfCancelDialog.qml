@@ -10,21 +10,12 @@ import "controls"
 ElDialog {
     id: dialog
 
-    required property QtObject finalizer
-    required property Amount satoshis
-    property string address
-    property string message
-    property alias amountLabelText: amountLabel.text
-    property alias sendButtonText: sendButton.text
+    required property string txid
+    required property QtObject txcanceller
 
-    signal txcancelled
     signal txaccepted
 
-    title: qsTr('Confirm Transaction')
-
-    // copy these to finalizer
-    onAddressChanged: finalizer.address = address
-    onSatoshisChanged: finalizer.amount = satoshis
+    title: qsTr('Cancel Transaction')
 
     width: parent.width
     height: parent.height
@@ -38,54 +29,54 @@ ElDialog {
         color: "#aa000000"
     }
 
-    function updateAmountText() {
-        btcValue.text = Config.formatSats(finalizer.effectiveAmount, false)
-        fiatValue.text = Daemon.fx.enabled
-            ? '(' + Daemon.fx.fiatValue(finalizer.effectiveAmount, false) + ' ' + Daemon.fx.fiatCurrency + ')'
-            : ''
-    }
-
     ColumnLayout {
-        width: parent.width
-        height: parent.height
+        anchors.fill: parent
         spacing: 0
 
         GridLayout {
-            width: parent.width
-            columns: 2
+            Layout.preferredWidth: parent.width
             Layout.leftMargin: constants.paddingLarge
             Layout.rightMargin: constants.paddingLarge
+            columns: 2
 
             Label {
-                id: amountLabel
-                text: qsTr('Amount to send')
+                Layout.columnSpan: 2
+                Layout.fillWidth: true
+                text: qsTr('Cancel an unconfirmed RBF transaction by double-spending its inputs back to your wallet with a higher fee.')
+                wrapMode: Text.Wrap
+            }
+
+            Label {
+                text: qsTr('Old fee')
                 color: Material.accentColor
             }
 
             RowLayout {
-                Layout.fillWidth: true
                 Label {
-                    id: btcValue
-                    font.bold: true
+                    id: oldfee
+                    text: Config.formatSats(txcanceller.oldfee)
                 }
 
                 Label {
                     text: Config.baseUnit
                     color: Material.accentColor
                 }
+            }
 
+            Label {
+                text: qsTr('Old fee rate')
+                color: Material.accentColor
+            }
+
+            RowLayout {
                 Label {
-                    id: fiatValue
-                    Layout.fillWidth: true
-                    font.pixelSize: constants.fontSizeMedium
+                    id: oldfeeRate
+                    text: txcanceller.oldfeeRate
                 }
 
-                Component.onCompleted: updateAmountText()
-                Connections {
-                    target: finalizer
-                    function onEffectiveAmountChanged() {
-                        updateAmountText()
-                    }
+                Label {
+                    text: 'sat/vB'
+                    color: Material.accentColor
                 }
             }
 
@@ -97,28 +88,11 @@ ElDialog {
             RowLayout {
                 Label {
                     id: fee
-                    text: Config.formatSats(finalizer.fee)
+                    text: txcanceller.valid ? Config.formatSats(txcanceller.fee) : ''
                 }
 
                 Label {
-                    text: Config.baseUnit
-                    color: Material.accentColor
-                }
-            }
-
-            Label {
-                visible: !finalizer.extraFee.isEmpty
-                text: qsTr('Extra fee')
-                color: Material.accentColor
-            }
-
-            RowLayout {
-                visible: !finalizer.extraFee.isEmpty
-                Label {
-                    text: Config.formatSats(finalizer.extraFee)
-                }
-
-                Label {
+                    visible: txcanceller.valid
                     text: Config.baseUnit
                     color: Material.accentColor
                 }
@@ -132,10 +106,11 @@ ElDialog {
             RowLayout {
                 Label {
                     id: feeRate
-                    text: finalizer.feeRate
+                    text: txcanceller.valid ? txcanceller.feeRate : ''
                 }
 
                 Label {
+                    visible: txcanceller.valid
                     text: 'sat/vB'
                     color: Material.accentColor
                 }
@@ -148,7 +123,7 @@ ElDialog {
 
             Label {
                 id: targetdesc
-                text: finalizer.target
+                text: txcanceller.target
             }
 
             Slider {
@@ -157,36 +132,35 @@ ElDialog {
                 snapMode: Slider.SnapOnRelease
                 stepSize: 1
                 from: 0
-                to: finalizer.sliderSteps
+                to: txcanceller.sliderSteps
                 onValueChanged: {
                     if (activeFocus)
-                        finalizer.sliderPos = value
+                        txcanceller.sliderPos = value
                 }
                 Component.onCompleted: {
-                    value = finalizer.sliderPos
+                    value = txcanceller.sliderPos
                 }
                 Connections {
-                    target: finalizer
+                    target: txcanceller
                     function onSliderPosChanged() {
-                        feeslider.value = finalizer.sliderPos
+                        feeslider.value = txcanceller.sliderPos
                     }
                 }
             }
 
             FeeMethodComboBox {
                 id: target
-                feeslider: finalizer
+                feeslider: txcanceller
             }
 
             CheckBox {
                 id: final_cb
                 text: qsTr('Replace-by-Fee')
                 Layout.columnSpan: 2
-                checked: finalizer.rbf
-                visible: finalizer.canRbf
+                checked: txcanceller.rbf
                 onCheckedChanged: {
                     if (activeFocus)
-                        finalizer.rbf = checked
+                        txcanceller.rbf = checked
                 }
             }
 
@@ -194,19 +168,20 @@ ElDialog {
                 Layout.columnSpan: 2
                 Layout.preferredWidth: parent.width * 3/4
                 Layout.alignment: Qt.AlignHCenter
-                visible: finalizer.warning != ''
-                text: finalizer.warning
+                visible: txcanceller.warning != ''
+                text: txcanceller.warning
                 iconStyle: InfoTextArea.IconStyle.Warn
             }
 
             Label {
+                visible: txcanceller.valid
                 text: qsTr('Outputs')
                 Layout.columnSpan: 2
                 color: Material.accentColor
             }
 
             Repeater {
-                model: finalizer.outputs
+                model: txcanceller.valid ? txcanceller.outputs : []
                 delegate: TextHighlightPane {
                     Layout.columnSpan: 2
                     Layout.fillWidth: true
@@ -240,13 +215,11 @@ ElDialog {
         Item { Layout.fillHeight: true; Layout.preferredWidth: 1 }
 
         FlatButton {
-            id: sendButton
+            id: confirmButton
             Layout.fillWidth: true
-            text: (Daemon.currentWallet.isWatchOnly || !Daemon.currentWallet.canSignWithoutCosigner)
-                    ? qsTr('Finalize')
-                    : qsTr('Pay')
+            text: qsTr('Ok')
             icon.source: '../../icons/confirmed.png'
-            enabled: finalizer.valid
+            enabled: txcanceller.valid
             onClicked: {
                 txaccepted()
                 dialog.close()
@@ -254,5 +227,10 @@ ElDialog {
         }
     }
 
-    onClosed: txcancelled()
+    Connections {
+        target: txcanceller
+        function onTxMined() {
+            dialog.close()
+        }
+    }
 }

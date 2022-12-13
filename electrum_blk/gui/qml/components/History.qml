@@ -26,7 +26,23 @@ Pane {
 
         model: visualModel
 
+        header: Item {
+            width: parent.width
+            height: headerLayout.height
+            ColumnLayout {
+                id: headerLayout
+                anchors.centerIn: parent
+                BalanceSummary {
+                    Layout.topMargin: constants.paddingXLarge
+                    Layout.bottomMargin: constants.paddingXLarge
+                }
+            }
+        }
+        headerPositioning: ListView.InlineHeader
+
         readonly property variant sectionLabels: {
+            'local': qsTr('Local'),
+            'mempool': qsTr('Mempool'),
             'today': qsTr('Today'),
             'yesterday': qsTr('Yesterday'),
             'lastweek': qsTr('Last week'),

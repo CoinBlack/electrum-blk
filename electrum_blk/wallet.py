@@ -103,12 +103,6 @@ TX_STATUS = [
 ]
 
 
-class BumpFeeStrategy(enum.Enum):
-    COINCHOOSER = enum.auto()
-    DECREASE_CHANGE = enum.auto()
-    DECREASE_PAYMENT = enum.auto()
-
-
 async def _append_utxos_to_inputs(*, inputs: List[PartialTxInput], network: 'Network',
                                   pubkey: str, txin_type: str, imax: int) -> None:
     if txin_type in ('p2pkh', 'p2wpkh', 'p2wpkh-p2sh'):
@@ -207,8 +201,7 @@ async def sweep(
         locktime = get_locktime_for_new_transaction(network)
 
     tx = PartialTransaction.from_io(inputs, outputs, locktime=locktime, version=tx_version)
-    rbf = bool(config.get('use_rbf', True))
-    tx.set_rbf(rbf)
+    tx.set_rbf(True)
     tx.sign(keypairs)
     return tx
 
@@ -1423,8 +1416,6 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             if not tx:
                 return 2, 'unknown'
             is_final = tx and tx.is_final()
-            if not is_final:
-                extra.append('rbf')
             fee = self.adb.get_tx_fee(tx_hash)
             if fee is not None:
                 size = tx.estimated_size()
@@ -1674,7 +1665,6 @@ class Abstract_Wallet(ABC, Logger, EventListener):
 
         # Timelock tx to current height.
         tx.locktime = get_locktime_for_new_transaction(self.network)
-
         tx.set_rbf(rbf)
         tx.add_info_from_wallet(self)
         run_hook('make_unsigned_transaction', self, tx)
@@ -1790,7 +1780,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             txid: str = None,
             new_fee_rate: Union[int, float, Decimal],
             coins: Sequence[PartialTxInput] = None,
-            strategies: Sequence[BumpFeeStrategy] = None,
+            decrease_payment=False,
     ) -> PartialTransaction:
         """Increase the miner fee of 'tx'.
         'new_fee_rate' is the target min rate in sat/vbyte
@@ -1818,41 +1808,28 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         if new_fee_rate <= old_fee_rate:
             raise CannotBumpFee(_("The new fee rate needs to be higher than the old fee rate."))
 
-        if not strategies:
-            strategies = [BumpFeeStrategy.COINCHOOSER, BumpFeeStrategy.DECREASE_CHANGE]
-        tx_new = None
-        exc = None
-        for strat in strategies:
+        if not decrease_payment:
+            # FIXME: we should try decreasing change first,
+            # but it requires updating a bunch of unit tests
             try:
-                if strat == BumpFeeStrategy.COINCHOOSER:
-                    tx_new = self._bump_fee_through_coinchooser(
-                        tx=tx,
-                        txid=txid,
-                        new_fee_rate=new_fee_rate,
-                        coins=coins,
-                    )
-                elif strat == BumpFeeStrategy.DECREASE_CHANGE:
-                    tx_new = self._bump_fee_through_decreasing_change(
-                        tx=tx, new_fee_rate=new_fee_rate)
-                elif strat == BumpFeeStrategy.DECREASE_PAYMENT:
-                    tx_new = self._bump_fee_through_decreasing_payment(
-                        tx=tx, new_fee_rate=new_fee_rate)
-                else:
-                    raise NotImplementedError(f"unexpected strategy: {strat}")
+                tx_new = self._bump_fee_through_coinchooser(
+                    tx=tx,
+                    txid=txid,
+                    new_fee_rate=new_fee_rate,
+                    coins=coins,
+                )
             except CannotBumpFee as e:
-                exc = e
-            else:
-                strat_used = strat
-                break
-        if tx_new is None:
-            assert exc
-            raise exc  # all strategies failed, re-raise last exception
+                tx_new = self._bump_fee_through_decreasing_change(
+                    tx=tx, new_fee_rate=new_fee_rate)
+        else:
+            tx_new = self._bump_fee_through_decreasing_payment(
+                tx=tx, new_fee_rate=new_fee_rate)
 
         target_min_fee = new_fee_rate * tx_new.estimated_size()
         actual_fee = tx_new.get_fee()
         if actual_fee + 1 < target_min_fee:
             raise CannotBumpFee(
-                f"bump_fee fee target was not met (strategy: {strat_used}). "
+                f"bump_fee fee target was not met. "
                 f"got {actual_fee}, expected >={target_min_fee}. "
                 f"target rate was {new_fee_rate}")
         tx_new.locktime = get_locktime_for_new_transaction(self.network)
@@ -1930,10 +1907,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
 
         - keeps all inputs
         - no new inputs are added
-        - allows decreasing and removing outputs (change is decreased first)
-        This is less "safe" than "coinchooser" method as it might end up decreasing
-        e.g. a payment to a merchant; but e.g. if the user has sent "Max" previously,
-        this is the only way to RBF.
+        - change outputs are decreased or removed
         """
         tx = copy.deepcopy(tx)
         tx.add_info_from_wallet(self)
@@ -1943,11 +1917,8 @@ class Abstract_Wallet(ABC, Logger, EventListener):
 
         # use own outputs
         s = list(filter(lambda o: self.is_mine(o.address), outputs))
-        # ... unless there is none
         if not s:
-            s = [out for out in outputs if self._is_rbf_allowed_to_touch_tx_output(out)]
-        if not s:
-            raise CannotBumpFee('No outputs at all??')
+            raise CannotBumpFee('No suitable output')
 
         # prioritize low value outputs, to get rid of dust
         s = sorted(s, key=lambda o: o.value)
@@ -1983,12 +1954,13 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             tx: PartialTransaction,
             new_fee_rate: Union[int, Decimal],
     ) -> PartialTransaction:
-        """Increase the miner fee of 'tx'.
+        """
+        Increase the miner fee of 'tx' by decreasing amount paid.
+        This should be used for transactions that pay "Max".
 
         - keeps all inputs
         - no new inputs are added
-        - decreases payment outputs (not change!). Each non-ismine output is decreased
-          proportionally to their byte-size.
+        - Each non-ismine output is decreased proportionally to their byte-size.
         """
         tx = copy.deepcopy(tx)
         tx.add_info_from_wallet(self)
@@ -2732,7 +2704,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         pass
 
     def create_transaction(self, outputs, *, fee=None, feerate=None, change_addr=None, domain_addr=None, domain_coins=None,
-              unsigned=False, rbf=None, password=None, locktime=None):
+                           unsigned=False, rbf=False, password=None, locktime=None):
         if fee is not None and feerate is not None:
             raise Exception("Cannot specify both 'fee' and 'feerate' at the same time!")
         coins = self.get_spendable_coins(domain_addr)
@@ -2750,8 +2722,6 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             change_addr=change_addr)
         if locktime is not None:
             tx.locktime = locktime
-        if rbf is None:
-            rbf = bool(self.config.get('use_rbf', False))
         tx.set_rbf(rbf)
         if not unsigned:
             self.sign_transaction(tx, password)

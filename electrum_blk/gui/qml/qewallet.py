@@ -345,7 +345,8 @@ class QEWallet(AuthMixin, QObject, QtEventListener):
             result.append({
                 'derivation_prefix': k.get_derivation_prefix() or '',
                 'master_pubkey': k.get_master_public_key() or '',
-                'fingerprint': k.get_root_fingerprint() or ''
+                'fingerprint': k.get_root_fingerprint() or '',
+                'watch_only': k.is_watching_only()
             })
         return result
 
@@ -454,9 +455,7 @@ class QEWallet(AuthMixin, QObject, QtEventListener):
         # see qt/confirm_tx_dialog qt/main_window
         tx = self.wallet.make_unsigned_transaction(coins=coins,outputs=outputs, fee=None)
         self._logger.info(str(tx.to_json()))
-
-        use_rbf = bool(self.wallet.config.get('use_rbf', True))
-        tx.set_rbf(use_rbf)
+        tx.set_rbf(True)
         self.sign(tx, broadcast=True)
 
     @auth_protect
@@ -509,8 +508,6 @@ class QEWallet(AuthMixin, QObject, QtEventListener):
 
     def broadcast(self, tx):
         assert tx.is_complete()
-
-        # network = self.wallet.network # TODO not always defined?
 
         def broadcast_thread():
             try:

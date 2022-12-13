@@ -7,11 +7,9 @@ from electrum_blk.transaction import tx_from_any
 
 from .qewallet import QEWallet
 from .qetypes import QEAmount
+from .util import QtEventListener, event_listener
 
-class QETxDetails(QObject):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-
+class QETxDetails(QObject, QtEventListener):
     _logger = get_logger(__name__)
 
     _wallet = None
@@ -39,6 +37,7 @@ class QETxDetails(QObject):
     _is_unrelated = False
     _is_complete = False
     _is_mined = False
+    _is_final = False
 
     _mempool_depth = ''
 
@@ -53,6 +52,20 @@ class QETxDetails(QObject):
     saveTxSuccess = pyqtSignal()
 
     detailsChanged = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.register_callbacks()
+        self.destroyed.connect(lambda: self.on_destroy())
+
+    def on_destroy(self):
+        self.unregister_callbacks()
+
+    @event_listener
+    def on_event_verified(self, wallet, txid, info):
+        if wallet == self._wallet.wallet and txid == self._txid:
+            self._logger.debug('verified event for our txid %s' % txid)
+            self.update()
 
     walletChanged = pyqtSignal()
     @pyqtProperty(QEWallet, notify=walletChanged)
@@ -200,6 +213,10 @@ class QETxDetails(QObject):
     def isComplete(self):
         return self._is_complete
 
+    @pyqtProperty(bool, notify=detailsChanged)
+    def isFinal(self):
+        return self._is_final
+
     def update(self):
         if self._wallet is None:
             self._logger.error('wallet undefined')
@@ -250,6 +267,7 @@ class QETxDetails(QObject):
                 self._lnamount.satsInt = 0
 
         self._is_complete = self._tx.is_complete()
+        self._is_final = self._tx.is_final()
         self._is_unrelated = txinfo.amount is None and self._lnamount.isEmpty
         self._is_lightning_funding_tx = txinfo.is_lightning_funding_tx
         self._can_bump = txinfo.can_bump
