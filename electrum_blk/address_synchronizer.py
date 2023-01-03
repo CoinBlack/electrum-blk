@@ -414,6 +414,11 @@ class AddressSynchronizer(Logger, EventListener):
             old_hist = self.get_address_history(addr)
             for tx_hash, height in old_hist:
                 if (tx_hash, height) not in hist:
+                    # if coinstake, just remove it
+                    tx = self.db.get_transaction(tx_hash)
+                    if tx.is_coinstake():
+                        self.remove_transaction(tx_hash)
+                        continue
                     # make tx local
                     self.unverified_tx.pop(tx_hash, None)
                     self.unconfirmed_tx.pop(tx_hash, None)

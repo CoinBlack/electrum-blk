@@ -1081,6 +1081,9 @@ class Transaction:
             assert self.inputs()[idx].prevout == prevout
         return idx
 
+    def is_coinstake(self):
+        outputs = self.outputs()
+        return len(outputs) >= 2 and outputs[0].is_coinstake()
 
 def convert_raw_tx_to_hex(raw: Union[str, bytes]) -> str:
     """Sanitizes tx-describing input (hex/base43/base64) into
