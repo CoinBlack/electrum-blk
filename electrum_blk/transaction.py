@@ -173,8 +173,12 @@ class TxOutput:
             'scriptpubkey': self.scriptpubkey.hex(),
             'address': self.address,
             'value_sats': self.value,
+            'coinstake': self.is_coinstake(),
         }
         return d
+
+    def is_coinstake(self):
+        return not self.value and not self.scriptpubkey
 
 
 class BIP143SharedTxDigestFields(NamedTuple):

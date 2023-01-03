@@ -1384,6 +1384,16 @@ class Abstract_Wallet(ABC, Logger, EventListener):
                     labels.append(label)
             return ', '.join(labels)
         else:
+            # coinbase/coinstake transactions
+            try:
+                tx = self.db.get_transaction(tx_hash)
+                if tx.outputs()[0].is_coinstake():
+                    return 'coinstake'
+                elif tx.inputs()[0].is_coinbase_input():
+                    return 'coinbase'
+            except (BaseException,) as e:
+                self.logger.info(f'get_default_label {e}')
+
             # some inputs are ismine -> likely outgoing payment
             labels = []
             for invoice in self.get_relevant_invoices_for_tx(tx_hash):
@@ -1407,6 +1417,14 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         height = tx_mined_info.height
         conf = tx_mined_info.conf
         timestamp = tx_mined_info.timestamp
+        is_staked = False
+        tx = None
+        try:
+            tx = self.db.get_transaction(tx_hash)
+            if tx is not None:
+                is_staked = tx.outputs()[0].is_coinstake()
+        except (BaseException,) as e:
+            self.logger.info(f'get_tx_status {repr(e)}')
         if height == TX_HEIGHT_FUTURE:
             assert conf < 0, conf
             num_blocks_remainining = -conf
@@ -1434,6 +1452,8 @@ class Abstract_Wallet(ABC, Logger, EventListener):
                 status = 0
             else:
                 status = 2  # not SPV verified
+        elif is_staked:
+            status = 3 + max(min(conf // (constants.net.COINBASE_MATURITY // 10), 10), 1)
         else:
             status = 3 + min(conf, 10)
         time_str = format_time(timestamp) if timestamp else _("unknown")
