@@ -9,20 +9,16 @@ import "controls"
 
 ElDialog {
     id: dialog
+
     width: parent.width
     height: parent.height
 
     property string channelid
 
     title: qsTr('Close Channel')
-    standardButtons: closing ? 0 : Dialog.Cancel
+    iconSource: Qt.resolvedUrl('../../icons/lightning_disconnected.png')
 
-    modal: true
-    parent: Overlay.overlay
-    Overlay.modal: Rectangle {
-        color: "#aa000000"
-    }
-    property bool closing: false
+    property string _closing_method
 
     closePolicy: Popup.NoAutoClose
 
@@ -32,134 +28,173 @@ ElDialog {
         anchors.fill: parent
         spacing: 0
 
-        GridLayout {
-            id: layout
-            Layout.preferredWidth: parent.width - 2*constants.paddingLarge
-            Layout.leftMargin: constants.paddingLarge
-            Layout.rightMargin: constants.paddingLarge
-            columns: 2
+        Flickable {
+            Layout.preferredWidth: parent.width
+            Layout.fillHeight: true
 
-            Label {
-                Layout.fillWidth: true
-                visible: channeldetails.name
-                text: qsTr('Channel name')
-                color: Material.accentColor
-            }
+            leftMargin: constants.paddingLarge
+            rightMargin: constants.paddingLarge
 
-            Label {
-                Layout.fillWidth: true
-                visible: channeldetails.name
-                text: channeldetails.name
-            }
+            contentHeight: rootLayout.height
+            clip:true
+            interactive: height < contentHeight
 
-            Label {
-                text: qsTr('Remote node ID')
-                Layout.columnSpan: 2
-                color: Material.accentColor
-            }
-
-            TextHighlightPane {
-                Layout.columnSpan: 2
-                Layout.fillWidth: true
-                padding: 0
-                leftPadding: constants.paddingSmall
+            GridLayout {
+                id: rootLayout
+                width: parent.width
+                columns: 2
 
                 Label {
-                    width: parent.width
-                    text: channeldetails.pubkey
-                    font.pixelSize: constants.fontSizeLarge
-                    font.family: FixedFont
                     Layout.fillWidth: true
-                    wrapMode: Text.Wrap
-                }
-            }
-
-            Label {
-                text: qsTr('Short channel ID')
-                color: Material.accentColor
-            }
-
-            Label {
-                text: channeldetails.short_cid
-            }
-
-            Item { Layout.preferredHeight: constants.paddingMedium; Layout.preferredWidth: 1; Layout.columnSpan: 2 }
-
-            InfoTextArea {
-                Layout.columnSpan: 2
-                Layout.fillWidth: true
-                text: qsTr(channeldetails.message_force_close)
-            }
-
-            Label {
-                text: qsTr('Choose closing method')
-                Layout.columnSpan: 2
-                color: Material.accentColor
-            }
-
-            ColumnLayout {
-                Layout.columnSpan: 2
-                Layout.alignment: Qt.AlignHCenter
-
-                ButtonGroup {
-                    id: closetypegroup
+                    visible: channeldetails.name
+                    text: qsTr('Channel name')
+                    color: Material.accentColor
                 }
 
-                RadioButton {
-                    ButtonGroup.group: closetypegroup
-                    property string closetype: 'cooperative'
-                    checked: true
-                    enabled: !closing && channeldetails.canCoopClose
-                    text: qsTr('Cooperative close')
-                }
-                RadioButton {
-                    ButtonGroup.group: closetypegroup
-                    property string closetype: 'remote_force'
-                    enabled: !closing && channeldetails.canForceClose
-                    text: qsTr('Request Force-close')
-                }
-                RadioButton {
-                    ButtonGroup.group: closetypegroup
-                    property string closetype: 'local_force'
-                    enabled: !closing && channeldetails.canForceClose && !channeldetails.isBackup
-                    text: qsTr('Local Force-close')
-                }
-            }
-
-            ColumnLayout {
-                Layout.columnSpan: 2
-                Layout.alignment: Qt.AlignHCenter
                 Label {
-                    id: errorText
-                    visible: !closing && errorText
-                    wrapMode: Text.Wrap
-                    Layout.preferredWidth: layout.width
+                    Layout.fillWidth: true
+                    visible: channeldetails.name
+                    text: channeldetails.name
                 }
+
                 Label {
-                    text: qsTr('Closing...')
-                    visible: closing
+                    text: qsTr('Short channel ID')
+                    color: Material.accentColor
                 }
-                BusyIndicator {
-                    visible: closing
+
+                Label {
+                    text: channeldetails.shortCid
+                }
+
+                Label {
+                    text: qsTr('Remote node ID')
+                    Layout.columnSpan: 2
+                    color: Material.accentColor
+                }
+
+                TextHighlightPane {
+                    Layout.columnSpan: 2
+                    Layout.fillWidth: true
+
+                    Label {
+                        width: parent.width
+                        text: channeldetails.pubkey
+                        font.pixelSize: constants.fontSizeLarge
+                        font.family: FixedFont
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                    }
+                }
+
+                Item { Layout.preferredHeight: constants.paddingMedium; Layout.preferredWidth: 1; Layout.columnSpan: 2 }
+
+                InfoTextArea {
+                    Layout.columnSpan: 2
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: constants.paddingLarge
+                    text: channeldetails.messageForceClose
+                }
+
+                Label {
+                    text: qsTr('Choose closing method')
+                    Layout.columnSpan: 2
+                    color: Material.accentColor
+                }
+
+                ColumnLayout {
+                    Layout.columnSpan: 2
+                    Layout.alignment: Qt.AlignHCenter
+
+                    ButtonGroup {
+                        id: closetypegroup
+                    }
+
+                    ElRadioButton {
+                        id: closetypeCoop
+                        ButtonGroup.group: closetypegroup
+                        property string closetype: 'cooperative'
+                        enabled: !channeldetails.isClosing && channeldetails.canCoopClose
+                        text: qsTr('Cooperative close')
+                    }
+                    ElRadioButton {
+                        id: closetypeRemoteForce
+                        ButtonGroup.group: closetypegroup
+                        property string closetype: 'remote_force'
+                        enabled: !channeldetails.isClosing && channeldetails.canForceClose
+                        text: qsTr('Request Force-close')
+                    }
+                    ElRadioButton {
+                        id: closetypeLocalForce
+                        ButtonGroup.group: closetypegroup
+                        property string closetype: 'local_force'
+                        enabled: !channeldetails.isClosing && channeldetails.canForceClose && !channeldetails.isBackup
+                        text: qsTr('Local Force-close')
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.columnSpan: 2
+                    Layout.maximumWidth: parent.width
+
+                    InfoTextArea {
+                        id: errorText
+                        Layout.alignment: Qt.AlignHCenter
+                        Layout.maximumWidth: parent.width
+                        visible: !channeldetails.isClosing && errorText.text
+                        iconStyle: InfoTextArea.IconStyle.Error
+                    }
+                    Label {
+                        Layout.alignment: Qt.AlignHCenter
+                        text: qsTr('Closing...')
+                        visible: channeldetails.isClosing
+                    }
+                    BusyIndicator {
+                        Layout.alignment: Qt.AlignHCenter
+                        visible: channeldetails.isClosing
+                    }
                 }
             }
         }
-
-        Item { Layout.fillHeight: true; Layout.preferredWidth: 1 }
 
         FlatButton {
             Layout.columnSpan: 2
             Layout.fillWidth: true
             text: qsTr('Close channel')
             icon.source: '../../icons/closebutton.png'
-            enabled: !closing
+            enabled: !channeldetails.isClosing
             onClicked: {
-                closing = true
-                channeldetails.close_channel(closetypegroup.checkedButton.closetype)
+                if (closetypegroup.checkedButton.closetype == 'local_force') {
+                    showBackupThenClose()
+                } else {
+                    doCloseChannel()
+                }
             }
-
         }
+    }
 
+    function showBackupThenClose() {
+        var sharedialog = app.genericShareDialog.createObject(app, {
+            title: qsTr('Save channel backup and force close'),
+            text_qr: channeldetails.channelBackup(),
+            text_help: channeldetails.messageForceCloseBackup,
+            helpTextIconStyle: InfoTextArea.IconStyle.Warn
+        })
+        sharedialog.closed.connect(function() {
+            doCloseChannel()
+        })
+        sharedialog.open()
+    }
+
+    function doCloseChannel() {
+        _closing_method = closetypegroup.checkedButton.closetype
+        channeldetails.closeChannel(_closing_method)
+    }
+
+    function showCloseMessage(text) {
+        var msgdialog = app.messageDialog.createObject(app, {
+            text: text
+        })
+        msgdialog.open()
     }
 
     ChannelDetails {
@@ -167,13 +202,33 @@ ElDialog {
         wallet: Daemon.currentWallet
         channelid: dialog.channelid
 
+        onAuthRequired: {
+            app.handleAuthRequired(channeldetails, method, authMessage)
+        }
+
+        onChannelChanged: {
+            if (!channeldetails.canClose || channeldetails.isClosing)
+                return
+
+            // init default choice
+            if (channeldetails.canCoopClose)
+                closetypeCoop.checked = true
+            else
+                closetypeRemoteForce.checked = true
+        }
+
         onChannelCloseSuccess: {
-            closing = false
+            if (_closing_method == 'local_force') {
+                showCloseMessage(qsTr('Channel closed. You may need to wait at least %1 blocks, because of CSV delays').arg(channeldetails.toSelfDelay))
+            } else if (_closing_method == 'remote_force') {
+                showCloseMessage(qsTr('Request sent'))
+            } else if (_closing_method == 'cooperative') {
+                showCloseMessage(qsTr('Channel closed'))
+            }
             dialog.close()
         }
 
         onChannelCloseFailed: {
-            closing = false
             errorText.text = message
         }
     }

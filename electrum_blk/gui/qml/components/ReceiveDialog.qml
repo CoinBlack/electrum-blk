@@ -13,6 +13,8 @@ ElDialog {
 
     title: qsTr('Receive Payment')
 
+    property string key
+
     property string _bolt11: request.bolt11
     property string _bip21uri: request.bip21
     property string _address: request.address
@@ -21,13 +23,7 @@ ElDialog {
 
     property bool _ispaid: false
 
-    parent: Overlay.overlay
-    modal: true
-    standardButtons: Dialog.Close
-
-    Overlay.modal: Rectangle {
-        color: "#aa000000"
-    }
+    iconSource: Qt.resolvedUrl('../../icons/tab_receive.png')
 
     padding: 0
 
@@ -56,27 +52,26 @@ ElDialog {
                     State {
                         name: 'bolt11'
                         PropertyChanges { target: qrloader; sourceComponent: qri_bolt11 }
-                        PropertyChanges { target: bolt11label; color: Material.accentColor }
+                        PropertyChanges { target: bolt11label; color: Material.accentColor; font.underline: true }
                     },
                     State {
                         name: 'bip21uri'
                         PropertyChanges { target: qrloader; sourceComponent: qri_bip21uri }
-                        PropertyChanges { target: bip21label; color: Material.accentColor }
+                        PropertyChanges { target: bip21label; color: Material.accentColor; font.underline: true }
                     },
                     State {
                         name: 'address'
                         PropertyChanges { target: qrloader; sourceComponent: qri_address }
-                        PropertyChanges { target: addresslabel; color: Material.accentColor }
+                        PropertyChanges { target: addresslabel; color: Material.accentColor; font.underline: true }
                     }
                 ]
 
                 Rectangle {
+                    id: qrbg
                     Layout.alignment: Qt.AlignHCenter
                     Layout.topMargin: constants.paddingSmall
                     Layout.bottomMargin: constants.paddingSmall
 
-                    // Layout.preferredWidth: qrloader.width
-                    // Layout.preferredHeight: qrloader.height
                     Layout.preferredWidth: dialog.width * 7/8
                     Layout.preferredHeight: dialog.width * 7/8
 
@@ -90,6 +85,7 @@ ElDialog {
                             QRImage {
                                 qrdata: _bolt11
                                 render: _render_qr
+                                enableToggleText: true
                             }
                         }
                         Component {
@@ -97,6 +93,7 @@ ElDialog {
                             QRImage {
                                 qrdata: _bip21uri
                                 render: _render_qr
+                                enableToggleText: true
                             }
                         }
                         Component {
@@ -104,28 +101,7 @@ ElDialog {
                             QRImage {
                                 qrdata: _address
                                 render: _render_qr
-                            }
-                        }
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            if (rootLayout.state == 'bolt11') {
-                                if (_bip21uri != '')
-                                    rootLayout.state = 'bip21uri'
-                                else if (_address != '')
-                                    rootLayout.state = 'address'
-                            } else if (rootLayout.state == 'bip21uri') {
-                                if (_address != '')
-                                    rootLayout.state = 'address'
-                                else if (_bolt11 != '')
-                                    rootLayout.state = 'bolt11'
-                            } else if (rootLayout.state == 'address') {
-                                if (_bolt11 != '')
-                                    rootLayout.state = 'bolt11'
-                                else if (_bip21uri != '')
-                                    rootLayout.state = 'bip21uri'
+                                enableToggleText: true
                             }
                         }
                     }
@@ -141,7 +117,10 @@ ElDialog {
                         MouseArea {
                             anchors.fill: parent
                             enabled: _bolt11
-                            onClicked: rootLayout.state = 'bolt11'
+                            onClicked: {
+                                rootLayout.state = 'bolt11'
+                                Config.preferredRequestType = 'bolt11'
+                            }
                         }
                     }
                     Rectangle {
@@ -157,7 +136,10 @@ ElDialog {
                         MouseArea {
                             anchors.fill: parent
                             enabled: _bip21uri
-                            onClicked: rootLayout.state = 'bip21uri'
+                            onClicked: {
+                                rootLayout.state = 'bip21uri'
+                                Config.preferredRequestType = 'bip21uri'
+                            }
                         }
                     }
                     Rectangle {
@@ -173,7 +155,10 @@ ElDialog {
                         MouseArea {
                             anchors.fill: parent
                             enabled: _address
-                            onClicked: rootLayout.state = 'address'
+                            onClicked: {
+                                rootLayout.state = 'address'
+                                Config.preferredRequestType = 'address'
+                            }
                         }
                     }
                 }
@@ -181,18 +166,23 @@ ElDialog {
                 Rectangle {
                     height: 1
                     Layout.alignment: Qt.AlignHCenter
-                    Layout.preferredWidth: buttons.width
+                    Layout.preferredWidth: qrbg.width
                     color: Material.accentColor
                 }
 
                 GridLayout {
                     columns: 2
-                    visible: request.message || !request.amount.isEmpty
-                    Layout.maximumWidth: qrloader.width
+                    Layout.maximumWidth: qrbg.width
                     Layout.alignment: Qt.AlignHCenter
 
                     Label {
-                        visible: request.message
+                        text: qsTr('Status')
+                        color: Material.accentColor
+                    }
+                    Label {
+                        text: request.status_str
+                    }
+                    Label {
                         text: qsTr('Message')
                         color: Material.accentColor
                     }
@@ -203,79 +193,77 @@ ElDialog {
                         wrapMode: Text.Wrap
                     }
                     Label {
-                        visible: !request.amount.isEmpty
+                        visible: !request.message
+                        Layout.fillWidth: true
+                        text: qsTr('unspecified')
+                        color: constants.mutedForeground
+                    }
+                    Label {
                         text: qsTr('Amount')
                         color: Material.accentColor
                     }
-                    RowLayout {
+                    FormattedAmount {
                         visible: !request.amount.isEmpty
-                        Label {
-                            text: Config.formatSats(request.amount)
-                            font.family: FixedFont
-                            font.pixelSize: constants.fontSizeMedium
-                            font.bold: true
-                        }
-                        Label {
-                            text: Config.baseUnit
-                            color: Material.accentColor
-                            font.pixelSize: constants.fontSizeMedium
-                        }
-                        Label {
-                            visible: Daemon.fx.enabled
-                            text: '(' + Daemon.fx.fiatValue(request.amount, false) + ' ' + Daemon.fx.fiatCurrency + ')'
-                            font.pixelSize: constants.fontSizeMedium
-                        }
+                        valid: !request.amount.isEmpty
+                        amount: request.amount
+                    }
+                    Label {
+                        visible: request.amount.isEmpty
+                        text: qsTr('unspecified')
+                        color: constants.mutedForeground
                     }
                 }
 
                 Rectangle {
-                    visible: request.message || !request.amount.isEmpty
                     height: 1
                     Layout.alignment: Qt.AlignHCenter
-                    Layout.preferredWidth: buttons.width
+                    Layout.preferredWidth: qrbg.width
                     color: Material.accentColor
                 }
 
-                RowLayout {
-                    id: buttons
-                    Layout.alignment: Qt.AlignHCenter
-                    FlatButton {
-                        icon.source: '../../icons/copy_bw.png'
-                        icon.color: 'transparent'
-                        text: 'Copy'
-                        onClicked: {
-                            if (request.isLightning && rootLayout.state == 'bolt11')
-                                AppController.textToClipboard(_bolt11)
-                            else if (rootLayout.state == 'bip21uri')
-                                AppController.textToClipboard(_bip21uri)
-                            else
-                                AppController.textToClipboard(_address)
-                        }
-                    }
-                    FlatButton {
-                        icon.source: '../../icons/share.png'
-                        text: 'Share'
-                        onClicked: {
-                            enabled = false
-                            if (request.isLightning && rootLayout.state == 'bolt11')
-                                AppController.doShare(_bolt11, qsTr('Payment Request'))
-                            else if (rootLayout.state == 'bip21uri')
-                                AppController.doShare(_bip21uri, qsTr('Payment Request'))
-                            else
-                                AppController.doShare(_address, qsTr('Onchain address'))
-
-                            enabled = true
-                        }
-                    }
-                    FlatButton {
-                        Layout.alignment: Qt.AlignHCenter
-                        icon.source: '../../icons/pen.png'
-                        text: qsTr('Edit')
-                        onClicked: receiveDetailsDialog.open()
-                    }
-                }
             }
 
+        }
+
+        ButtonContainer {
+            id: buttons
+            Layout.fillWidth: true
+
+            FlatButton {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 1
+
+                icon.source: '../../icons/copy_bw.png'
+                icon.color: 'transparent'
+                text: 'Copy'
+                onClicked: {
+                    if (request.isLightning && rootLayout.state == 'bolt11')
+                        AppController.textToClipboard(_bolt11)
+                    else if (rootLayout.state == 'bip21uri')
+                        AppController.textToClipboard(_bip21uri)
+                    else
+                        AppController.textToClipboard(_address)
+                    toaster.show(this, qsTr('Copied!'))
+                }
+            }
+            FlatButton {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 1
+
+                icon.source: '../../icons/share.png'
+                text: 'Share'
+                onClicked: {
+                    enabled = false
+                    if (request.isLightning && rootLayout.state == 'bolt11')
+                        AppController.doShare(_bolt11, qsTr('Payment Request'))
+                    else if (rootLayout.state == 'bip21uri')
+                        AppController.doShare(_bip21uri, qsTr('Payment Request'))
+                    else
+                        AppController.doShare(_address, qsTr('Onchain address'))
+
+                    enabled = true
+                }
+            }
         }
     }
 
@@ -310,62 +298,18 @@ ElDialog {
         }
     }
 
-    // make clicking the dialog background move the scope away from textedit fields
-    // so the keyboard goes away
-    MouseArea {
-        anchors.fill: parent
-        z: -1000
-        onClicked: parkFocus.focus = true
-        FocusScope { id: parkFocus }
-    }
-
-    Component {
-        id: requestdialog
-        RequestDialog {
-            onClosed: destroy()
-        }
-    }
-
-    function createRequest(ignoreGaplimit = false) {
-        var qamt = Config.unitsToSats(receiveDetailsDialog.amount)
-        if (qamt.satsInt > Daemon.currentWallet.lightningCanReceive.satsInt) {
-            console.log('Creating OnChain request')
-            Daemon.currentWallet.createRequest(qamt, receiveDetailsDialog.description, receiveDetailsDialog.expiry, false, ignoreGaplimit)
-        } else {
-            console.log('Creating Lightning request')
-            Daemon.currentWallet.createRequest(qamt, receiveDetailsDialog.description, receiveDetailsDialog.expiry, true)
-        }
-    }
-
-    function createDefaultRequest(ignoreGaplimit = false) {
-        console.log('Creating default request')
-        Daemon.currentWallet.createDefaultRequest(ignoreGaplimit)
-    }
-
-    Connections {
-        target: Daemon.currentWallet
-        function onRequestCreateSuccess(key) {
-            request.key = key
-        }
-        function onRequestCreateError(code, error) {
-            if (code == 'gaplimit') {
-                var dialog = app.messageDialog.createObject(app, {'text': error, 'yesno': true})
-                dialog.yesClicked.connect(function() {
-                    createDefaultRequest(true)
-                })
-            } else {
-                console.log(error)
-                var dialog = app.messageDialog.createObject(app, {'text': error})
-            }
-            dialog.open()
-        }
-    }
-
     RequestDetails {
         id: request
         wallet: Daemon.currentWallet
         onDetailsChanged: {
-            if (bolt11) {
+            var req_type = Config.preferredRequestType
+            if (bolt11 && req_type == 'bolt11') {
+                rootLayout.state = 'bolt11'
+            } else if (bip21 && req_type == 'bip21uri') {
+                rootLayout.state = 'bip21uri'
+            } else if (req_type == 'address') {
+                rootLayout.state = 'address'
+            } else if (bolt11) {
                 rootLayout.state = 'bolt11'
             } else if (bip21) {
                 rootLayout.state = 'bip21uri'
@@ -380,24 +324,12 @@ ElDialog {
         }
     }
 
-    ReceiveDetailsDialog {
-        id: receiveDetailsDialog
-
-        width: parent.width * 0.9
-        anchors.centerIn: parent
-
-        onAccepted: {
-            console.log('accepted')
-            Daemon.currentWallet.delete_request(request.key)
-            createRequest()
-        }
-        onRejected: {
-            console.log('rejected')
-        }
+    Toaster {
+        id: toaster
     }
 
     Component.onCompleted: {
-        createDefaultRequest()
+        request.key = dialog.key
     }
 
     // hack. delay qr rendering until dialog is shown
@@ -409,5 +341,4 @@ ElDialog {
             }
         }
     }
-
 }

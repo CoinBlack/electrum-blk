@@ -26,58 +26,60 @@
 import os
 import asyncio
 from collections import defaultdict
+from typing import TYPE_CHECKING, Optional
 
-from aiohttp import ClientResponse
-from aiohttp import web, client_exceptions
-from aiorpcx import timeout_after, TaskTimeout, ignore_after
-from aiorpcx import NetAddress
+from aiohttp import web
 
-
+from electrum_blk import util
 from electrum_blk.util import log_exceptions, ignore_exceptions
-from electrum_blk.crypto import sha256
 from electrum_blk.plugin import BasePlugin, hook
-from electrum_blk.logging import Logger
-
-
 from electrum_blk.logging import Logger
 from electrum_blk.util import EventListener, event_listener
 from electrum_blk.invoices import PR_PAID, PR_EXPIRED
 
+if TYPE_CHECKING:
+    from electrum_blk.simple_config import SimpleConfig
+    from electrum_blk.daemon import Daemon
+    from electrum_blk.wallet import Abstract_Wallet
 
 
 class PayServerPlugin(BasePlugin):
 
-    def __init__(self, parent, config, name):
+    def __init__(self, parent, config: 'SimpleConfig', name):
         BasePlugin.__init__(self, parent, config, name)
         self.config = config
         self.server = None
 
+    def view_url(self, key) -> Optional[str]:
+        if not self.server:
+            return None
+        return self.server.base_url + self.server.root + '/pay?id=' + key
+
     @hook
-    def daemon_wallet_loaded(self, daemon, wallet):
+    def daemon_wallet_loaded(self, daemon: 'Daemon', wallet: 'Abstract_Wallet'):
         # we use the first wallet loaded
         if self.server is not None:
             return
-        if self.config.get('offline'):
+        if self.config.NETWORK_OFFLINE:
             return
         self.server = PayServer(self.config, wallet)
-        asyncio.run_coroutine_threadsafe(daemon._run(jobs=[self.server.run()]), daemon.asyncio_loop)
+        asyncio.run_coroutine_threadsafe(daemon.taskgroup.spawn(self.server.run()), daemon.asyncio_loop)
 
     @hook
     def wallet_export_request(self, d, key):
-        d['view_url'] = self.server.base_url + self.server.root + '/pay?id=' + key
-
+        if view_url := self.view_url(key):
+            d['view_url'] = view_url
 
 class PayServer(Logger, EventListener):
 
     WWW_DIR = os.path.join(os.path.dirname(__file__), 'www')
 
-    def __init__(self, config, wallet):
+    def __init__(self, config: 'SimpleConfig', wallet: 'Abstract_Wallet'):
         Logger.__init__(self)
         assert self.has_www_dir(), self.WWW_DIR
         self.config = config
         self.wallet = wallet
-        url = self.config.get('payserver_address', 'localhost:8080')
-        self.addr = NetAddress.from_string(url)
+        self.port = self.config.PAYSERVER_PORT
         self.pending = defaultdict(asyncio.Event)
         self.register_callbacks()
 
@@ -88,15 +90,11 @@ class PayServer(Logger, EventListener):
 
     @property
     def base_url(self):
-        payserver = self.config.get('payserver_address', 'localhost:8080')
-        payserver = NetAddress.from_string(payserver)
-        use_ssl = bool(self.config.get('ssl_keyfile'))
-        protocol = 'https' if use_ssl else 'http'
-        return '%s://%s:%d'%(protocol, payserver.host, payserver.port)
+        return 'http://localhost:%d'%self.port
 
     @property
     def root(self):
-        return self.config.get('payserver_root', '/r')
+        return self.config.PAYSERVER_ROOT
 
     @event_listener
     async def on_event_request_status(self, wallet, key, status):
@@ -115,13 +113,13 @@ class PayServer(Logger, EventListener):
         # to minimise attack surface. note: "add_routes" call order matters (inner path goes first)
         app.add_routes([web.static(f"{self.root}/vendor", os.path.join(self.WWW_DIR, 'vendor'), follow_symlinks=True)])
         app.add_routes([web.static(self.root, self.WWW_DIR)])
-        if self.config.get('payserver_allow_create_invoice'):
+        if self.config.PAYSERVER_ALLOW_CREATE_INVOICE:
             app.add_routes([web.post('/api/create_invoice', self.create_request)])
         runner = web.AppRunner(app)
         await runner.setup()
-        site = web.TCPSite(runner, host=str(self.addr.host), port=self.addr.port, ssl_context=self.config.get_ssl_context())
+        site = web.TCPSite(runner, host='localhost', port=self.port)
         await site.start()
-        self.logger.info(f"now running and listening. addr={self.addr}")
+        self.logger.info(f"running and listening on port {self.port}")
 
     async def create_request(self, request):
         params = await request.post()
@@ -143,7 +141,7 @@ class PayServer(Logger, EventListener):
         return web.json_response(request)
 
     async def get_bip70_request(self, r):
-        from .paymentrequest import make_request
+        from electrum_blk.paymentrequest import make_request
         key = r.match_info['key']
         request = self.wallet.get_request(key)
         if not request:
@@ -170,7 +168,7 @@ class PayServer(Logger, EventListener):
             return ws
         while True:
             try:
-                await asyncio.wait_for(self.pending[key].wait(), 1)
+                await util.wait_for2(self.pending[key].wait(), 1)
                 break
             except asyncio.TimeoutError:
                 # send data on the websocket, to keep it alive

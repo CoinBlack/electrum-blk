@@ -24,13 +24,16 @@
 # SOFTWARE.
 from collections import defaultdict
 from math import floor, log10
-from typing import NamedTuple, List, Callable, Sequence, Union, Dict, Tuple, Mapping, Type
+from typing import NamedTuple, List, Callable, Sequence, Union, Dict, Tuple, Mapping, Type, TYPE_CHECKING
 from decimal import Decimal
 
 from .bitcoin import sha256, COIN, is_address
 from .transaction import Transaction, TxOutput, PartialTransaction, PartialTxInput, PartialTxOutput
 from .util import NotEnoughFunds
 from .logging import Logger
+
+if TYPE_CHECKING:
+    from .simple_config import SimpleConfig
 
 
 # A simple deterministic PRNG.  Used to deterministically shuffle a
@@ -218,6 +221,8 @@ class CoinChooserBase(Logger):
         amounts = [amount for amount in amounts if amount >= dust_threshold]
         change = [PartialTxOutput.from_address_and_value(addr, amount)
                   for addr, amount in zip(change_addrs, amounts)]
+        for c in change:
+            c.is_change = True
         return change
 
     def _construct_tx_from_selected_buckets(self, *, buckets: Sequence[Bucket],
@@ -410,7 +415,11 @@ class CoinChooserRandom(CoinChooserBase):
 
         for bkts_choose_from in bucket_sets:
             try:
-                def sfunds(bkts, *, bucket_value_sum):
+                def sfunds(
+                    bkts, *, bucket_value_sum,
+                    already_selected_buckets_value_sum=already_selected_buckets_value_sum,
+                    already_selected_buckets=already_selected_buckets,
+                ):
                     bucket_value_sum += already_selected_buckets_value_sum
                     return sufficient_funds(already_selected_buckets + bkts,
                                             bucket_value_sum=bucket_value_sum)
@@ -480,13 +489,13 @@ COIN_CHOOSERS = {
     'Privacy': CoinChooserPrivacy,
 }  # type: Mapping[str, Type[CoinChooserBase]]
 
-def get_name(config):
-    kind = config.get('coin_chooser')
+def get_name(config: 'SimpleConfig') -> str:
+    kind = config.WALLET_COIN_CHOOSER_POLICY
     if kind not in COIN_CHOOSERS:
-        kind = 'Privacy'
+        kind = config.cv.WALLET_COIN_CHOOSER_POLICY.get_default_value()
     return kind
 
-def get_coin_chooser(config) -> CoinChooserBase:
+def get_coin_chooser(config: 'SimpleConfig') -> CoinChooserBase:
     klass = COIN_CHOOSERS[get_name(config)]
     # note: we enable enable_output_value_rounding by default as
     #       - for sacrificing a few satoshis
@@ -494,6 +503,6 @@ def get_coin_chooser(config) -> CoinChooserBase:
     #       + it also helps the network as a whole as fees will become noisier
     #         (trying to counter the heuristic that "whole integer sat/byte feerates" are common)
     coinchooser = klass(
-        enable_output_value_rounding=config.get('coin_chooser_output_rounding', True),
+        enable_output_value_rounding=config.WALLET_COIN_CHOOSER_OUTPUT_ROUNDING,
     )
     return coinchooser

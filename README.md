@@ -19,7 +19,7 @@ but not everything. The following sections describe how to run from source, but 
 is a TL;DR:
 
 ```
-$ sudo apt-get install libsecp256k1-0
+$ sudo apt-get install libsecp256k1-dev
 $ python3 -m pip install --user ".[gui,crypto]"
 ```
 
@@ -34,7 +34,7 @@ For elliptic curve operations,
 [libsecp256k1](https://github.com/bitcoin-core/secp256k1)
 is a required dependency:
 ```
-$ sudo apt-get install libsecp256k1-0
+$ sudo apt-get install libsecp256k1-dev
 ```
 
 Alternatively, when running from a cloned repository, a script is provided to build
@@ -56,7 +56,7 @@ For fast blockchain verification,
 Install from your package manager (or from pip):
 ```
 $ sudo apt-get install python3-scrypt
-
+```
 
 If you would like hardware wallet support,
 [see this](https://github.com/spesmilo/electrum-docs/blob/master/hardware-linux.rst).
@@ -103,7 +103,7 @@ $ python3 -m pip install --user -e .
 
 Create translations (optional):
 ```
-$ sudo apt-get install python-requests gettext
+$ sudo apt-get install python3-requests gettext qttools5-dev-tools
 $ ./contrib/pull_locale
 ```
 

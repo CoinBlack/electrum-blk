@@ -10,9 +10,8 @@ from PyQt5.QtWidgets import (QLineEdit, QStyle, QStyleOptionFrame, QSizePolicy)
 from .util import char_width_in_lineedit, ColorScheme
 
 from electrum_blk.util import (format_satoshis_plain, decimal_point_to_base_unit_name,
-                           FEERATE_PRECISION, quantize_feerate)
+                           FEERATE_PRECISION, quantize_feerate, DECIMAL_POINT)
 from electrum_blk.bitcoin import COIN, TOTAL_COIN_SUPPLY_LIMIT_IN_BTC
-
 
 _NOT_GIVEN = object()  # sentinel value
 
@@ -22,9 +21,11 @@ class FreezableLineEdit(QLineEdit):
 
     def setFrozen(self, b):
         self.setReadOnly(b)
-        self.setFrame(not b)
+        self.setStyleSheet(ColorScheme.LIGHTBLUE.as_stylesheet(True) if b else '')
         self.frozen.emit()
 
+    def isFrozen(self):
+        return self.isReadOnly()
 
 class SizedFreezableLineEdit(FreezableLineEdit):
 
@@ -66,13 +67,13 @@ class AmountEdit(SizedFreezableLineEdit):
             return
         pos = self.cursorPosition()
         chars = '0123456789'
-        if not self.is_int: chars +='.'
+        if not self.is_int: chars += DECIMAL_POINT
         s = ''.join([i for i in text if i in chars])
         if not self.is_int:
-            if '.' in s:
-                p = s.find('.')
-                s = s.replace('.','')
-                s = s[:p] + '.' + s[p:p+self.max_precision()]
+            if DECIMAL_POINT in s:
+                p = s.find(DECIMAL_POINT)
+                s = s.replace(DECIMAL_POINT, '')
+                s = s[:p] + DECIMAL_POINT + s[p:p+self.max_precision()]
         if self.max_amount:
             if (amt := self._get_amount_from_text(s)) and amt >= self.max_amount:
                 s = self._get_text_from_amount(self.max_amount)
@@ -95,8 +96,9 @@ class AmountEdit(SizedFreezableLineEdit):
 
     def _get_amount_from_text(self, text: str) -> Union[None, Decimal, int]:
         try:
+            text = text.replace(DECIMAL_POINT, '.')
             return (int if self.is_int else Decimal)(text)
-        except:
+        except Exception:
             return None
 
     def get_amount(self) -> Union[None, Decimal, int]:
@@ -127,8 +129,9 @@ class BTCAmountEdit(AmountEdit):
     def _get_amount_from_text(self, text):
         # returns amt in satoshis
         try:
+            text = text.replace(DECIMAL_POINT, '.')
             x = Decimal(text)
-        except:
+        except Exception:
             return None
         # scale it to max allowed precision, make it an int
         power = pow(10, self.max_precision())
@@ -141,7 +144,9 @@ class BTCAmountEdit(AmountEdit):
         return Decimal(amount) if not self.is_int else int(amount)
 
     def _get_text_from_amount(self, amount_sat):
-        return format_satoshis_plain(amount_sat, decimal_point=self.decimal_point())
+        text = format_satoshis_plain(amount_sat, decimal_point=self.decimal_point())
+        text = text.replace('.', DECIMAL_POINT)
+        return text
 
     def setAmount(self, amount_sat):
         if amount_sat is None:
@@ -149,6 +154,7 @@ class BTCAmountEdit(AmountEdit):
         else:
             text = self._get_text_from_amount(amount_sat)
             self.setText(text)
+        self.setFrozen(self.isFrozen()) # re-apply styling, as it is nuked by setText (?)
         self.repaint()  # macOS hack for #6269
 
 

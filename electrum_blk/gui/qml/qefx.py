@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from PyQt5.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject
+from PyQt5.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject, QRegularExpression
 
 from electrum_blk.bitcoin import COIN
 from electrum_blk.exchange_rate import FxThread
@@ -11,17 +11,18 @@ from electrum_blk.simple_config import SimpleConfig
 from .qetypes import QEAmount
 from .util import QtEventListener, event_listener
 
+
 class QEFX(QObject, QtEventListener):
+    _logger = get_logger(__name__)
+
+    quotesUpdated = pyqtSignal()
+
     def __init__(self, fxthread: FxThread, config: SimpleConfig, parent=None):
         super().__init__(parent)
         self.fx = fxthread
         self.config = config
         self.register_callbacks()
         self.destroyed.connect(lambda: self.on_destroy())
-
-    _logger = get_logger(__name__)
-
-    quotesUpdated = pyqtSignal()
 
     def on_destroy(self):
         self.unregister_callbacks()
@@ -60,15 +61,26 @@ class QEFX(QObject, QtEventListener):
             self.fiatCurrencyChanged.emit()
             self.rateSourcesChanged.emit()
 
+    @pyqtProperty('QRegularExpression', notify=fiatCurrencyChanged)
+    def fiatAmountRegex(self):
+        decimals = self.fx.ccy_precision()
+        exp = '[0-9]*'
+        if decimals:
+            exp += '\\.'
+            exp += '[0-9]{0,%d}' % decimals
+        return QRegularExpression(exp)
+
     historicRatesChanged = pyqtSignal()
     @pyqtProperty(bool, notify=historicRatesChanged)
     def historicRates(self):
-        return self.fx.get_history_config()
+        if not self.fx.config.cv.FX_HISTORY_RATES.is_set():
+            self.fx.config.FX_HISTORY_RATES = True  # override default
+        return self.fx.config.FX_HISTORY_RATES
 
     @historicRates.setter
     def historicRates(self, checked):
         if checked != self.historicRates:
-            self.fx.set_history_config(checked)
+            self.fx.config.FX_HISTORY_RATES = bool(checked)
             self.historicRatesChanged.emit()
             self.rateSourcesChanged.emit()
 
@@ -83,7 +95,7 @@ class QEFX(QObject, QtEventListener):
             self.fx.set_exchange(source)
             self.rateSourceChanged.emit()
 
-    enabledUpdated = pyqtSignal() # curiously, enabledChanged is clashing, so name it enabledUpdated
+    enabledUpdated = pyqtSignal()  # curiously, enabledChanged is clashing, so name it enabledUpdated
     @pyqtProperty(bool, notify=enabledUpdated)
     def enabled(self):
         return self.fx.is_enabled()
@@ -101,14 +113,14 @@ class QEFX(QObject, QtEventListener):
     def fiatValue(self, satoshis, plain=True):
         rate = self.fx.exchange_rate()
         if isinstance(satoshis, QEAmount):
-            satoshis = satoshis.satsInt
+            satoshis = satoshis.msatsInt / 1000 if satoshis.msatsInt != 0 else satoshis.satsInt
         else:
             try:
                 sd = Decimal(satoshis)
-            except:
+            except Exception:
                 return ''
         if plain:
-            return self.fx.ccy_amount_str(self.fx.fiat_value(satoshis, rate), False)
+            return self.fx.ccy_amount_str(self.fx.fiat_value(satoshis, rate), add_thousands_sep=False)
         else:
             return self.fx.value_str(satoshis, rate)
 
@@ -118,22 +130,22 @@ class QEFX(QObject, QtEventListener):
     @pyqtSlot(QEAmount, str, bool, result=str)
     def fiatValueHistoric(self, satoshis, timestamp, plain=True):
         if isinstance(satoshis, QEAmount):
-            satoshis = satoshis.satsInt
+            satoshis = satoshis.msatsInt / 1000 if satoshis.msatsInt != 0 else satoshis.satsInt
         else:
             try:
                 sd = Decimal(satoshis)
-            except:
+            except Exception:
                 return ''
 
         try:
             td = Decimal(timestamp)
             if td == 0:
                 return ''
-        except:
+        except Exception:
             return ''
         dt = datetime.fromtimestamp(int(td))
         if plain:
-            return self.fx.ccy_amount_str(self.fx.historical_value(satoshis, dt), False)
+            return self.fx.ccy_amount_str(self.fx.historical_value(satoshis, dt), add_thousands_sep=False)
         else:
             return self.fx.historical_value_str(satoshis, dt)
 
@@ -143,7 +155,7 @@ class QEFX(QObject, QtEventListener):
         rate = self.fx.exchange_rate()
         try:
             fd = Decimal(fiat)
-        except:
+        except Exception:
             return ''
         v = fd / Decimal(rate) * COIN
         if v.is_nan():

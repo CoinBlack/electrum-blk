@@ -6,17 +6,25 @@ from electrum_blk.util import bfh, format_time
 from .qetypes import QEAmount
 from .qewallet import QEWallet
 
+
 class QELnPaymentDetails(QObject):
+    _logger = get_logger(__name__)
+
+    detailsChanged = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
 
-    _logger = get_logger(__name__)
-
-    _wallet = None
-    _key = None
-    _date = None
-
-    detailsChanged = pyqtSignal()
+        self._wallet = None
+        self._key = None
+        self._label = ''
+        self._date = None
+        self._timestamp = 0
+        self._fee = QEAmount()
+        self._amount = QEAmount()
+        self._status = ''
+        self._phash = ''
+        self._preimage = ''
 
     walletChanged = pyqtSignal()
     @pyqtProperty(QEWallet, notify=walletChanged)
@@ -37,7 +45,7 @@ class QELnPaymentDetails(QObject):
     @key.setter
     def key(self, key: str):
         if self._key != key:
-            self._logger.debug('key set -> %s' % key)
+            self._logger.debug(f'key set -> {key}')
             self._key = key
             self.keyChanged.emit()
             self.update()
@@ -48,7 +56,7 @@ class QELnPaymentDetails(QObject):
         return self._label
 
     @pyqtSlot(str)
-    def set_label(self, label: str):
+    def setLabel(self, label: str):
         if label != self._label:
             self._wallet.wallet.set_label(self._key, label)
             self._label = label
@@ -62,17 +70,17 @@ class QELnPaymentDetails(QObject):
     def date(self):
         return self._date
 
+    @pyqtProperty(int, notify=detailsChanged)
+    def timestamp(self):
+        return self._timestamp
+
     @pyqtProperty(str, notify=detailsChanged)
-    def payment_hash(self):
+    def paymentHash(self):
         return self._phash
 
     @pyqtProperty(str, notify=detailsChanged)
     def preimage(self):
         return self._preimage
-
-    @pyqtProperty(str, notify=detailsChanged)
-    def invoice(self):
-        return self._invoice
 
     @pyqtProperty(QEAmount, notify=detailsChanged)
     def amount(self):
@@ -91,20 +99,13 @@ class QELnPaymentDetails(QObject):
         tx = self._wallet.wallet.lnworker.get_lightning_history()[bfh(self._key)]
         self._logger.debug(str(tx))
 
-        self._fee = QEAmount() if not tx['fee_msat'] else QEAmount(amount_msat=tx['fee_msat'])
-        self._amount = QEAmount(amount_msat=tx['amount_msat'])
+        self._fee.msatsInt = 0 if not tx['fee_msat'] else int(tx['fee_msat'])
+        self._amount.msatsInt = int(tx['amount_msat'])
         self._label = tx['label']
         self._date = format_time(tx['timestamp'])
-        self._status = 'settled' # TODO: other states? get_lightning_history is deciding the filter for us :(
+        self._timestamp = tx['timestamp']
+        self._status = 'settled'  # TODO: other states? get_lightning_history is deciding the filter for us :(
         self._phash = tx['payment_hash']
         self._preimage = tx['preimage']
-
-        invoice = (self._wallet.wallet.get_invoice(self._key)
-                   or self._wallet.wallet.get_request(self._key))
-        self._logger.debug(str(invoice))
-        if invoice:
-            self._invoice = invoice.lightning_invoice or ''
-        else:
-            self._invoice = ''
 
         self.detailsChanged.emit()

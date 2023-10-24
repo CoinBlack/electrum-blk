@@ -1,28 +1,27 @@
-from PyQt5.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject
+from typing import TYPE_CHECKING
+
+from PyQt5.QtCore import pyqtProperty, pyqtSignal, QObject
 
 from electrum_blk.logging import get_logger
 from electrum_blk import constants
 from electrum_blk.interface import ServerAddr
+from electrum_blk.simple_config import FEERATE_DEFAULT_RELAY
 
 from .util import QtEventListener, event_listener
+from .qeserverlistmodel import QEServerListModel
+
+if TYPE_CHECKING:
+    from .qeconfig import QEConfig
+    from electrum_blk.network import Network
+
 
 class QENetwork(QObject, QtEventListener):
-    def __init__(self, network, qeconfig, parent=None):
-        super().__init__(parent)
-        self.network = network
-        self._qeconfig = qeconfig
-        self._height = network.get_local_height() # init here, update event can take a while
-        self.register_callbacks()
-
-        self._qeconfig.useGossipChanged.connect(self.on_gossip_setting_changed)
-
-
     _logger = get_logger(__name__)
 
     networkUpdated = pyqtSignal()
     blockchainUpdated = pyqtSignal()
-    heightChanged = pyqtSignal([int], arguments=['height'])
-    defaultServerChanged = pyqtSignal()
+    heightChanged = pyqtSignal([int], arguments=['height'])  # local blockchain height
+    serverHeightChanged = pyqtSignal([int], arguments=['height'])
     proxySet = pyqtSignal()
     proxyChanged = pyqtSignal()
     statusChanged = pyqtSignal()
@@ -35,7 +34,10 @@ class QENetwork(QObject, QtEventListener):
     dataChanged = pyqtSignal()
 
     _height = 0
-    _status = ""
+    _server = ""
+    _is_connected = False
+    _server_status = ""
+    _network_status = ""
     _chaintips = 1
     _islagging = False
     _fee_histogram = []
@@ -45,9 +47,26 @@ class QENetwork(QObject, QtEventListener):
     _gossipDbChannels = 0
     _gossipDbPolicies = 0
 
+    def __init__(self, network: 'Network', qeconfig: 'QEConfig', parent=None):
+        super().__init__(parent)
+        assert network, "--offline is not yet implemented for this GUI"  # TODO
+        self.network = network
+        self._qeconfig = qeconfig
+        self._serverListModel = None
+        self._height = network.get_local_height()  # init here, update event can take a while
+        self._server_height = network.get_server_height()  # init here, update event can take a while
+        self.register_callbacks()
+        self.destroyed.connect(lambda: self.on_destroy())
+
+        self._qeconfig.useGossipChanged.connect(self.on_gossip_setting_changed)
+
+    def on_destroy(self):
+        self.unregister_callbacks()
+
     @event_listener
     def on_event_network_updated(self, *args):
         self.networkUpdated.emit()
+        self._update_status()
 
     @event_listener
     def on_event_blockchain_updated(self):
@@ -59,19 +78,38 @@ class QENetwork(QObject, QtEventListener):
 
     @event_listener
     def on_event_default_server_changed(self, *args):
-        self.defaultServerChanged.emit()
+        self._update_status()
 
     @event_listener
     def on_event_proxy_set(self, *args):
         self._logger.debug('proxy set')
         self.proxySet.emit()
+        self.proxyTorChanged.emit()
 
-    @event_listener
-    def on_event_status(self, *args):
-        self._logger.debug('status updated: %s' % self.network.connection_status)
-        if self._status != self.network.connection_status:
-            self._status = self.network.connection_status
+    def _update_status(self):
+        server = str(self.network.get_parameters().server)
+        if self._server != server:
+            self._server = server
             self.statusChanged.emit()
+        network_status = self.network.get_status()
+        if self._network_status != network_status:
+            self._logger.debug('network_status updated: %s' % network_status)
+            self._network_status = network_status
+            self.statusChanged.emit()
+        is_connected = self.network.is_connected()
+        if self._is_connected != is_connected:
+            self._is_connected = is_connected
+            self.statusChanged.emit()
+        server_status = self.network.get_connection_status_for_GUI()
+        if self._server_status != server_status:
+            self._logger.debug('server_status updated: %s' % server_status)
+            self._server_status = server_status
+            self.statusChanged.emit()
+        server_height = self.network.get_server_height()
+        if self._server_height != server_height:
+            self._logger.debug(f'server_height updated: {server_height}')
+            self._server_height = server_height
+            self.serverHeightChanged.emit(server_height)
         chains = len(self.network.get_blockchains())
         if chains != self._chaintips:
             self._logger.debug('chain tips # changed: %d', chains)
@@ -84,9 +122,39 @@ class QENetwork(QObject, QtEventListener):
             self.isLaggingChanged.emit()
 
     @event_listener
+    def on_event_status(self, *args):
+        self._update_status()
+
+    @event_listener
     def on_event_fee_histogram(self, histogram):
-        self._logger.debug('fee histogram updated')
-        self._fee_histogram = histogram if histogram else []
+        self._logger.debug(f'fee histogram updated')
+        self.update_histogram(histogram)
+
+    def update_histogram(self, histogram):
+        if not histogram:
+            histogram = [[FEERATE_DEFAULT_RELAY/1000,1]]
+        # cap the histogram to a limited number of megabytes
+        bytes_limit=10*1000*1000
+        bytes_current = 0
+        capped_histogram = []
+        for item in sorted(histogram, key=lambda x: x[0], reverse=True):
+            if bytes_current >= bytes_limit:
+                break
+            slot = min(item[1], bytes_limit-bytes_current)
+            bytes_current += slot
+            capped_histogram.append([
+                max(FEERATE_DEFAULT_RELAY/1000, item[0]),  # clamped to [FEERATE_DEFAULT_RELAY/1000,inf[
+                slot,  # width of bucket
+                bytes_current,  # cumulative depth at far end of bucket
+            ])
+
+        # add clamping attributes for the GUI
+        self._fee_histogram = {
+            'histogram': capped_histogram,
+            'total': bytes_current,
+            'min_fee': capped_histogram[-1][0] if capped_histogram else FEERATE_DEFAULT_RELAY/1000,
+            'max_fee': capped_histogram[0][0] if capped_histogram else FEERATE_DEFAULT_RELAY/1000
+        }
         self.feeHistogramUpdated.emit()
 
     @event_listener
@@ -105,12 +173,11 @@ class QENetwork(QObject, QtEventListener):
 
     @event_listener
     def on_event_unknown_channels(self, unknown):
-        if unknown == 0 and self._gossipUnknownChannels == 0: # TODO: backend sends a lot of unknown=0 events
+        if unknown == 0 and self._gossipUnknownChannels == 0:  # TODO: backend sends a lot of unknown=0 events
             return
         self._logger.debug(f'unknown channels {unknown}')
         self._gossipUnknownChannels = unknown
         self.gossipUpdated.emit()
-        #self.lightning_gossip_num_queries = unknown
 
     def on_gossip_setting_changed(self):
         if not self.network:
@@ -121,27 +188,47 @@ class QENetwork(QObject, QtEventListener):
             self.network.run_from_another_thread(self.network.stop_gossip())
 
     @pyqtProperty(int, notify=heightChanged)
-    def height(self):
+    def height(self):  # local blockchain height
         return self._height
 
-    @pyqtProperty(str, notify=defaultServerChanged)
+    @pyqtProperty(int, notify=serverHeightChanged)
+    def serverHeight(self):
+        return self._server_height
+
+    @pyqtProperty(str, notify=statusChanged)
     def server(self):
-        return str(self.network.get_parameters().server)
+        return self._server
 
     @server.setter
-    def server(self, server):
+    def server(self, server: str):
         net_params = self.network.get_parameters()
         try:
             server = ServerAddr.from_str_with_inference(server)
-            if not server: raise Exception("failed to parse")
+            if not server:
+                raise Exception('failed to parse')
         except Exception:
             return
-        net_params = net_params._replace(server=server)
+        net_params = net_params._replace(server=server, auto_connect=self._qeconfig.autoConnect)
         self.network.run_from_another_thread(self.network.set_parameters(net_params))
 
     @pyqtProperty(str, notify=statusChanged)
+    def serverWithStatus(self):
+        server = self._server
+        if not self.network.is_connected():  # connecting or disconnected
+            return f'{server} (connecting...)'
+        return server
+
+    @pyqtProperty(str, notify=statusChanged)
     def status(self):
-        return self._status
+        return self._network_status
+
+    @pyqtProperty(str, notify=statusChanged)
+    def serverStatus(self):
+        return self.network.get_connection_status_for_GUI()
+
+    @pyqtProperty(bool, notify=statusChanged)
+    def isConnected(self):
+        return self._is_connected
 
     @pyqtProperty(int, notify=chaintipsChanged)
     def chaintips(self):
@@ -157,7 +244,7 @@ class QENetwork(QObject, QtEventListener):
 
     @pyqtProperty(str, notify=dataChanged)
     def networkName(self):
-        return constants.net.__name__.replace('Bitcoin','')
+        return constants.net.__name__.replace('Bitcoin', '')
 
     @pyqtProperty('QVariantMap', notify=proxyChanged)
     def proxy(self):
@@ -173,6 +260,11 @@ class QENetwork(QObject, QtEventListener):
         self.network.run_from_another_thread(self.network.set_parameters(net_params))
         self.proxyChanged.emit()
 
+    proxyTorChanged = pyqtSignal()
+    @pyqtProperty(bool, notify=proxyTorChanged)
+    def isProxyTor(self):
+        return self.network.tor_proxy
+
     @pyqtProperty('QVariant', notify=feeHistogramUpdated)
     def feeHistogram(self):
         return self._fee_histogram
@@ -183,6 +275,13 @@ class QENetwork(QObject, QtEventListener):
             'peers': self._gossipPeers,
             'unknown_channels': self._gossipUnknownChannels,
             'db_nodes': self._gossipDbNodes,
-            'db_channels': self._gossipDbChannels ,
+            'db_channels': self._gossipDbChannels,
             'db_policies': self._gossipDbPolicies
         }
+
+    serverListModelChanged = pyqtSignal()
+    @pyqtProperty(QEServerListModel, notify=serverListModelChanged)
+    def serverListModel(self):
+        if self._serverListModel is None:
+            self._serverListModel = QEServerListModel(self.network)
+        return self._serverListModel

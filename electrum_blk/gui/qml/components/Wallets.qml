@@ -13,13 +13,15 @@ Pane {
 
     padding: 0
 
+    property string title: qsTr('Wallets')
+
     function createWallet() {
-        var dialog = app.newWalletWizard.createObject(rootItem)
+        var dialog = app.newWalletWizard.createObject(app)
         dialog.open()
         dialog.walletCreated.connect(function() {
             Daemon.availableWallets.reload()
             // and load the new wallet
-            Daemon.load_wallet(dialog.path, dialog.wizard_data['password'])
+            Daemon.loadWallet(dialog.path, dialog.wizard_data['password'])
         })
     }
 
@@ -33,16 +35,8 @@ Pane {
             Layout.preferredWidth: parent.width
             Layout.margins: constants.paddingLarge
 
-            Label {
+            Heading {
                 text: qsTr('Wallets')
-                font.pixelSize: constants.fontSizeLarge
-                color: Material.accentColor
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                height: 1
-                color: Material.accentColor
             }
 
             Frame {
@@ -53,7 +47,7 @@ Pane {
                 horizontalPadding: 0
                 background: PaneInsetBackground {}
 
-                ListView {
+                ElListView {
                     id: listview
                     anchors.fill: parent
                     clip: true
@@ -64,7 +58,12 @@ Pane {
                         height: row.height
 
                         onClicked: {
-                            Daemon.load_wallet(model.path)
+                            if (!Daemon.currentWallet || Daemon.currentWallet.name != model.name) {
+                                if (!Daemon.loading) // wallet load in progress
+                                    Daemon.loadWallet(model.path)
+                            } else {
+                                app.stack.pop()
+                            }
                         }
 
                         RowLayout {
@@ -84,10 +83,11 @@ Pane {
                             }
 
                             Label {
+                                Layout.fillWidth: true
                                 font.pixelSize: constants.fontSizeLarge
                                 text: model.name
+                                elide: Label.ElideRight
                                 color: model.active ? Material.foreground : Qt.darker(Material.foreground, 1.20)
-                                Layout.fillWidth: true
                             }
 
                             Tag {
@@ -120,7 +120,8 @@ Pane {
 
         FlatButton {
             Layout.fillWidth: true
-            text: 'Create Wallet'
+            text: qsTr('Create Wallet')
+            icon.source: '../../icons/add.png'
             onClicked: rootItem.createWallet()
         }
     }
@@ -128,8 +129,8 @@ Pane {
     Connections {
         target: Daemon
         function onWalletLoaded() {
-            Daemon.availableWallets.reload()
-            app.stack.pop()
+            if (app.stack.currentItem.objectName == 'Wallets')
+                app.stack.pop()
         }
     }
 

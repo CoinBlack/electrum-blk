@@ -11,10 +11,10 @@ import time
 
 from electrum_blk.logging import get_logger, configure_logging
 from electrum_blk.simple_config import SimpleConfig
-from electrum_blk import constants
+from electrum_blk import constants, util
 from electrum_blk.daemon import Daemon
 from electrum_blk.wallet import create_new_wallet
-from electrum_blk.util import create_and_start_event_loop, log_exceptions, bh2u, bfh
+from electrum_blk.util import create_and_start_event_loop, log_exceptions, bfh
 from electrum_blk.lnutil import LnFeatures
 
 logger = get_logger(__name__)
@@ -51,7 +51,7 @@ if not os.path.exists(wallet_path):
     create_new_wallet(path=wallet_path, config=config)
 
 # open wallet
-wallet = daemon.load_wallet(wallet_path, password=None, manual_upgrades=False)
+wallet = daemon.load_wallet(wallet_path, password=None, upgrade=True)
 wallet.start_network(network)
 
 
@@ -77,14 +77,14 @@ async def worker(work_queue: asyncio.Queue, results_queue: asyncio.Queue, flag):
 
         # handle ipv4/ipv6
         if ':' in addr[0]:
-            connect_str = f"{bh2u(work['pk'])}@[{addr.host}]:{addr.port}"
+            connect_str = f"{work['pk'].hex()}@[{addr.host}]:{addr.port}"
         else:
-            connect_str = f"{bh2u(work['pk'])}@{addr.host}:{addr.port}"
+            connect_str = f"{work['pk'].hex()}@{addr.host}:{addr.port}"
 
         print(f"worker connecting to {connect_str}")
         try:
             peer = await wallet.lnworker.add_peer(connect_str)
-            res = await asyncio.wait_for(peer.initialized, TIMEOUT)
+            res = await util.wait_for2(peer.initialized, TIMEOUT)
             if res:
                 if peer.features & flag == work['features'] & flag:
                     await results_queue.put(True)

@@ -12,10 +12,7 @@ Pane {
     width: parent.width
     height: parent.height
 
-    // property string title: qsTr("Lightning payment details")
-
     property string key
-
     property alias label: lnpaymentdetails.label
 
     signal detailsChanged
@@ -31,18 +28,9 @@ Pane {
             width: parent.width
             columns: 2
 
-            Label {
+            Heading {
                 Layout.columnSpan: 2
                 text: qsTr('Lightning payment details')
-                font.pixelSize: constants.fontSizeLarge
-                color: Material.accentColor
-            }
-
-            Rectangle {
-                Layout.columnSpan: 2
-                Layout.fillWidth: true
-                height: 1
-                color: Material.accentColor
             }
 
             Label {
@@ -70,14 +58,9 @@ Pane {
                 color: Material.accentColor
             }
 
-            RowLayout {
-                Label {
-                    text: Config.formatMilliSats(lnpaymentdetails.amount)
-                }
-                Label {
-                    text: Config.baseUnit
-                    color: Material.accentColor
-                }
+            FormattedAmount {
+                amount: lnpaymentdetails.amount
+                timestamp: lnpaymentdetails.timestamp
             }
 
             Label {
@@ -86,20 +69,16 @@ Pane {
                 color: Material.accentColor
             }
 
-            RowLayout {
+            FormattedAmount {
                 visible: lnpaymentdetails.amount.msatsInt < 0
-                Label {
-                    text: Config.formatMilliSats(lnpaymentdetails.fee)
-                }
-                Label {
-                    text: Config.baseUnit
-                    color: Material.accentColor
-                }
+                amount: lnpaymentdetails.fee
+                timestamp: lnpaymentdetails.timestamp
             }
 
             Label {
-                text: qsTr('Label')
                 Layout.columnSpan: 2
+                Layout.topMargin: constants.paddingSmall
+                text: qsTr('Label')
                 color: Material.accentColor
             }
 
@@ -110,8 +89,6 @@ Pane {
 
                 Layout.columnSpan: 2
                 Layout.fillWidth: true
-                padding: 0
-                leftPadding: constants.paddingSmall
 
                 RowLayout {
                     width: parent.width
@@ -145,7 +122,7 @@ Pane {
                         icon.color: 'transparent'
                         onClicked: {
                             labelContent.editmode = false
-                            lnpaymentdetails.set_label(labelEdit.text)
+                            lnpaymentdetails.setLabel(labelEdit.text)
                         }
                     }
                     ToolButton {
@@ -157,22 +134,26 @@ Pane {
                 }
             }
 
-            Label {
-                text: qsTr('Payment hash')
+            Heading {
                 Layout.columnSpan: 2
+                text: qsTr('Technical properties')
+            }
+
+            Label {
+                Layout.columnSpan: 2
+                Layout.topMargin: constants.paddingSmall
+                text: qsTr('Payment hash')
                 color: Material.accentColor
             }
 
             TextHighlightPane {
                 Layout.columnSpan: 2
                 Layout.fillWidth: true
-                padding: 0
-                leftPadding: constants.paddingSmall
 
                 RowLayout {
                     width: parent.width
                     Label {
-                        text: lnpaymentdetails.payment_hash
+                        text: lnpaymentdetails.paymentHash
                         font.pixelSize: constants.fontSizeLarge
                         font.family: FixedFont
                         Layout.fillWidth: true
@@ -183,7 +164,7 @@ Pane {
                         icon.color: 'transparent'
                         onClicked: {
                             var dialog = app.genericShareDialog.createObject(root,
-                                { title: qsTr('Payment hash'), text: lnpaymentdetails.payment_hash }
+                                { title: qsTr('Payment hash'), text: lnpaymentdetails.paymentHash }
                             )
                             dialog.open()
                         }
@@ -192,16 +173,15 @@ Pane {
             }
 
             Label {
-                text: qsTr('Preimage')
                 Layout.columnSpan: 2
+                Layout.topMargin: constants.paddingSmall
+                text: qsTr('Preimage')
                 color: Material.accentColor
             }
 
             TextHighlightPane {
                 Layout.columnSpan: 2
                 Layout.fillWidth: true
-                padding: 0
-                leftPadding: constants.paddingSmall
 
                 RowLayout {
                     width: parent.width
@@ -224,44 +204,6 @@ Pane {
                     }
                 }
             }
-
-            Label {
-                text: qsTr('Lightning invoice')
-                Layout.columnSpan: 2
-                color: Material.accentColor
-            }
-
-            TextHighlightPane {
-                Layout.columnSpan: 2
-                Layout.fillWidth: true
-                padding: 0
-                leftPadding: constants.paddingSmall
-
-                RowLayout {
-                    width: parent.width
-                    Label {
-                        Layout.fillWidth: true
-                        text: lnpaymentdetails.invoice
-                        font.pixelSize: constants.fontSizeLarge
-                        font.family: FixedFont
-                        wrapMode: Text.Wrap
-                        maximumLineCount: 3
-                        elide: Text.ElideRight
-                    }
-                    ToolButton {
-                        icon.source: '../../icons/share.png'
-                        icon.color: enabled ? 'transparent' : constants.mutedForeground
-                        enabled: lnpaymentdetails.invoice != ''
-                        onClicked: {
-                            var dialog = app.genericShareDialog.createObject(root,
-                                { title: qsTr('Lightning Invoice'), text: lnpaymentdetails.invoice }
-                            )
-                            dialog.open()
-                        }
-                    }
-                }
-            }
-
 
         }
     }

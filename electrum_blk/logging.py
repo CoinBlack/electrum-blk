@@ -36,17 +36,21 @@ file_formatter = LogFormatterForFiles(fmt="%(asctime)22s | %(levelname)8s | %(na
 
 class LogFormatterForConsole(logging.Formatter):
 
+    def formatTime(self, record, datefmt=None):
+        t = record.relativeCreated / 1000
+        return f"{t:6.2f}"
+
     def format(self, record):
+        record = copy.copy(record)  # avoid mutating arg
         record = _shorten_name_of_logrecord(record)
+        if shortcut := getattr(record, 'custom_shortcut', None):
+            record.name = f"{shortcut}/{record.name}"
         text = super().format(record)
-        shortcut = getattr(record, 'custom_shortcut', None)
-        if shortcut:
-            text = text[:1] + f"/{shortcut}" + text[1:]
         return text
 
 
 # try to make console log lines short... no timestamp, short levelname, no "electrum."
-console_formatter = LogFormatterForConsole(fmt="%(levelname).1s | %(name)s | %(message)s")
+console_formatter = LogFormatterForConsole(fmt="%(asctime)s | %(levelname).1s | %(name)s | %(message)s")
 
 
 def _shorten_name_of_logrecord(record: logging.LogRecord) -> logging.LogRecord:
@@ -113,9 +117,9 @@ class TruncatingMemoryHandler(logging.handlers.MemoryHandler):
         super().close()
 
 
-def _delete_old_logs(path, keep=10):
+def _delete_old_logs(path, *, num_files_keep: int):
     files = sorted(list(pathlib.Path(path).glob("electrum_blk_log_*.log")), reverse=True)
-    for f in files[keep:]:
+    for f in files[num_files_keep:]:
         try:
             os.remove(str(f))
         except OSError as e:
@@ -123,12 +127,12 @@ def _delete_old_logs(path, keep=10):
 
 
 _logfile_path = None
-def _configure_file_logging(log_directory: pathlib.Path):
+def _configure_file_logging(log_directory: pathlib.Path, *, num_files_keep: int):
     global _logfile_path
     assert _logfile_path is None, 'file logging already initialized'
     log_directory.mkdir(exist_ok=True)
 
-    _delete_old_logs(log_directory)
+    _delete_old_logs(log_directory, num_files_keep=num_files_keep)
 
     timestamp = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
     PID = os.getpid()
@@ -314,16 +318,17 @@ def configure_logging(config: 'SimpleConfig', *, log_to_file: Optional[bool] = N
 
     verbosity = config.get('verbosity')
     verbosity_shortcuts = config.get('verbosity_shortcuts')
-    if not verbosity and config.get('gui_enable_debug_logs'):
+    if not verbosity and config.GUI_ENABLE_DEBUG_LOGS:
         verbosity = '*'
     _configure_stderr_logging(verbosity=verbosity, verbosity_shortcuts=verbosity_shortcuts)
 
     if log_to_file is None:
-        log_to_file = config.get('log_to_file', False)
+        log_to_file = config.WRITE_LOGS_TO_DISK
         log_to_file |= is_android_debug_apk()
     if log_to_file:
         log_directory = pathlib.Path(config.path) / "logs"
-        _configure_file_logging(log_directory)
+        num_files_keep = config.LOGS_NUM_FILES_KEEP
+        _configure_file_logging(log_directory, num_files_keep=num_files_keep)
 
     # clean up and delete in-memory logs
     global _inmemory_startup_logs
@@ -335,9 +340,6 @@ def configure_logging(config: 'SimpleConfig', *, log_to_file: Optional[bool] = N
         _inmemory_startup_logs.close()
         root_logger.removeHandler(_inmemory_startup_logs)
         _inmemory_startup_logs = None
-
-    # if using kivy, avoid kivy's own logs to get printed twice
-    logging.getLogger('kivy').propagate = False
 
     from . import ELECTRUM_VERSION
     from .constants import GIT_REPO_URL
@@ -353,9 +355,6 @@ def get_logfile_path() -> Optional[pathlib.Path]:
 
 def describe_os_version() -> str:
     if 'ANDROID_DATA' in os.environ:
-        #from kivy import utils
-        #if utils.platform != "android":
-        #    return utils.platform
         import jnius
         bv = jnius.autoclass('android.os.Build$VERSION')
         b = jnius.autoclass('android.os.Build')

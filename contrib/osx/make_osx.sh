@@ -3,8 +3,8 @@
 set -e
 
 # Parameterize
-PYTHON_VERSION=3.9.13
-PY_VER_MAJOR="3.9"  # as it appears in fs paths
+PYTHON_VERSION=3.10.11
+PY_VER_MAJOR="3.10"  # as it appears in fs paths
 PACKAGE=Electrum-BLK
 GIT_REPO=https://github.com/CoinBlack/electrum-blk
 
@@ -24,6 +24,8 @@ export DLL_TARGET_DIR="$CACHEDIR/dlls"
 mkdir -p "$CACHEDIR" "$DLL_TARGET_DIR"
 
 cd "$PROJECT_ROOT"
+
+git -C "$PROJECT_ROOT" rev-parse 2>/dev/null || fail "Building outside a git clone is not supported."
 
 
 which brew > /dev/null 2>&1 || fail "Please install brew from https://brew.sh/ to continue"
@@ -69,11 +71,11 @@ function DoCodeSignMaybe { # ARGS: infoName fileOrDirName
 }
 
 info "Installing Python $PYTHON_VERSION"
-PKG_FILE="python-${PYTHON_VERSION}-macosx10.9.pkg"
+PKG_FILE="python-${PYTHON_VERSION}-macos11.pkg"
 if [ ! -f "$CACHEDIR/$PKG_FILE" ]; then
     curl -o "$CACHEDIR/$PKG_FILE" "https://www.python.org/ftp/python/${PYTHON_VERSION}/$PKG_FILE"
 fi
-echo "167c4e2d9f172a617ba6f3b08783cf376dec429386378066eb2f865c98030dd7  $CACHEDIR/$PKG_FILE" | shasum -a 256 -c \
+echo "767ed35ad688d28ea4494081ae96408a0318d0d5bb9ca0139d74d6247b231cfc  $CACHEDIR/$PKG_FILE" | shasum -a 256 -c \
     || fail "python pkg checksum mismatched"
 sudo installer -pkg "$CACHEDIR/$PKG_FILE" -target / \
     || fail "failed to install python"
@@ -120,11 +122,8 @@ brew install autoconf automake libtool gettext coreutils pkgconfig
 
 info "Building PyInstaller."
 PYINSTALLER_REPO="https://github.com/pyinstaller/pyinstaller.git"
-PYINSTALLER_COMMIT="fbf7948be85177dd44b41217e9f039e1d176de6b"
-# ^ tag "5.3"
-# TODO test newer versions of pyinstaller for build-reproducibility.
-#      we are using this version for now due to change in code-signing behaviour
-#      (https://github.com/pyinstaller/pyinstaller/pull/5581)
+PYINSTALLER_COMMIT="413cce49ff28d87fad4472f4953489226ec90c84"
+# ^ tag "v5.11.0"
 (
     if [ -f "$CACHEDIR/pyinstaller/PyInstaller/bootloader/Darwin-64bit/runw" ]; then
         info "pyinstaller already built, skipping"
@@ -178,13 +177,13 @@ info "generating locale"
 ) || fail "failed generating locale"
 
 
-if [ ! -f "$DLL_TARGET_DIR/libsecp256k1.0.dylib" ]; then
+if [ ! -f "$DLL_TARGET_DIR/libsecp256k1.2.dylib" ]; then
     info "Building libsecp256k1 dylib..."
     "$CONTRIB"/make_libsecp256k1.sh || fail "Could not build libsecp"
 else
     info "Skipping libsecp256k1 build: reusing already built dylib."
 fi
-cp -f "$DLL_TARGET_DIR/libsecp256k1.0.dylib" "$PROJECT_ROOT/electrum_blk/" || fail "Could not copy libsecp256k1 dylib"
+cp -f "$DLL_TARGET_DIR"/libsecp256k1.*.dylib "$PROJECT_ROOT/electrum_blk/" || fail "Could not copy libsecp256k1 dylib"
 
 if [ ! -f "$DLL_TARGET_DIR/libzbar.0.dylib" ]; then
     info "Building ZBar dylib..."

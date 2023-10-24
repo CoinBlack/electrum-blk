@@ -1,4 +1,5 @@
 import asyncio
+import enum
 import os.path
 import time
 import sys
@@ -10,11 +11,12 @@ import webbrowser
 from decimal import Decimal
 from functools import partial, lru_cache, wraps
 from typing import (NamedTuple, Callable, Optional, TYPE_CHECKING, Union, List, Dict, Any,
-                    Sequence, Iterable, Tuple)
+                    Sequence, Iterable, Tuple, Type)
 
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtGui import (QFont, QColor, QCursor, QPixmap, QStandardItem, QImage,
-                         QPalette, QIcon, QFontMetrics, QShowEvent, QPainter, QHelpEvent)
+                         QPalette, QIcon, QFontMetrics, QShowEvent, QPainter, QHelpEvent, QMouseEvent,
+                         QContextMenuEvent)
 from PyQt5.QtCore import (Qt, QPersistentModelIndex, QModelIndex, pyqtSignal,
                           QCoreApplication, QItemSelectionModel, QThread,
                           QSortFilterProxyModel, QSize, QLocale, QAbstractItemModel,
@@ -29,15 +31,17 @@ from PyQt5.QtWidgets import (QPushButton, QLabel, QMessageBox, QHBoxLayout,
 
 from electrum_blk.i18n import _, languages
 from electrum_blk.util import FileImportFailed, FileExportFailed, make_aiohttp_session, resource_path
-from electrum_blk.util import EventListener, event_listener
-from electrum_blk.invoices import PR_UNPAID, PR_PAID, PR_EXPIRED, PR_INFLIGHT, PR_UNKNOWN, PR_FAILED, PR_ROUTING, PR_UNCONFIRMED
+from electrum_blk.util import EventListener, event_listener, get_logger
+from electrum_blk.invoices import PR_UNPAID, PR_PAID, PR_EXPIRED, PR_INFLIGHT, PR_UNKNOWN, PR_FAILED, PR_ROUTING, PR_UNCONFIRMED, PR_BROADCASTING, PR_BROADCAST
 from electrum_blk.logging import Logger
 from electrum_blk.qrreader import MissingQrDetectionLib
 
 if TYPE_CHECKING:
     from .main_window import ElectrumWindow
-    from .installwizard import InstallWizard
+    from .paytoedit import PayToEdit
+
     from electrum_blk.simple_config import SimpleConfig
+    from electrum_blk.simple_config import ConfigVarWithConfig
 
 
 if platform.system() == 'Windows':
@@ -47,6 +51,8 @@ elif platform.system() == 'Darwin':
 else:
     MONOSPACE_FONT = 'monospace'
 
+
+_logger = get_logger(__name__)
 
 dialogs = []
 
@@ -59,6 +65,8 @@ pr_icons = {
     PR_FAILED:"warning.png",
     PR_ROUTING:"unconfirmed.png",
     PR_UNCONFIRMED:"unconfirmed.png",
+    PR_BROADCASTING:"unconfirmed.png",
+    PR_BROADCAST:"unconfirmed.png",
 }
 
 
@@ -145,6 +153,10 @@ class HelpLabel(HelpMixin, QLabel):
         HelpMixin.__init__(self, help_text)
         self.app = QCoreApplication.instance()
         self.font = self.font()
+
+    @classmethod
+    def from_configvar(cls, cv: 'ConfigVarWithConfig') -> 'HelpLabel':
+        return HelpLabel(cv.get_short_desc() + ':', cv.get_long_desc())
 
     def mouseReleaseEvent(self, x):
         self.show_help()
@@ -314,7 +326,7 @@ class WindowModalDialog(QDialog, MessageBoxMixin):
 class WaitingDialog(WindowModalDialog):
     '''Shows a please wait dialog whilst running a task.  It is not
     necessary to maintain a reference to this dialog.'''
-    def __init__(self, parent: QWidget, message: str, task, on_success=None, on_error=None):
+    def __init__(self, parent: QWidget, message: str, task, on_success=None, on_error=None, on_cancel=None):
         assert parent
         if isinstance(parent, MessageBoxMixin):
             parent = parent.top_level_window()
@@ -322,6 +334,10 @@ class WaitingDialog(WindowModalDialog):
         self.message_label = QLabel(message)
         vbox = QVBoxLayout(self)
         vbox.addWidget(self.message_label)
+        if on_cancel:
+            self.cancel_button = CancelButton(self)
+            self.cancel_button.clicked.connect(on_cancel)
+            vbox.addLayout(Buttons(self.cancel_button))
         self.accepted.connect(self.on_accepted)
         self.show()
         self.thread = TaskThread(self)
@@ -441,6 +457,50 @@ class ChoicesLayout(object):
     def selected_index(self):
         return self.group.checkedId()
 
+
+class ChoiceWidget(QWidget):
+    itemSelected = pyqtSignal([int], arguments=['index'])
+
+    def __init__(self, *, message=None, choices=None, selected=None):
+        QWidget.__init__(self)
+        vbox = QVBoxLayout()
+        self.setLayout(vbox)
+
+        if choices is None:
+            choices = []
+
+        self.selected_index = -1
+        self.selected_item = None
+        self.choices = choices
+
+        if message and len(message) > 50:
+            vbox.addWidget(WWLabel(message))
+            message = ""
+        gb2 = QGroupBox(message)
+        vbox.addWidget(gb2)
+        vbox2 = QVBoxLayout()
+        gb2.setLayout(vbox2)
+        self.group = group = QButtonGroup()
+        assert isinstance(choices, list)
+        iterator = enumerate(choices)
+        for i, c in iterator:
+            button = QRadioButton(gb2)
+            button.setText(c[1])
+            vbox2.addWidget(button)
+            group.addButton(button)
+            group.setId(button, i)
+            if (i == 0 and selected is None) or c[0] == selected:
+                self.selected_index = i
+                self.selected_item = c
+                button.setChecked(True)
+        group.buttonClicked.connect(self.on_selected)
+
+    def on_selected(self, button):
+        self.selected_index = self.group.id(button)
+        self.selected_item = self.choices[self.selected_index]
+        self.itemSelected.emit(self.selected_index)
+
+
 def address_field(addresses):
     hbox = QHBoxLayout()
     address_e = QLineEdit()
@@ -480,7 +540,7 @@ def filename_field(parent, config, defaultname, select_msg):
 
     hbox = QHBoxLayout()
 
-    directory = config.get('io_dir', os.path.expanduser('~'))
+    directory = config.IO_DIRECTORY
     path = os.path.join(directory, defaultname)
     filename_e = QLineEdit()
     filename_e.setText(path)
@@ -515,342 +575,7 @@ def filename_field(parent, config, defaultname, select_msg):
     return vbox, filename_e, b1
 
 
-class ElectrumItemDelegate(QStyledItemDelegate):
-    def __init__(self, tv: 'MyTreeView'):
-        super().__init__(tv)
-        self.tv = tv
-        self.opened = None
-        def on_closeEditor(editor: QLineEdit, hint):
-            self.opened = None
-            self.tv.is_editor_open = False
-            if self.tv._pending_update:
-                self.tv.update()
-        def on_commitData(editor: QLineEdit):
-            new_text = editor.text()
-            idx = QModelIndex(self.opened)
-            row, col = idx.row(), idx.column()
-            edit_key = self.tv.get_edit_key_from_coordinate(row, col)
-            assert edit_key is not None, (idx.row(), idx.column())
-            self.tv.on_edited(idx, edit_key=edit_key, text=new_text)
-        self.closeEditor.connect(on_closeEditor)
-        self.commitData.connect(on_commitData)
 
-    def createEditor(self, parent, option, idx):
-        self.opened = QPersistentModelIndex(idx)
-        self.tv.is_editor_open = True
-        return super().createEditor(parent, option, idx)
-
-    def paint(self, painter: QPainter, option: QStyleOptionViewItem, idx: QModelIndex) -> None:
-        custom_data = idx.data(MyTreeView.ROLE_CUSTOM_PAINT)
-        if custom_data is None:
-            return super().paint(painter, option, idx)
-        else:
-            # let's call the default paint method first; to paint the background (e.g. selection)
-            super().paint(painter, option, idx)
-            # and now paint on top of that
-            custom_data.paint(painter, option.rect)
-
-    def helpEvent(self, evt: QHelpEvent, view: QAbstractItemView, option: QStyleOptionViewItem, idx: QModelIndex) -> bool:
-        custom_data = idx.data(MyTreeView.ROLE_CUSTOM_PAINT)
-        if custom_data is None:
-            return super().helpEvent(evt, view, option, idx)
-        else:
-            if evt.type() == QEvent.ToolTip:
-                if custom_data.show_tooltip(evt):
-                    return True
-        return super().helpEvent(evt, view, option, idx)
-
-    def sizeHint(self, option: QStyleOptionViewItem, idx: QModelIndex) -> QSize:
-        custom_data = idx.data(MyTreeView.ROLE_CUSTOM_PAINT)
-        if custom_data is None:
-            return super().sizeHint(option, idx)
-        else:
-            default_size = super().sizeHint(option, idx)
-            return custom_data.sizeHint(default_size)
-
-
-class MyTreeView(QTreeView):
-    ROLE_CLIPBOARD_DATA = Qt.UserRole + 100
-    ROLE_CUSTOM_PAINT   = Qt.UserRole + 101
-    ROLE_EDIT_KEY       = Qt.UserRole + 102
-    ROLE_FILTER_DATA    = Qt.UserRole + 103
-
-    filter_columns: Iterable[int]
-
-    def __init__(self, parent: 'ElectrumWindow', create_menu, *,
-                 stretch_column=None, editable_columns=None):
-        super().__init__(parent)
-        self.parent = parent
-        self.config = self.parent.config
-        self.stretch_column = stretch_column
-        self.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.customContextMenuRequested.connect(create_menu)
-        self.setUniformRowHeights(True)
-
-        # Control which columns are editable
-        if editable_columns is None:
-            editable_columns = []
-        self.editable_columns = set(editable_columns)
-        self.setItemDelegate(ElectrumItemDelegate(self))
-        self.current_filter = ""
-        self.is_editor_open = False
-
-        self.setRootIsDecorated(False)  # remove left margin
-        self.toolbar_shown = False
-
-        # When figuring out the size of columns, Qt by default looks at
-        # the first 1000 rows (at least if resize mode is QHeaderView.ResizeToContents).
-        # This would be REALLY SLOW, and it's not perfect anyway.
-        # So to speed the UI up considerably, set it to
-        # only look at as many rows as currently visible.
-        self.header().setResizeContentsPrecision(0)
-
-        self._pending_update = False
-        self._forced_update = False
-
-        self._default_bg_brush = QStandardItem().background()
-
-    def set_editability(self, items):
-        for idx, i in enumerate(items):
-            i.setEditable(idx in self.editable_columns)
-
-    def selected_in_column(self, column: int):
-        items = self.selectionModel().selectedIndexes()
-        return list(x for x in items if x.column() == column)
-
-    def get_role_data_for_current_item(self, *, col, role) -> Any:
-        idx = self.selectionModel().currentIndex()
-        idx = idx.sibling(idx.row(), col)
-        item = self.item_from_index(idx)
-        if item:
-            return item.data(role)
-
-    def item_from_index(self, idx: QModelIndex) -> Optional[QStandardItem]:
-        model = self.model()
-        if isinstance(model, QSortFilterProxyModel):
-            idx = model.mapToSource(idx)
-            return model.sourceModel().itemFromIndex(idx)
-        else:
-            return model.itemFromIndex(idx)
-
-    def original_model(self) -> QAbstractItemModel:
-        model = self.model()
-        if isinstance(model, QSortFilterProxyModel):
-            return model.sourceModel()
-        else:
-            return model
-
-    def set_current_idx(self, set_current: QPersistentModelIndex):
-        if set_current:
-            assert isinstance(set_current, QPersistentModelIndex)
-            assert set_current.isValid()
-            self.selectionModel().select(QModelIndex(set_current), QItemSelectionModel.SelectCurrent)
-
-    def update_headers(self, headers: Union[List[str], Dict[int, str]]):
-        # headers is either a list of column names, or a dict: (col_idx->col_name)
-        if not isinstance(headers, dict):  # convert to dict
-            headers = dict(enumerate(headers))
-        col_names = [headers[col_idx] for col_idx in sorted(headers.keys())]
-        self.original_model().setHorizontalHeaderLabels(col_names)
-        self.header().setStretchLastSection(False)
-        for col_idx in headers:
-            sm = QHeaderView.Stretch if col_idx == self.stretch_column else QHeaderView.ResizeToContents
-            self.header().setSectionResizeMode(col_idx, sm)
-
-    def keyPressEvent(self, event):
-        if self.itemDelegate().opened:
-            return
-        if event.key() in [Qt.Key_F2, Qt.Key_Return, Qt.Key_Enter]:
-            self.on_activated(self.selectionModel().currentIndex())
-            return
-        super().keyPressEvent(event)
-
-    def on_activated(self, idx):
-        # on 'enter' we show the menu
-        pt = self.visualRect(idx).bottomLeft()
-        pt.setX(50)
-        self.customContextMenuRequested.emit(pt)
-
-    def edit(self, idx, trigger=QAbstractItemView.AllEditTriggers, event=None):
-        """
-        this is to prevent:
-           edit: editing failed
-        from inside qt
-        """
-        return super().edit(idx, trigger, event)
-
-    def on_edited(self, idx: QModelIndex, edit_key, *, text: str) -> None:
-        raise NotImplementedError()
-
-    def should_hide(self, row):
-        """
-        row_num is for self.model(). So if there is a proxy, it is the row number
-        in that!
-        """
-        return False
-
-    def get_text_from_coordinate(self, row, col) -> str:
-        idx = self.model().index(row, col)
-        item = self.item_from_index(idx)
-        return item.text()
-
-    def get_role_data_from_coordinate(self, row, col, *, role) -> Any:
-        idx = self.model().index(row, col)
-        item = self.item_from_index(idx)
-        role_data = item.data(role)
-        return role_data
-
-    def get_edit_key_from_coordinate(self, row, col) -> Any:
-        # overriding this might allow avoiding storing duplicate data
-        return self.get_role_data_from_coordinate(row, col, role=self.ROLE_EDIT_KEY)
-
-    def get_filter_data_from_coordinate(self, row, col) -> str:
-        filter_data = self.get_role_data_from_coordinate(row, col, role=self.ROLE_FILTER_DATA)
-        if filter_data:
-            return filter_data
-        txt = self.get_text_from_coordinate(row, col)
-        txt = txt.lower()
-        return txt
-
-    def hide_row(self, row_num):
-        """
-        row_num is for self.model(). So if there is a proxy, it is the row number
-        in that!
-        """
-        should_hide = self.should_hide(row_num)
-        if not self.current_filter and should_hide is None:
-            # no filters at all, neither date nor search
-            self.setRowHidden(row_num, QModelIndex(), False)
-            return
-        for column in self.filter_columns:
-            filter_data = self.get_filter_data_from_coordinate(row_num, column)
-            if self.current_filter in filter_data:
-                # the filter matched, but the date filter might apply
-                self.setRowHidden(row_num, QModelIndex(), bool(should_hide))
-                break
-        else:
-            # we did not find the filter in any columns, hide the item
-            self.setRowHidden(row_num, QModelIndex(), True)
-
-    def filter(self, p=None):
-        if p is not None:
-            p = p.lower()
-            self.current_filter = p
-        self.hide_rows()
-
-    def hide_rows(self):
-        for row in range(self.model().rowCount()):
-            self.hide_row(row)
-
-    def create_toolbar(self, config=None):
-        hbox = QHBoxLayout()
-        buttons = self.get_toolbar_buttons()
-        for b in buttons:
-            b.setVisible(False)
-            hbox.addWidget(b)
-        hide_button = QPushButton('x')
-        hide_button.setVisible(False)
-        hide_button.pressed.connect(lambda: self.show_toolbar(False, config))
-        self.toolbar_buttons = buttons + (hide_button,)
-        hbox.addStretch()
-        hbox.addWidget(hide_button)
-        return hbox
-
-    def save_toolbar_state(self, state, config):
-        pass  # implemented in subclasses
-
-    def show_toolbar(self, state, config=None):
-        if state == self.toolbar_shown:
-            return
-        self.toolbar_shown = state
-        if config:
-            self.save_toolbar_state(state, config)
-        for b in self.toolbar_buttons:
-            b.setVisible(state)
-        if not state:
-            self.on_hide_toolbar()
-
-    def toggle_toolbar(self, config=None):
-        self.show_toolbar(not self.toolbar_shown, config)
-
-    def add_copy_menu(self, menu: QMenu, idx) -> QMenu:
-        cc = menu.addMenu(_("Copy Column"))
-        for column in self.Columns:
-            column_title = self.original_model().horizontalHeaderItem(column).text()
-            if not column_title:
-                continue
-            item_col = self.item_from_index(idx.sibling(idx.row(), column))
-            clipboard_data = item_col.data(self.ROLE_CLIPBOARD_DATA)
-            if clipboard_data is None:
-                clipboard_data = item_col.text().strip()
-            cc.addAction(column_title,
-                         lambda text=clipboard_data, title=column_title:
-                         self.place_text_on_clipboard(text, title=title))
-        return cc
-
-    def place_text_on_clipboard(self, text: str, *, title: str = None) -> None:
-        self.parent.do_copy(text, title=title)
-
-    def showEvent(self, e: 'QShowEvent'):
-        super().showEvent(e)
-        if e.isAccepted() and self._pending_update:
-            self._forced_update = True
-            self.update()
-            self._forced_update = False
-
-    def maybe_defer_update(self) -> bool:
-        """Returns whether we should defer an update/refresh."""
-        defer = (not self._forced_update
-                 and (not self.isVisible() or self.is_editor_open))
-        # side-effect: if we decide to defer update, the state will become stale:
-        self._pending_update = defer
-        return defer
-
-    def find_row_by_key(self, key) -> Optional[int]:
-        for row in range(0, self.std_model.rowCount()):
-            item = self.std_model.item(row, 0)
-            if item.data(self.key_role) == key:
-                return row
-
-    def refresh_all(self):
-        for row in range(0, self.std_model.rowCount()):
-            item = self.std_model.item(row, 0)
-            key = item.data(self.key_role)
-            self.refresh_row(key, row)
-
-    def refresh_row(self, key: str, row: int) -> None:
-        pass
-
-    def refresh_item(self, key):
-        row = self.find_row_by_key(key)
-        if row is not None:
-            self.refresh_row(key, row)
-
-    def delete_item(self, key):
-        row = self.find_row_by_key(key)
-        if row is not None:
-            self.std_model.takeRow(row)
-        self.hide_if_empty()
-
-
-class MySortModel(QSortFilterProxyModel):
-    def __init__(self, parent, *, sort_role):
-        super().__init__(parent)
-        self._sort_role = sort_role
-
-    def lessThan(self, source_left: QModelIndex, source_right: QModelIndex):
-        item1 = self.sourceModel().itemFromIndex(source_left)
-        item2 = self.sourceModel().itemFromIndex(source_right)
-        data1 = item1.data(self._sort_role)
-        data2 = item2.data(self._sort_role)
-        if data1 is not None and data2 is not None:
-            return data1 < data2
-        v1 = item1.text()
-        v2 = item2.text()
-        try:
-            return Decimal(v1) < Decimal(v2)
-        except:
-            return v1 < v2
 
 
 def get_iconname_qrcode() -> str:
@@ -861,7 +586,133 @@ def get_iconname_camera() -> str:
     return "camera_white.png" if ColorScheme.dark_scheme else "camera_dark.png"
 
 
-class OverlayControlMixin:
+def editor_contextMenuEvent(self, p: 'PayToEdit', e: 'QContextMenuEvent') -> None:
+    m = self.createStandardContextMenu()
+    m.addSeparator()
+    m.addAction(read_QIcon(get_iconname_camera()),    _("Read QR code with camera"), p.on_qr_from_camera_input_btn)
+    m.addAction(read_QIcon("picture_in_picture.png"), _("Read QR code from screen"), p.on_qr_from_screenshot_input_btn)
+    m.addAction(read_QIcon("file.png"), _("Read file"), p.on_input_file)
+    m.exec_(e.globalPos())
+
+
+class GenericInputHandler:
+
+    def input_qr_from_camera(
+            self,
+            *,
+            config: 'SimpleConfig',
+            allow_multi: bool = False,
+            show_error: Callable[[str], None],
+            setText: Callable[[str], None] = None,
+            parent: QWidget = None,
+    ) -> None:
+        if setText is None:
+            setText = self.setText
+        def cb(success: bool, error: str, data):
+            if not success:
+                if error:
+                    show_error(error)
+                return
+            if not data:
+                data = ''
+            if allow_multi:
+                new_text = self.text() + data + '\n'
+            else:
+                new_text = data
+                try:
+                    setText(new_text)
+                except Exception as e:
+                    show_error(_('Invalid payment identifier in QR') + ':\n' + repr(e))
+
+        from .qrreader import scan_qrcode
+        if parent is None:
+            parent = self if isinstance(self, QWidget) else None
+        scan_qrcode(parent=parent, config=config, callback=cb)
+
+    def input_qr_from_screenshot(
+            self,
+            *,
+            allow_multi: bool = False,
+            show_error: Callable[[str], None],
+            setText: Callable[[str], None] = None,
+    ) -> None:
+        if setText is None:
+            setText = self.setText
+        from .qrreader import scan_qr_from_image
+        screenshots = [screen.grabWindow(0).toImage()
+                       for screen in QApplication.instance().screens()]
+        if all(screen.allGray() for screen in screenshots):
+            show_error(_("Failed to take screenshot."))
+            return
+        scanned_qr = None
+        for screenshot in screenshots:
+            try:
+                scan_result = scan_qr_from_image(screenshot)
+            except MissingQrDetectionLib as e:
+                show_error(_("Unable to scan image.") + "\n" + repr(e))
+                return
+            if len(scan_result) > 0:
+                if (scanned_qr is not None) or len(scan_result) > 1:
+                    show_error(_("More than one QR code was found on the screen."))
+                    return
+                scanned_qr = scan_result
+        if scanned_qr is None:
+            show_error(_("No QR code was found on the screen."))
+            return
+        data = scanned_qr[0].data
+        if allow_multi:
+            new_text = self.text() + data + '\n'
+        else:
+            new_text = data
+            try:
+                setText(new_text)
+            except Exception as e:
+                show_error(_('Invalid payment identifier in QR') + ':\n' + repr(e))
+
+    def input_file(
+            self,
+            *,
+            config: 'SimpleConfig',
+            show_error: Callable[[str], None],
+            setText: Callable[[str], None] = None,
+    ) -> None:
+        if setText is None:
+            setText = self.setText
+        fileName = getOpenFileName(
+            parent=None,
+            title='select file',
+            config=config,
+        )
+        if not fileName:
+            return
+        try:
+            try:
+                with open(fileName, "r") as f:
+                    data = f.read()
+            except UnicodeError as e:
+                with open(fileName, "rb") as f:
+                    data = f.read()
+                data = data.hex()
+        except BaseException as e:
+            show_error(_('Error opening file') + ':\n' + repr(e))
+        else:
+            try:
+                setText(data)
+            except Exception as e:
+                show_error(_('Invalid payment identifier in file') + ':\n' + repr(e))
+
+    def input_paste_from_clipboard(
+            self,
+            *,
+            setText: Callable[[str], None] = None,
+    ) -> None:
+        if setText is None:
+            setText = self.setText
+        app = QApplication.instance()
+        setText(app.clipboard().text())
+
+
+class OverlayControlMixin(GenericInputHandler):
     STYLE_SHEET_COMMON = '''
     QPushButton { border-width: 1px; padding: 0px; margin: 0px; }
     '''
@@ -872,6 +723,7 @@ class OverlayControlMixin:
     '''
 
     def __init__(self, middle: bool = False):
+        GenericInputHandler.__init__(self)
         assert isinstance(self, QWidget)
         assert isinstance(self, OverlayControlMixin)  # only here for type-hints in IDE
         self.middle = middle
@@ -946,7 +798,7 @@ class OverlayControlMixin:
             from .qrcodewidget import QRDialog
             try:
                 s = str(self.text())
-            except:
+            except Exception:
                 s = self.text()
             if not s:
                 return
@@ -1048,102 +900,6 @@ class OverlayControlMixin:
                 menu.addAction(read_QIcon(opt_icon), opt_text, opt_cb)
         btn.setMenu(menu)
 
-    def input_qr_from_camera(
-            self,
-            *,
-            config: 'SimpleConfig',
-            allow_multi: bool = False,
-            show_error: Callable[[str], None],
-            setText: Callable[[str], None] = None,
-    ) -> None:
-        if setText is None:
-            setText = self.setText
-        def cb(success: bool, error: str, data):
-            if not success:
-                if error:
-                    show_error(error)
-                return
-            if not data:
-                data = ''
-            if allow_multi:
-                new_text = self.text() + data + '\n'
-            else:
-                new_text = data
-            setText(new_text)
-
-        from .qrreader import scan_qrcode
-        scan_qrcode(parent=self, config=config, callback=cb)
-
-    def input_qr_from_screenshot(
-            self,
-            *,
-            allow_multi: bool = False,
-            show_error: Callable[[str], None],
-            setText: Callable[[str], None] = None,
-    ) -> None:
-        if setText is None:
-            setText = self.setText
-        from .qrreader import scan_qr_from_image
-        scanned_qr = None
-        for screen in QApplication.instance().screens():
-            try:
-                scan_result = scan_qr_from_image(screen.grabWindow(0).toImage())
-            except MissingQrDetectionLib as e:
-                show_error(_("Unable to scan image.") + "\n" + repr(e))
-                return
-            if len(scan_result) > 0:
-                if (scanned_qr is not None) or len(scan_result) > 1:
-                    show_error(_("More than one QR code was found on the screen."))
-                    return
-                scanned_qr = scan_result
-        if scanned_qr is None:
-            show_error(_("No QR code was found on the screen."))
-            return
-        data = scanned_qr[0].data
-        if allow_multi:
-            new_text = self.text() + data + '\n'
-        else:
-            new_text = data
-        setText(new_text)
-
-    def input_file(
-            self,
-            *,
-            config: 'SimpleConfig',
-            show_error: Callable[[str], None],
-            setText: Callable[[str], None] = None,
-    ) -> None:
-        if setText is None:
-            setText = self.setText
-        fileName = getOpenFileName(
-            parent=self,
-            title='select file',
-            config=config,
-        )
-        if not fileName:
-            return
-        try:
-            try:
-                with open(fileName, "r") as f:
-                    data = f.read()
-            except UnicodeError as e:
-                with open(fileName, "rb") as f:
-                    data = f.read()
-                data = data.hex()
-        except BaseException as e:
-            show_error(_('Error opening file') + ':\n' + repr(e))
-        else:
-            setText(data)
-
-    def input_paste_from_clipboard(
-            self,
-            *,
-            setText: Callable[[str], None] = None,
-    ) -> None:
-        if setText is None:
-            setText = self.setText
-        app = QApplication.instance()
-        setText(app.clipboard().text())
 
 
 class ButtonsLineEdit(OverlayControlMixin, QLineEdit):
@@ -1276,6 +1032,7 @@ class ColorScheme:
     YELLOW = ColorSchemeItem("#897b2a", "#ffff00")
     RED = ColorSchemeItem("#7c1111", "#f18c8c")
     BLUE = ColorSchemeItem("#123b7c", "#8cb3f2")
+    LIGHTBLUE = ColorSchemeItem("black", "#d0f0ff")
     DEFAULT = ColorSchemeItem("black", "white")
     GRAY = ColorSchemeItem("gray", "gray")
 
@@ -1363,10 +1120,10 @@ def export_meta_gui(electrum_window: 'ElectrumWindow', title, exporter):
 
 def getOpenFileName(*, parent, title, filter="", config: 'SimpleConfig') -> Optional[str]:
     """Custom wrapper for getOpenFileName that remembers the path selected by the user."""
-    directory = config.get('io_dir', os.path.expanduser('~'))
+    directory = config.IO_DIRECTORY
     fileName, __ = QFileDialog.getOpenFileName(parent, title, directory, filter)
     if fileName and directory != os.path.dirname(fileName):
-        config.set_key('io_dir', os.path.dirname(fileName), True)
+        config.IO_DIRECTORY = os.path.dirname(fileName)
     return fileName
 
 
@@ -1381,7 +1138,7 @@ def getSaveFileName(
         config: 'SimpleConfig',
 ) -> Optional[str]:
     """Custom wrapper for getSaveFileName that remembers the path selected by the user."""
-    directory = config.get('io_dir', os.path.expanduser('~'))
+    directory = config.IO_DIRECTORY
     path = os.path.join(directory, filename)
 
     file_dialog = QFileDialog(parent, title, path, filter)
@@ -1397,16 +1154,16 @@ def getSaveFileName(
 
     selected_path = file_dialog.selectedFiles()[0]
     if selected_path and directory != os.path.dirname(selected_path):
-        config.set_key('io_dir', os.path.dirname(selected_path), True)
+        config.IO_DIRECTORY = os.path.dirname(selected_path)
     return selected_path
 
 
-def icon_path(icon_basename):
+def icon_path(icon_basename: str):
     return resource_path('gui', 'icons', icon_basename)
 
 
 @lru_cache(maxsize=1000)
-def read_QIcon(icon_basename):
+def read_QIcon(icon_basename: str) -> QIcon:
     return QIcon(icon_path(icon_basename))
 
 class IconLabel(QWidget):
@@ -1431,10 +1188,6 @@ class IconLabel(QWidget):
     def setIcon(self, icon):
         self.icon.setPixmap(icon.pixmap(self.icon_size))
         self.icon.repaint()  # macOS hack for #6269
-
-def get_default_language():
-    name = QLocale.system().name()
-    return name if name in languages else 'en_UK'
 
 
 def char_width_in_lineedit() -> int:
@@ -1583,77 +1336,7 @@ class ImageGraphicsEffect(QObject):
         return result
 
 
-class SquareTabWidget(QtWidgets.QStackedWidget):
-    def resizeEvent(self, e):
-        # keep square aspect ratio when resized
-        size = e.size()
-        w = size.height()
-        self.setFixedWidth(w)
-        return super().resizeEvent(e)
-
-
-class VTabWidget(QWidget):
-    """QtWidgets.QTabWidget alternative with "West" tab positions and horizontal tab-text."""
-    def __init__(self):
-        QWidget.__init__(self)
-
-        hbox = QHBoxLayout()
-        self.setLayout(hbox)
-        hbox.setContentsMargins(0, 0, 0, 0)
-        hbox.setSpacing(0)
-
-        self._tabs_vbox = tabs_vbox = QVBoxLayout()
-        self._tab_btns = []  # type: List[QPushButton]
-        tabs_vbox.setContentsMargins(0, 0, 0, 0)
-        tabs_vbox.setSpacing(0)
-
-        _tabs_vbox_outer_w = QWidget()
-        _tabs_vbox_outer = QVBoxLayout()
-        _tabs_vbox_outer_w.setLayout(_tabs_vbox_outer)
-        _tabs_vbox_outer_w.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, _tabs_vbox_outer_w.sizePolicy().verticalPolicy()))
-        _tabs_vbox_outer.setContentsMargins(0, 0, 0, 0)
-        _tabs_vbox_outer.setSpacing(0)
-        _tabs_vbox_outer.addLayout(tabs_vbox)
-        _tabs_vbox_outer.addStretch(1)
-
-        self.content_w = content_w = SquareTabWidget()
-        content_w.setStyleSheet("SquareTabWidget {padding:0px; }")
-        hbox.addStretch(1)
-        hbox.addWidget(_tabs_vbox_outer_w)
-        hbox.addWidget(content_w)
-
-        self.currentChanged = content_w.currentChanged
-        self.currentIndex = content_w.currentIndex
-
-    def addTab(self, widget: QWidget, icon: QIcon, text: str):
-        btn = QPushButton(icon, text)
-        btn.setStyleSheet("QPushButton { text-align: left; }")
-        btn.setFocusPolicy(QtCore.Qt.NoFocus)
-        btn.setCheckable(True)
-        btn.setSizePolicy(QSizePolicy.Preferred, btn.sizePolicy().verticalPolicy())
-
-        def on_btn_click():
-            btn.setChecked(True)
-            for btn2 in self._tab_btns:
-                if btn2 != btn:
-                    btn2.setChecked(False)
-            self.content_w.setCurrentIndex(idx)
-        btn.clicked.connect(on_btn_click)
-        idx = len(self._tab_btns)
-        self._tab_btns.append(btn)
-
-        self._tabs_vbox.addWidget(btn)
-        self.content_w.addWidget(widget)
-
-    def setTabIcon(self, idx: int, icon: QIcon):
-        self._tab_btns[idx].setIcon(icon)
-
-    def setCurrentIndex(self, idx: int):
-        self._tab_btns[idx].click()
-
-
 class QtEventListener(EventListener):
-
     qt_callback_signal = QtCore.pyqtSignal(tuple)
 
     def register_callbacks(self):
@@ -1661,12 +1344,16 @@ class QtEventListener(EventListener):
         EventListener.register_callbacks(self)
 
     def unregister_callbacks(self):
-        self.qt_callback_signal.disconnect()
+        try:
+            self.qt_callback_signal.disconnect()
+        except RuntimeError:  # wrapped Qt object might be deleted
+            pass
         EventListener.unregister_callbacks(self)
 
     def on_qt_callback_signal(self, args):
         func = args[0]
         return func(self, *args[1:])
+
 
 # decorator for members of the QtEventListener class
 def qt_event_listener(func):

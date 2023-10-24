@@ -5,9 +5,9 @@ import PyQt5.QtWidgets as QtWidgets
 import PyQt5.QtCore as QtCore
 from PyQt5.QtWidgets import QLabel, QLineEdit, QHBoxLayout, QGridLayout
 
-from electrum_blk.util import EventListener
+from electrum_blk.util import EventListener, ShortID
 from electrum_blk.i18n import _
-from electrum_blk.util import bh2u, format_time
+from electrum_blk.util import format_time
 from electrum_blk.lnutil import format_short_channel_id, LOCAL, REMOTE, UpdateAddHtlc, Direction
 from electrum_blk.lnchannel import htlcsum, Channel, AbstractChannel, HTLCWithStatus
 from electrum_blk.lnaddr import LnAddr, lndecode
@@ -85,8 +85,8 @@ class ChannelDetailsDialog(QtWidgets.QDialog, MessageBoxMixin, QtEventListener):
     def make_htlc_item(self, i: UpdateAddHtlc, direction: Direction) -> HTLCItem:
         it = HTLCItem(_('Sent HTLC with ID {}' if Direction.SENT == direction else 'Received HTLC with ID {}').format(i.htlc_id))
         it.appendRow([HTLCItem(_('Amount')),HTLCItem(self.format_msat(i.amount_msat))])
-        it.appendRow([HTLCItem(_('CLTV expiry')),HTLCItem(str(i.cltv_expiry))])
-        it.appendRow([HTLCItem(_('Payment hash')),HTLCItem(bh2u(i.payment_hash))])
+        it.appendRow([HTLCItem(_('CLTV expiry')), HTLCItem(str(i.cltv_abs))])
+        it.appendRow([HTLCItem(_('Payment hash')),HTLCItem(i.payment_hash.hex())])
         return it
 
     def make_model(self, htlcs: Sequence[HTLCWithStatus]) -> QtGui.QStandardItemModel:
@@ -172,7 +172,7 @@ class ChannelDetailsDialog(QtWidgets.QDialog, MessageBoxMixin, QtEventListener):
         if not tx:
             self.show_error(_("Transaction not found."))
             return
-        self.window.show_transaction(tx, tx_desc=_('Transaction'))
+        self.window.show_transaction(tx)
 
     def get_common_form(self, chan):
         form = QtWidgets.QFormLayout(None)
@@ -180,10 +180,12 @@ class ChannelDetailsDialog(QtWidgets.QDialog, MessageBoxMixin, QtEventListener):
         form.addRow(QLabel(_('Remote Node') + ':'), remote_id_e)
         channel_id_e = ShowQRLineEdit(chan.channel_id.hex(), self.window.config, title=_("Channel ID"))
         form.addRow(QLabel(_('Channel ID') + ':'), channel_id_e)
-
-        form.addRow(QLabel(_('Short Channel ID') + ':'), QLabel(str(chan.short_channel_id)))
+        form.addRow(QLabel(_('Short Channel ID') + ':'), SelectableLabel(str(chan.short_channel_id)))
+        if local_scid_alias := chan.get_local_scid_alias():
+            form.addRow(QLabel('Local SCID Alias:'), SelectableLabel(str(ShortID(local_scid_alias))))
+        if remote_scid_alias := chan.get_remote_scid_alias():
+            form.addRow(QLabel('Remote SCID Alias:'), SelectableLabel(str(ShortID(remote_scid_alias))))
         form.addRow(QLabel(_('State') + ':'), SelectableLabel(chan.get_state_for_GUI()))
-
         self.capacity = self.format_sat(chan.get_capacity())
         form.addRow(QLabel(_('Capacity') + ':'), SelectableLabel(self.capacity))
         if not chan.is_backup():

@@ -1,7 +1,9 @@
-# Kivy GUI
+# Qml GUI
 
-The Kivy GUI is used with Electrum on Android devices.
+The Qml GUI is used with Electrum on Android devices, since Electrum 4.4.
 To generate an APK file, follow these instructions.
+
+(note: older versions of Electrum for Android used the "kivy" GUI)
 
 ## Android binary with Docker
 
@@ -13,7 +15,9 @@ similar system.
 
 1. Install Docker
 
-    See `contrib/docker_notes.md`.
+    See [`contrib/docker_notes.md`](../docker_notes.md).
+
+    (worth reading even if you already have docker)
 
 2. Build binaries
 
@@ -21,11 +25,11 @@ similar system.
     ```
     $ ./build.sh
     ```
-    For development, consider e.g. `$ ./build.sh kivy arm64-v8a debug`
+    For development, consider e.g. `$ ./build.sh qml arm64-v8a debug`
 
     If you want reproducibility, try instead e.g.:
     ```
-    $ ELECBUILD_COMMIT=HEAD ELECBUILD_NOCACHE=1 ./build.sh kivy all release-unsigned
+    $ ELECBUILD_COMMIT=HEAD ./build.sh qml all release-unsigned
     ```
 
 3. The generated binary is in `./dist`.
@@ -90,12 +94,19 @@ adb logcat | grep -F "`adb shell ps | grep org.electrum_blk.electrum_blk | cut -
 ```
 
 
-### Kivy can be run directly on Linux Desktop. How?
-Install Kivy.
+### The Qml GUI can be run directly on Linux Desktop. How?
+Install requirements (debian-based distros):
+```
+sudo apt-get install python3-pyqt5 python3-pyqt5.qtquick python3-pyqt5.qtmultimedia
+sudo apt-get install python3-pil
+sudo apt-get install qml-module-qtquick-controls2 qml-module-qtquick-layouts \
+    qml-module-qtquick-window2 qml-module-qtmultimedia \
+    libqt5multimedia5-plugins qml-module-qt-labs-folderlistmodel
+sudo apt-get install qtvirtualkeyboard-plugin
+```
 
-Build atlas: `(cd contrib/android/; make theming)`
+Run electrum with the `-g` switch: `electrum-blk -g qml`
 
-Run electrum with the `-g` switch: `electrum-blk -g kivy`
 
 ### debug vs release build
 If you just follow the instructions above, you will build the apk
@@ -111,10 +122,20 @@ and [android dev docs](https://developer.android.com/studio/build/building-cmdli
 Note that this only works for debug builds! Otherwise the security model
 of Android does not let you access the internal storage of an app without root.
 (See [this](https://stackoverflow.com/q/9017073))
+To pull a file:
 ```
 $ adb shell
-$ run-as org.electrum_blk.electrum_blk ls /data/data/org.electrum_blk.electrum_blk/files/data
-$ run-as org.electrum_blk.electrum_blk cp /data/data/org.electrum_blk.electrum_blk/files/data/wallets/my_wallet /sdcard/some_path/my_wallet
+adb$ run-as org.electrum_blk.electrum_blk ls /data/data/org.electrum_blk.electrum_blk/files/data
+adb$ exit
+$ adb exec-out run-as org.electrum_blk.electrum_blk cat /data/data/org.electrum_blk.electrum_blk/files/data/wallets/my_wallet > my_wallet
+```
+To push a file:
+```
+$ adb push ~/wspace/tmp/my_wallet /data/local/tmp
+$ adb shell
+adb$ ls -la /data/local/tmp
+adb$ run-as org.electrum_blk.testnet.electrum_blk cp /data/local/tmp/my_wallet /data/data/org.electrum_blk.testnet.electrum_blk/files/data/testnet/wallets/
+adb$ rm /data/local/tmp/my_wallet
 ```
 
 Or use Android Studio: "Device File Explorer", which can download/upload data directly from device (via adb).

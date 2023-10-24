@@ -28,7 +28,7 @@ from typing import List, Tuple, TYPE_CHECKING, Optional, Union, Sequence
 import enum
 from enum import IntEnum, Enum
 
-from .util import bfh, bh2u, BitcoinException, assert_bytes, to_bytes, inv_dict, is_hex_str
+from .util import bfh, BitcoinException, assert_bytes, to_bytes, inv_dict, is_hex_str, classproperty
 from . import version
 from . import segwit_addr
 from . import constants
@@ -197,7 +197,7 @@ class opcodes(IntEnum):
 
 
 def rev_hex(s: str) -> str:
-    return bh2u(bfh(s)[::-1])
+    return bfh(s)[::-1].hex()
 
 
 def int_to_hex(i: int, length: int=1) -> str:
@@ -237,7 +237,7 @@ def script_num_to_hex(i: int) -> str:
     elif neg:
         result[-1] |= 0x80
 
-    return bh2u(result)
+    return result.hex()
 
 
 def var_int(i: int) -> str:
@@ -287,11 +287,11 @@ def push_script(data: str) -> str:
     if data_len == 0 or data_len == 1 and data[0] == 0:
         return opcodes.OP_0.hex()
     elif data_len == 1 and data[0] <= 16:
-        return bh2u(bytes([opcodes.OP_1 - 1 + data[0]]))
+        return bytes([opcodes.OP_1 - 1 + data[0]]).hex()
     elif data_len == 1 and data[0] == 0x81:
         return opcodes.OP_1NEGATE.hex()
 
-    return _op_push(data_len) + bh2u(data)
+    return _op_push(data_len) + data.hex()
 
 
 def make_op_return(x:bytes) -> bytes:
@@ -309,17 +309,20 @@ def construct_witness(items: Sequence[Union[str, int, bytes]]) -> str:
         if type(item) is int:
             item = script_num_to_hex(item)
         elif isinstance(item, (bytes, bytearray)):
-            item = bh2u(item)
+            item = item.hex()
         else:
             assert is_hex_str(item)
         witness += witness_push(item)
     return witness
 
 
-def construct_script(items: Sequence[Union[str, int, bytes, opcodes]]) -> str:
+def construct_script(items: Sequence[Union[str, int, bytes, opcodes]], values=None) -> str:
     """Constructs bitcoin script from given items."""
     script = ''
-    for item in items:
+    values = values or {}
+    for i, item in enumerate(items):
+        if i in values:
+            item = values[i]
         if isinstance(item, opcodes):
             script += item.hex()
         elif type(item) is int:
@@ -365,7 +368,7 @@ def dust_threshold(network: 'Network' = None) -> int:
 
 
 def hash_encode(x: bytes) -> str:
-    return bh2u(x[::-1])
+    return x[::-1].hex()
 
 
 def hash_decode(x: str) -> bytes:
@@ -397,7 +400,6 @@ def hash160_to_p2sh(h160: bytes, *, net=None) -> str:
     return hash160_to_b58_address(h160, net.ADDRTYPE_P2SH)
 
 def public_key_to_p2pkh(public_key: bytes, *, net=None) -> str:
-    if net is None: net = constants.net
     return hash160_to_p2pkh(hash_160(public_key), net=net)
 
 def hash_to_segwit_addr(h: bytes, witver: int, *, net=None) -> str:
@@ -407,11 +409,9 @@ def hash_to_segwit_addr(h: bytes, witver: int, *, net=None) -> str:
     return addr
 
 def public_key_to_p2wpkh(public_key: bytes, *, net=None) -> str:
-    if net is None: net = constants.net
     return hash_to_segwit_addr(hash_160(public_key), witver=0, net=net)
 
 def script_to_p2wsh(script: str, *, net=None) -> str:
-    if net is None: net = constants.net
     return hash_to_segwit_addr(sha256(bfh(script)), witver=0, net=net)
 
 def p2wpkh_nested_script(pubkey: str) -> str:
@@ -423,21 +423,13 @@ def p2wsh_nested_script(witness_script: str) -> str:
     return construct_script([0, wsh])
 
 def pubkey_to_address(txin_type: str, pubkey: str, *, net=None) -> str:
-    if net is None: net = constants.net
-    if txin_type == 'p2pkh':
-        return public_key_to_p2pkh(bfh(pubkey), net=net)
-    elif txin_type == 'p2wpkh':
-        return public_key_to_p2wpkh(bfh(pubkey), net=net)
-    elif txin_type == 'p2wpkh-p2sh':
-        scriptSig = p2wpkh_nested_script(pubkey)
-        return hash160_to_p2sh(hash_160(bfh(scriptSig)), net=net)
-    else:
-        raise NotImplementedError(txin_type)
+    from . import descriptor
+    desc = descriptor.get_singlesig_descriptor_from_legacy_leaf(pubkey=pubkey, script_type=txin_type)
+    return desc.expand().address(net=net)
 
 
 # TODO this method is confusingly named
 def redeem_script_to_address(txin_type: str, scriptcode: str, *, net=None) -> str:
-    if net is None: net = constants.net
     if txin_type == 'p2sh':
         # given scriptcode is a redeem_script
         return hash160_to_p2sh(hash_160(bfh(scriptcode)), net=net)
@@ -452,7 +444,7 @@ def redeem_script_to_address(txin_type: str, scriptcode: str, *, net=None) -> st
         raise NotImplementedError(txin_type)
 
 
-def script_to_address(script: str, *, net=None) -> str:
+def script_to_address(script: str, *, net=None) -> Optional[str]:
     from .transaction import get_address_from_output_script
     return get_address_from_output_script(bfh(script), net=net)
 
@@ -468,7 +460,7 @@ def address_to_script(addr: str, *, net=None) -> str:
         return construct_script([witver, bytes(witprog)])
     addrtype, hash_160_ = b58_address_to_hash160(addr)
     if addrtype == net.ADDRTYPE_P2PKH:
-        script = pubkeyhash_to_p2pkh_script(bh2u(hash_160_))
+        script = pubkeyhash_to_p2pkh_script(hash_160_.hex())
     elif addrtype == net.ADDRTYPE_P2SH:
         script = construct_script([opcodes.OP_HASH160, hash_160_, opcodes.OP_EQUAL])
     else:
@@ -523,7 +515,7 @@ def address_to_scripthash(addr: str, *, net=None) -> str:
 
 def script_to_scripthash(script: str) -> str:
     h = sha256(bfh(script))[0:32]
-    return bh2u(bytes(reversed(h)))
+    return h[::-1].hex()
 
 def public_key_to_p2pk_script(pubkey: str) -> str:
     return construct_script([pubkey, opcodes.OP_CHECKSIG])
@@ -540,9 +532,11 @@ def pubkeyhash_to_p2pkh_script(pubkey_hash160: str) -> str:
 
 __b58chars = b'123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 assert len(__b58chars) == 58
+__b58chars_inv = inv_dict(dict(enumerate(__b58chars)))
 
 __b43chars = b'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ$*+-./:'
 assert len(__b43chars) == 43
+__b43chars_inv = inv_dict(dict(enumerate(__b43chars)))
 
 
 class BaseDecodeError(BitcoinException): pass
@@ -556,66 +550,48 @@ def base_encode(v: bytes, *, base: int) -> str:
     chars = __b58chars
     if base == 43:
         chars = __b43chars
-    long_value = 0
-    power_of_base = 1
-    for c in v[::-1]:
-        # naive but slow variant:   long_value += (256**i) * c
-        long_value += power_of_base * c
-        power_of_base <<= 8
-    result = bytearray()
-    while long_value >= base:
-        div, mod = divmod(long_value, base)
-        result.append(chars[mod])
-        long_value = div
-    result.append(chars[long_value])
-    # Bitcoin does a little leading-zero-compression:
-    # leading 0-bytes in the input become leading-1s
-    nPad = 0
-    for c in v:
-        if c == 0x00:
-            nPad += 1
-        else:
-            break
-    result.extend([chars[0]] * nPad)
-    result.reverse()
+
+    origlen = len(v)
+    v = v.lstrip(b'\x00')
+    newlen = len(v)
+
+    num = int.from_bytes(v, byteorder='big')
+    string = b""
+    while num:
+        num, idx = divmod(num, base)
+        string = chars[idx:idx + 1] + string
+
+    result = chars[0:1] * (origlen - newlen) + string
     return result.decode('ascii')
 
 
-def base_decode(v: Union[bytes, str], *, base: int, length: int = None) -> Optional[bytes]:
-    """ decode v into a string of len bytes."""
+def base_decode(v: Union[bytes, str], *, base: int) -> Optional[bytes]:
+    """ decode v into a string of len bytes.
+
+    based on the work of David Keijser in https://github.com/keis/base58
+    """
     # assert_bytes(v)
     v = to_bytes(v, 'ascii')
     if base not in (58, 43):
         raise ValueError('not supported base: {}'.format(base))
     chars = __b58chars
+    chars_inv = __b58chars_inv
     if base == 43:
         chars = __b43chars
-    long_value = 0
-    power_of_base = 1
-    for c in v[::-1]:
-        digit = chars.find(bytes([c]))
-        if digit == -1:
-            raise BaseDecodeError('Forbidden character {} for base {}'.format(c, base))
-        # naive but slow variant:   long_value += digit * (base**i)
-        long_value += digit * power_of_base
-        power_of_base *= base
-    result = bytearray()
-    while long_value >= 256:
-        div, mod = divmod(long_value, 256)
-        result.append(mod)
-        long_value = div
-    result.append(long_value)
-    nPad = 0
-    for c in v:
-        if c == chars[0]:
-            nPad += 1
-        else:
-            break
-    result.extend(b'\x00' * nPad)
-    if length is not None and len(result) != length:
-        return None
-    result.reverse()
-    return bytes(result)
+        chars_inv = __b43chars_inv
+
+    origlen = len(v)
+    v = v.lstrip(chars[0:1])
+    newlen = len(v)
+
+    num = 0
+    try:
+        for char in v:
+            num = num * base + chars_inv[char]
+    except KeyError:
+        raise BaseDecodeError('Forbidden character {} for base {}'.format(char, base))
+
+    return num.to_bytes(origlen - newlen + (num.bit_length() + 7) // 8, 'big')
 
 
 class InvalidChecksum(BaseDecodeError):
@@ -633,7 +609,7 @@ def DecodeBase58Check(psz: Union[bytes, str]) -> bytes:
     csum_found = vchRet[-4:]
     csum_calculated = sha256d(payload)[0:4]
     if csum_calculated != csum_found:
-        raise InvalidChecksum(f'calculated {bh2u(csum_calculated)}, found {bh2u(csum_found)}')
+        raise InvalidChecksum(f'calculated {csum_calculated.hex()}, found {csum_found.hex()}')
     else:
         return payload
 
@@ -748,7 +724,6 @@ def is_b58_address(addr: str, *, net=None) -> bool:
     return True
 
 def is_address(addr: str, *, net=None) -> bool:
-    if net is None: net = constants.net
     return is_segwit_address(addr, net=net) \
            or is_b58_address(addr, net=net)
 
@@ -777,3 +752,30 @@ def is_minikey(text: str) -> bool:
 
 def minikey_to_private_key(text: str) -> bytes:
     return sha256(text)
+
+
+def _get_dummy_address(purpose: str) -> str:
+    return redeem_script_to_address('p2wsh', sha256(bytes(purpose, "utf8")).hex())
+
+_dummy_addr_funcs = set()
+class DummyAddress:
+    """dummy address for fee estimation of funding tx
+    Use e.g. as: DummyAddress.CHANNEL
+    """
+    def purpose(func):
+        _dummy_addr_funcs.add(func)
+        return classproperty(func)
+
+    @purpose
+    def CHANNEL(self) -> str:
+        return _get_dummy_address("channel")
+    @purpose
+    def SWAP(self) -> str:
+        return _get_dummy_address("swap")
+
+    @classmethod
+    def is_dummy_address(cls, addr: str) -> bool:
+        return addr in (f(cls) for f in _dummy_addr_funcs)
+
+
+class DummyAddressUsedInTxException(Exception): pass

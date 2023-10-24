@@ -7,20 +7,18 @@ from electrum_blk.simple_config import SimpleConfig
 from electrum_blk import blockchain
 from electrum_blk.interface import Interface, ServerAddr
 from electrum_blk.crypto import sha256
-from electrum_blk.util import bh2u
+from electrum_blk.util import OldTaskGroup
 from electrum_blk import util
 
 from . import ElectrumTestCase
 
 
-class MockTaskGroup:
-    async def spawn(self, x): return
-
 class MockNetwork:
-    taskgroup = MockTaskGroup()
 
     def __init__(self):
         self.asyncio_loop = util.get_asyncio_loop()
+        self.taskgroup = OldTaskGroup()
+
 
 class MockInterface(Interface):
     def __init__(self, config):
@@ -33,6 +31,7 @@ class MockInterface(Interface):
                                                 parent=None, forkpoint_hash=constants.net.GENESIS, prev_hash=None)
         self.tip = 12
         self.blockchain._size = self.tip + 1
+
     async def get_block_header(self, height, assert_mode):
         assert self.q.qsize() > 0, (height, assert_mode)
         item = await self.q.get()
@@ -40,6 +39,10 @@ class MockInterface(Interface):
         assert item['block_height'] == height, (item['block_height'], height)
         assert assert_mode in item['mock'], (assert_mode, item)
         return item
+
+    async def run(self):
+        return
+
 
 class TestNetwork(ElectrumTestCase):
 
@@ -53,12 +56,12 @@ class TestNetwork(ElectrumTestCase):
         super().tearDownClass()
         constants.set_mainnet()
 
-    def setUp(self):
-        super().setUp()
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
         self.config = SimpleConfig({'electrum_path': self.electrum_path})
         self.interface = MockInterface(self.config)
 
-    def test_fork_noconflict(self):
+    async def test_fork_noconflict(self):
         blockchain.blockchains = {}
         self.interface.q.put_nowait({'block_height': 8, 'mock': {'catchup':1, 'check': lambda x: False, 'connect': lambda x: False}})
         def mock_connect(height):
@@ -69,11 +72,11 @@ class TestNetwork(ElectrumTestCase):
         self.interface.q.put_nowait({'block_height': 5, 'mock': {'binary':1,'check':lambda x: True, 'connect': lambda x: True}})
         self.interface.q.put_nowait({'block_height': 6, 'mock': {'binary':1,'check':lambda x: True, 'connect': lambda x: True}})
         ifa = self.interface
-        fut = asyncio.run_coroutine_threadsafe(ifa.sync_until(8, next_height=7), util.get_asyncio_loop())
-        self.assertEqual(('fork', 8), fut.result())
+        res = await ifa.sync_until(8, next_height=7)
+        self.assertEqual(('fork', 8), res)
         self.assertEqual(self.interface.q.qsize(), 0)
 
-    def test_fork_conflict(self):
+    async def test_fork_conflict(self):
         blockchain.blockchains = {7: {'check': lambda bad_header: False}}
         self.interface.q.put_nowait({'block_height': 8, 'mock': {'catchup':1, 'check': lambda x: False, 'connect': lambda x: False}})
         def mock_connect(height):
@@ -84,11 +87,11 @@ class TestNetwork(ElectrumTestCase):
         self.interface.q.put_nowait({'block_height': 5, 'mock': {'binary':1,'check':lambda x: True, 'connect': lambda x: True}})
         self.interface.q.put_nowait({'block_height': 6, 'mock': {'binary':1,'check':lambda x: True, 'connect': lambda x: True}})
         ifa = self.interface
-        fut = asyncio.run_coroutine_threadsafe(ifa.sync_until(8, next_height=7), util.get_asyncio_loop())
-        self.assertEqual(('fork', 8), fut.result())
+        res = await ifa.sync_until(8, next_height=7)
+        self.assertEqual(('fork', 8), res)
         self.assertEqual(self.interface.q.qsize(), 0)
 
-    def test_can_connect_during_backward(self):
+    async def test_can_connect_during_backward(self):
         blockchain.blockchains = {}
         self.interface.q.put_nowait({'block_height': 8, 'mock': {'catchup':1, 'check': lambda x: False, 'connect': lambda x: False}})
         def mock_connect(height):
@@ -98,17 +101,17 @@ class TestNetwork(ElectrumTestCase):
         self.interface.q.put_nowait({'block_height': 3, 'mock': {'catchup':1, 'check': lambda x: False, 'connect': lambda x: True}})
         self.interface.q.put_nowait({'block_height': 4, 'mock': {'catchup':1, 'check': lambda x: False, 'connect': lambda x: True}})
         ifa = self.interface
-        fut = asyncio.run_coroutine_threadsafe(ifa.sync_until(8, next_height=4), util.get_asyncio_loop())
-        self.assertEqual(('catchup', 5), fut.result())
+        res = await ifa.sync_until(8, next_height=4)
+        self.assertEqual(('catchup', 5), res)
         self.assertEqual(self.interface.q.qsize(), 0)
 
     def mock_fork(self, bad_header):
         forkpoint = bad_header['block_height']
         b = blockchain.Blockchain(config=self.config, forkpoint=forkpoint, parent=None,
-                                  forkpoint_hash=bh2u(sha256(str(forkpoint))), prev_hash=bh2u(sha256(str(forkpoint-1))))
+                                  forkpoint_hash=sha256(str(forkpoint)).hex(), prev_hash=sha256(str(forkpoint-1)).hex())
         return b
 
-    def test_chain_false_during_binary(self):
+    async def test_chain_false_during_binary(self):
         blockchain.blockchains = {}
         self.interface.q.put_nowait({'block_height': 8, 'mock': {'catchup':1, 'check': lambda x: False, 'connect': lambda x: False}})
         mock_connect = lambda height: height == 3
@@ -119,8 +122,8 @@ class TestNetwork(ElectrumTestCase):
         self.interface.q.put_nowait({'block_height': 5, 'mock': {'catchup':1, 'check': lambda x: False, 'connect': lambda x: True}})
         self.interface.q.put_nowait({'block_height': 6, 'mock': {'catchup':1, 'check': lambda x: False, 'connect': lambda x: True}})
         ifa = self.interface
-        fut = asyncio.run_coroutine_threadsafe(ifa.sync_until(8, next_height=6), util.get_asyncio_loop())
-        self.assertEqual(('catchup', 7), fut.result())
+        res = await ifa.sync_until(8, next_height=6)
+        self.assertEqual(('catchup', 7), res)
         self.assertEqual(self.interface.q.qsize(), 0)
 
 

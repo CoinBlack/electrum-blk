@@ -5,7 +5,7 @@ from electrum_blk import ecc
 from electrum_blk.i18n import _
 from electrum_blk.util import UserCancelled, UserFacingException
 from electrum_blk.keystore import bip39_normalize_passphrase
-from electrum_blk.bip32 import BIP32Node, convert_bip32_path_to_list_of_uint32 as parse_path
+from electrum_blk.bip32 import BIP32Node, convert_bip32_strpath_to_intpath as parse_path
 from electrum_blk.logging import Logger
 from electrum_blk.plugin import runs_in_hwd_thread
 from electrum_blk.plugins.hw_wallet.plugin import OutdatedHwFirmwareException, HardwareClientBase
@@ -287,8 +287,15 @@ class TrezorClientBase(HardwareClientBase, Logger):
         pin = self.handler.get_pin(msg.format(self.device), show_strength=show_strength)
         if not pin:
             raise Cancelled
-        if len(pin) > 9:
-            self.handler.show_error(_('The PIN cannot be longer than 9 characters.'))
+        # check PIN length. Depends on model and firmware version
+        # https://github.com/trezor/trezor-firmware/issues/1167
+        limit = 9
+        if self.features.model == "1" and (1, 10, 0) <= self.client.version:
+            limit = 50
+        elif self.features.model == "T" and (2, 4, 0) <= self.client.version:
+            limit = 50
+        if len(pin) > limit:
+            self.handler.show_error(_('The PIN cannot be longer than {} characters.').format(limit))
             raise Cancelled
         return pin
 

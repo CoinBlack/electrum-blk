@@ -39,13 +39,14 @@ except ImportError:
     sys.exit("Error: could not find paymentrequest_pb2.py. Create it with 'contrib/generate_payreqpb2.sh'")
 
 from . import bitcoin, constants, ecc, util, transaction, x509, rsakey
-from .util import bh2u, bfh, make_aiohttp_session
+from .util import bfh, make_aiohttp_session, error_text_bytes_to_safe_str, get_running_loop
 from .invoices import Invoice, get_id_from_onchain_outputs
 from .crypto import sha256
 from .bitcoin import address_to_script
 from .transaction import PartialTxOutput
 from .network import Network
 from .logging import get_logger, Logger
+from .contacts import Contacts
 
 if TYPE_CHECKING:
     from .simple_config import SimpleConfig
@@ -94,12 +95,8 @@ async def get_payment_request(url: str) -> 'PaymentRequest':
             if isinstance(e, aiohttp.ClientResponseError):
                 error += f"\nGot HTTP status code {e.status}."
                 if resp_content:
-                    try:
-                        error_text_received = resp_content.decode("utf8")
-                    except UnicodeDecodeError:
-                        error_text_received = "(failed to decode error)"
-                    else:
-                        error_text_received = error_text_received[:400]
+                    error_text_received = error_text_bytes_to_safe_str(resp_content)
+                    error_text_received = error_text_received[:400]
                     error_oneline = ' -- '.join(error.split('\n'))
                     _logger.info(f"{error_oneline} -- [DO NOT TRUST THIS MESSAGE] "
                                  f"{repr(e)} text: {error_text_received}")
@@ -108,6 +105,10 @@ async def get_payment_request(url: str) -> 'PaymentRequest':
         data = None
         error = f"Unknown scheme for payment request. URL: {url}"
     pr = PaymentRequest(data, error=error)
+    loop = get_running_loop()
+    # do x509/dnssec verification now (in separate thread, to avoid blocking event loop).
+    # we still expect the caller to at least check pr.error!
+    await loop.run_in_executor(None, pr.verify)
     return pr
 
 
@@ -115,22 +116,24 @@ class PaymentRequest:
 
     def __init__(self, data: bytes, *, error=None):
         self.raw = data
-        self.error = error  # FIXME overloaded and also used when 'verify' succeeds
-        self.parse(data)
+        self.error = error  # type: Optional[str]
+        self._verified_success = None  # caches result of _verify
+        self._verified_success_msg = None  # type: Optional[str]
+        self._parse(data)
         self.requestor = None # known after verify
         self.tx = None
 
     def __str__(self):
         return str(self.raw)
 
-    def parse(self, r: bytes):
+    def _parse(self, r: bytes):
         self.outputs = []  # type: List[PartialTxOutput]
         if self.error:
             return
         try:
             self.data = pb2.PaymentRequest()
             self.data.ParseFromString(r)
-        except:
+        except Exception:
             self.error = "cannot parse payment request"
             return
         self.details = pb2.PaymentDetails()
@@ -151,7 +154,11 @@ class PaymentRequest:
         self.memo = self.details.memo
         self.payment_url = self.details.payment_url
 
-    def verify(self, contacts):
+    def verify(self) -> bool:
+        # FIXME: we should enforce that this method was called before we attempt payment
+        # note: this method might do network requests (at least for verify_dnssec)
+        if self._verified_success is True:
+            return True
         if self.error:
             return False
         if not self.raw:
@@ -160,7 +167,7 @@ class PaymentRequest:
         pr = pb2.PaymentRequest()
         try:
             pr.ParseFromString(self.raw)
-        except:
+        except Exception:
             self.error = "Error: Cannot parse payment request"
             return False
         if not pr.signature:
@@ -170,7 +177,7 @@ class PaymentRequest:
         if pr.pki_type in ["x509+sha256", "x509+sha1"]:
             return self.verify_x509(pr)
         elif pr.pki_type in ["dnssec+blk", "dnssec+ecdsa"]:
-            return self.verify_dnssec(pr, contacts)
+            return self.verify_dnssec(pr)
         else:
             self.error = "ERROR: Unsupported PKI Type for Message Signature"
             return False
@@ -212,13 +219,14 @@ class PaymentRequest:
             self.error = "ERROR: Invalid Signature for Payment Request Data"
             return False
         ### SIG Verified
-        self.error = 'Signed by Trusted CA: ' + ca.get_common_name()
+        self._verified_success_msg = 'Signed by Trusted CA: ' + ca.get_common_name()
+        self._verified_success = True
         return True
 
-    def verify_dnssec(self, pr, contacts):
+    def verify_dnssec(self, pr):
         sig = pr.signature
         alias = pr.pki_data
-        info = contacts.resolve(alias)
+        info = Contacts.resolve_openalias(alias)
         if info.get('validated') is not True:
             self.error = "Alias verification failed (DNSSEC)"
             return False
@@ -228,7 +236,8 @@ class PaymentRequest:
             pr.signature = b''
             message = pr.SerializeToString()
             if ecc.verify_message_with_address(address, sig, message):
-                self.error = 'Verified with DNSSEC'
+                self._verified_success_msg = 'Verified with DNSSEC'
+                self._verified_success = True
                 return True
             else:
                 self.error = "verify failed"
@@ -260,8 +269,8 @@ class PaymentRequest:
     def get_requestor(self):
         return self.requestor if self.requestor else self.get_address()
 
-    def get_verify_status(self):
-        return self.error if self.requestor else "No Signature"
+    def get_verify_status(self) -> str:
+        return (self.error or self._verified_success_msg) if self.requestor else "No Signature"
 
     def get_memo(self):
         return self.memo
@@ -305,12 +314,8 @@ class PaymentRequest:
             if isinstance(e, aiohttp.ClientResponseError):
                 error += f"\nGot HTTP status code {e.status}."
                 if resp_content:
-                    try:
-                        error_text_received = resp_content.decode("utf8")
-                    except UnicodeDecodeError:
-                        error_text_received = "(failed to decode error)"
-                    else:
-                        error_text_received = error_text_received[:400]
+                    error_text_received = error_text_bytes_to_safe_str(resp_content)
+                    error_text_received = error_text_received[:400]
                     error_oneline = ' -- '.join(error.split('\n'))
                     _logger.info(f"{error_oneline} -- [DO NOT TRUST THIS MESSAGE] "
                                  f"{repr(e)} text: {error_text_received}")
@@ -407,10 +412,10 @@ def verify_cert_chain(chain):
     return x509_chain[0], ca
 
 
-def check_ssl_config(config):
+def check_ssl_config(config: 'SimpleConfig'):
     from . import pem
-    key_path = config.get('ssl_keyfile')
-    cert_path = config.get('ssl_certfile')
+    key_path = config.SSL_KEYFILE_PATH
+    cert_path = config.SSL_CERTFILE_PATH
     with open(key_path, 'r', encoding='utf-8') as f:
         params = pem.parse_private_key(f.read())
     with open(cert_path, 'r', encoding='utf-8') as f:
@@ -460,8 +465,8 @@ def serialize_request(req):  # FIXME this is broken
 
 def make_request(config: 'SimpleConfig', req: 'Invoice'):
     pr = make_unsigned_request(req)
-    key_path = config.get('ssl_keyfile')
-    cert_path = config.get('ssl_certfile')
+    key_path = config.SSL_KEYFILE_PATH
+    cert_path = config.SSL_CERTFILE_PATH
     if key_path and cert_path:
         sign_request_with_x509(pr, key_path, cert_path)
     return pr

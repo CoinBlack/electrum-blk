@@ -10,36 +10,27 @@ import "controls"
 ElDialog {
     id: root
 
-    title: qsTr('PIN')
-    iconSource: '../../../icons/lock.png'
-
-    width: parent.width * 2/3
-    height: parent.height * 1/3
-
-    anchors.centerIn: parent
-
-    modal: true
-    parent: Overlay.overlay
-    Overlay.modal: Rectangle {
-        color: canCancel ? "#aa000000" : "#ff000000"
-    }
-
-    focus: true
-
-    standardButtons: canCancel ? Dialog.Cancel : 0
-    closePolicy: canCancel ? Popup.CloseOnEscape | Popup.CloseOnPressOutside : Popup.NoAutoClose
-
     property bool canCancel: true
-
-    allowClose: canCancel
-
     property string mode // [check, enter, change]
     property string pincode // old one passed in when change, new one passed out
-
+    property bool checkError: false
+    property string authMessage
     property int _phase: mode == 'enter' ? 1 : 0 // 0 = existing pin, 1 = new pin, 2 = re-enter new pin
     property string _pin
 
-    property bool checkError: false
+    title: authMessage ? authMessage : qsTr('PIN')
+    iconSource: '../../../icons/lock.png'
+    width: parent.width * 3/4
+    z: 1000
+    focus: true
+    closePolicy: canCancel ? Popup.CloseOnEscape | Popup.CloseOnPressOutside : Popup.NoAutoClose
+    allowClose: canCancel
+
+    anchors.centerIn: parent
+
+    Overlay.modal: Rectangle {
+        color: canCancel ? "#aa000000" : "#ff000000"
+    }
 
     function submit() {
         if (_phase == 0) {
@@ -78,7 +69,6 @@ ElDialog {
 
     ColumnLayout {
         width: parent.width
-        height: parent.height
 
         Label {
             text: [qsTr('Enter PIN'), qsTr('Enter New PIN'), qsTr('Re-enter New PIN')][_phase]
@@ -109,8 +99,6 @@ ElDialog {
             color: constants.colorError
             Layout.alignment: Qt.AlignHCenter
         }
-
-        Item { Layout.fillHeight: true; Layout.preferredWidth: 1 }
     }
 
     FontMetrics {

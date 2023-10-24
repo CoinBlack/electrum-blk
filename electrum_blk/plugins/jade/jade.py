@@ -1,7 +1,7 @@
 import os
 import base64
 import json
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from electrum_blk import bip32, constants
 from electrum_blk.crypto import sha256
@@ -10,14 +10,16 @@ from electrum_blk.keystore import Hardware_KeyStore
 from electrum_blk.transaction import Transaction
 from electrum_blk.wallet import Multisig_Wallet
 from electrum_blk.util import UserFacingException
-from electrum_blk.base_wizard import ScriptTypeNotSupported
 from electrum_blk.logging import get_logger
 from electrum_blk.plugin import runs_in_hwd_thread, Device
 from electrum_blk.network import Network
 
-from ..hw_wallet import HW_PluginBase, HardwareClientBase
-from ..hw_wallet.plugin import OutdatedHwFirmwareException
+from electrum_blk.plugins.hw_wallet import HW_PluginBase, HardwareClientBase
+from electrum_blk.plugins.hw_wallet.plugin import OutdatedHwFirmwareException
 
+if TYPE_CHECKING:
+    from electrum_blk.plugin import DeviceInfo
+    from electrum_blk.wizard import NewWalletWizard
 
 _logger = get_logger(__name__)
 
@@ -55,7 +57,7 @@ def _register_multisig_wallet(wallet, keystore, address):
     for kstore in wallet.get_keystores():
         fingerprint = kstore.get_root_fingerprint()
         bip32_path_prefix = kstore.get_derivation_prefix()
-        derivation_path = bip32.convert_bip32_path_to_list_of_uint32(bip32_path_prefix)
+        derivation_path = bip32.convert_bip32_strpath_to_intpath(bip32_path_prefix)
 
         # Jade only understands standard xtypes, so convert here
         node = bip32.BIP32Node.from_xkey(kstore.xpub)
@@ -169,7 +171,7 @@ class Jade_Client(HardwareClientBase):
         self.authenticate()
 
         # Jade only provides traditional xpubs ...
-        path = bip32.convert_bip32_path_to_list_of_uint32(bip32_path)
+        path = bip32.convert_bip32_strpath_to_intpath(bip32_path)
         xpub = self.jade.get_xpub(self._network(), path)
 
         # ... so convert to relevant xtype locally
@@ -180,7 +182,7 @@ class Jade_Client(HardwareClientBase):
     def sign_message(self, bip32_path_prefix, sequence, message):
         self.authenticate()
 
-        path = bip32.convert_bip32_path_to_list_of_uint32(bip32_path_prefix)
+        path = bip32.convert_bip32_strpath_to_intpath(bip32_path_prefix)
         path.extend(sequence)
 
         if isinstance(message, bytes) or isinstance(message, bytearray):
@@ -214,7 +216,7 @@ class Jade_Client(HardwareClientBase):
     @runs_in_hwd_thread
     def show_address(self, bip32_path_prefix, sequence, txin_type):
         self.authenticate()
-        path = bip32.convert_bip32_path_to_list_of_uint32(bip32_path_prefix)
+        path = bip32.convert_bip32_strpath_to_intpath(bip32_path_prefix)
         path.extend(sequence)
         script_variant = self._convertAddrType(txin_type, multisig=False)
         address = self.jade.get_receive_address(self._network(), path, variant=script_variant)
@@ -264,7 +266,7 @@ class Jade_KeyStore(Hardware_KeyStore):
             jade_inputs = []
             for txin in tx.inputs():
                 pubkey, path = self.find_my_pubkey_in_txinout(txin)
-                witness_input = txin.script_type in ['p2wpkh-p2sh', 'p2wsh-p2sh', 'p2wpkh', 'p2wsh']
+                witness_input = txin.is_segwit()
                 redeem_script = Transaction.get_preimage_script(txin)
                 redeem_script = bytes.fromhex(redeem_script) if redeem_script is not None else None
                 input_tx = txin.utxo
@@ -280,6 +282,8 @@ class Jade_KeyStore(Hardware_KeyStore):
             change = [None] * len(tx.outputs())
             for index, txout in enumerate(tx.outputs()):
                 if txout.is_mine and txout.is_change:
+                    desc = txout.script_descriptor
+                    assert desc
                     if is_multisig:
                         # Multisig - wallet details must be registered on Jade hw
                         multisig_name = _register_multisig_wallet(wallet, self, txout.address)
@@ -294,10 +298,10 @@ class Jade_KeyStore(Hardware_KeyStore):
                     else:
                         # Pass entire path
                         pubkey, path = self.find_my_pubkey_in_txinout(txout)
-                        change[index] = {'path':path, 'variant': txout.script_type}
+                        change[index] = {'path':path, 'variant': desc.to_legacy_electrum_script_type()}
 
             # The txn itself
-            txn_bytes = bytes.fromhex(tx.serialize_to_network())
+            txn_bytes = bytes.fromhex(tx.serialize_to_network(include_sigs=False))
 
             # Request Jade generate the signatures for our inputs.
             # Change details are passed to be validated on the hw (user does not confirm)
@@ -348,7 +352,10 @@ class Jade_KeyStore(Hardware_KeyStore):
 class JadePlugin(HW_PluginBase):
     keystore_class = Jade_KeyStore
     minimum_library = (0, 0, 1)
-    DEVICE_IDS = [(0x10c4, 0xea60), (0x1a86, 0x55d4)]
+    DEVICE_IDS = [(0x10c4, 0xea60), # Development Jade device
+                  (0x1a86, 0x55d4), # Retail Blockstream Jade (And some DIY devices)
+                  (0x0403, 0x6001), # DIY FTDI Based Devices (Eg: M5StickC-Plus)
+                  (0x1a86, 0x7523)] # DIY CH340 Based devices (Eg: ESP32-Wrover)
     SUPPORTED_XTYPES = ('standard', 'p2wpkh-p2sh', 'p2wpkh', 'p2wsh-p2sh', 'p2wsh')
     MIN_SUPPORTED_FW_VERSION = (0, 1, 32)
 
@@ -409,7 +416,7 @@ class JadePlugin(HW_PluginBase):
             version = jadepy.__version__
         except ImportError:
             raise
-        except:
+        except Exception:
             version = "unknown"
         return version
 
@@ -430,22 +437,6 @@ class JadePlugin(HW_PluginBase):
             raise OutdatedHwFirmwareException(msg)
 
         return client
-
-    def setup_device(self, device_info, wizard, purpose):
-        device_id = device_info.device.id_
-        client = self.scan_and_create_client_for_device(device_id=device_id, wizard=wizard)
-
-        # Call authenticate on hww to ensure unlocked and suitable for network
-        # May involve user entering PIN on (or even setting up!) hardware device
-        wizard.run_task_without_blocking_gui(task=lambda: client.authenticate())
-        return client
-
-    def get_xpub(self, device_id, derivation, xtype, wizard):
-        if xtype not in self.SUPPORTED_XTYPES:
-            raise ScriptTypeNotSupported(_('This type of script is not supported with {}.').format(self.device))
-        client = self.scan_and_create_client_for_device(device_id=device_id, wizard=wizard)
-        xpub = client.get_xpub(derivation, xtype)
-        return xpub
 
     def show_address(self, wallet, address, keystore=None):
         if keystore is None:
@@ -471,3 +462,27 @@ class JadePlugin(HW_PluginBase):
 
         if hw_address != address:
             keystore.handler.show_error(_('The address generated by {} does not match!').format(self.device))
+
+    def wizard_entry_for_device(self, device_info: 'DeviceInfo', *, new_wallet=True) -> str:
+        if new_wallet:
+            return 'jade_start' if device_info.initialized else 'jade_not_initialized'
+        else:
+            return 'jade_unlock'
+
+    # insert jade pages in new wallet wizard
+    def extend_wizard(self, wizard: 'NewWalletWizard'):
+        views = {
+            'jade_start': {
+                'next': 'jade_xpub',
+            },
+            'jade_xpub': {
+                'next': lambda d: wizard.wallet_password_view(d) if wizard.last_cosigner(d) else 'multisig_cosigner_keystore',
+                'accept': wizard.maybe_master_pubkey,
+                'last': lambda d: wizard.is_single_password() and wizard.last_cosigner(d)
+            },
+            'jade_not_initialized': {},
+            'jade_unlock': {
+                'last': True
+            },
+        }
+        wizard.navmap_merge(views)

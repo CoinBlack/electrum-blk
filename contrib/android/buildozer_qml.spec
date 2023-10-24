@@ -13,7 +13,7 @@ package.domain = org.electrum_blk
 source.dir = .
 
 # (list) Source files to include (let empty to include all the files)
-source.include_exts = py,png,jpg,qml,qmltypes,ttf,txt,gif,pem,mo,json,csv,so
+source.include_exts = py,png,jpg,qml,qmltypes,ttf,txt,gif,pem,mo,json,csv,so,svg
 
 # (list) Source files to exclude (let empty to not exclude anything)
 source.exclude_exts = spec
@@ -61,7 +61,6 @@ requirements =
     libzbar
 
 # (str) Presplash of the application
-#presplash.filename = %(source.dir)s/gui/kivy/theming/splash.png
 presplash.filename = %(source.dir)s/electrum_blk/gui/icons/electrum_presplash.png
 
 # (str) Icon of the application
@@ -138,11 +137,9 @@ android.add_jars = .buildozer/android/platform/*/build/libs_collections/Electrum
 
 # (list) List of Java files to add to the android project (can be java or a
 # directory containing the files)
-android.add_src = electrum_blk/gui/kivy/data/java-classes/
-
-android.gradle_dependencies = me.dm7.barcodescanner:zxing:1.9.8
-
-android.add_activities = org.electrum_blk.qr.SimpleScannerActivity
+# android.add_src = ...
+# android.add_activities = ...
+android.gradle_dependencies = com.android.support:support-compat:28.0.0
 
 # (str) python-for-android branch to use, if not master, useful to try
 # not yet merged features.
@@ -224,7 +221,7 @@ p4a.bootstrap = qt5
 [buildozer]
 
 # (int) Log level (0 = error only, 1 = info, 2 = debug (with command output))
-log_level = 1
+log_level = 2
 
 # (str) Path to build output (i.e. .apk, .ipa) storage
 bin_dir = ./dist

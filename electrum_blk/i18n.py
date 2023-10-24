@@ -24,30 +24,56 @@
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 import os
+from typing import Optional
 
 import gettext
 
+from .logging import get_logger
+
+
+_logger = get_logger(__name__)
 LOCALE_DIR = os.path.join(os.path.dirname(__file__), 'locale')
+
+# set initial default language, based on OS-locale
+# FIXME some module-level strings might get translated using this language, before
+#       any user-provided custom language (in config) can get set.
 language = gettext.translation('electrum', LOCALE_DIR, fallback=True)
+try:
+    _lang = language.info().get('language', None)
+except Exception as e:
+    _logger.info(f"gettext setting initial language to ?? (error: {e!r})")
+else:
+    _logger.info(f"gettext setting initial language to {_lang!r}")
 
 
+# note: do not use old-style (%) formatting inside translations,
+#       as syntactically incorrectly translated strings would raise exceptions (see #3237).
+#       e.g. consider  _("Connected to %d nodes.") % n
+#                      >>> "Connecté aux noeuds" % n
+#                      TypeError: not all arguments converted during string formatting
 # note: f-strings cannot be translated! see https://stackoverflow.com/q/49797658
 #       So this does not work:   _(f"My name: {name}")
 #       instead use .format:     _("My name: {}").format(name)
-def _(x: str) -> str:
-    if x == "":
+def _(msg: str, *, context=None) -> str:
+    if msg == "":
         return ""  # empty string must not be translated. see #7158
     global language
-    dic = [('BTC', 'BLK'), ('Bitcoin', 'Blackcoin'), ('bitcoin', 'blackcoin')]
-    for b, l in dic:
-        x = x.replace(l, b)
-    t = language.gettext(x)
-    for b, l in dic:
-        t = t.replace(b, l)
-    return t
+    if context:
+        contexts = [context]
+        if context[-1] != "|":  # try with both "|" suffix and without
+            contexts.append(context + "|")
+        else:
+            contexts.append(context[:-1])
+        for ctx in contexts:
+            out = language.pgettext(ctx, msg)
+            if out != msg:  # found non-trivial translation
+                return out
+        # else try without context
+    return language.gettext(msg)
 
 
-def set_language(x):
+def set_language(x: Optional[str]) -> None:
+    _logger.info(f"setting language to {x!r}")
     global language
     if x:
         language = gettext.translation('electrum', LOCALE_DIR, fallback=True, languages=[x])

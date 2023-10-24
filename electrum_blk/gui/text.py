@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Optional
 
 import electrum_blk as electrum
 from electrum_blk.gui import BaseElectrumGui
-from electrum_blk import util
+from electrum_blk.bip21 import parse_bip21_URI
 from electrum_blk.util import format_satoshis, format_time
 from electrum_blk.util import EventListener, event_listener
 from electrum_blk.bitcoin import is_address, address_to_script, COIN
@@ -32,19 +32,20 @@ if TYPE_CHECKING:
 
 _ = lambda x:x  # i18n
 
+
 def parse_bip21(text):
     try:
-        return util.parse_URI(text)
-    except:
+        return parse_bip21_URI(text)
+    except Exception:
         return
+
 
 def parse_bolt11(text):
     from electrum_blk.lnaddr import lndecode
     try:
         return lndecode(text)
-    except:
+    except Exception:
         return
-
 
 
 class ElectrumGui(BaseElectrumGui, EventListener):
@@ -52,15 +53,15 @@ class ElectrumGui(BaseElectrumGui, EventListener):
     def __init__(self, *, config: 'SimpleConfig', daemon: 'Daemon', plugins: 'Plugins'):
         BaseElectrumGui.__init__(self, config=config, daemon=daemon, plugins=plugins)
         self.network = daemon.network
-        storage = WalletStorage(config.get_wallet_path())
+        storage = WalletStorage(config.get_wallet_path(use_gui_last_wallet=True))
         if not storage.file_exists():
             print("Wallet not found. try 'electrum-blk create'")
             exit()
         if storage.is_encrypted():
             password = getpass.getpass('Password:', stream=None)
             storage.decrypt(password)
-        db = WalletDB(storage.read(), manual_upgrades=False)
-        self.wallet = Wallet(db, storage, config=config)  # type: Optional[Abstract_Wallet]
+        db = WalletDB(storage.read(), storage=storage, upgrade=True)
+        self.wallet = Wallet(db, config=config)  # type: Optional[Abstract_Wallet]
         self.wallet.start_network(self.network)
         self.contacts = self.wallet.contacts
 
@@ -163,9 +164,10 @@ class ElectrumGui(BaseElectrumGui, EventListener):
         domain = self.wallet.get_addresses()
         self.history = []
         self.txid = []
+        balance_sat = 0
         for item in self.wallet.get_full_history().values():
             amount_sat = item['value'].value
-            balance_sat = item['balance'].value
+            balance_sat += amount_sat
             if item.get('lightning'):
                 timestamp = item['timestamp']
                 label = self.wallet.get_label_for_rhash(item['payment_hash'])
@@ -517,6 +519,7 @@ class ElectrumGui(BaseElectrumGui, EventListener):
         pass
 
     def main(self):
+        self.daemon.start_network()
         tty.setraw(sys.stdin)
         try:
             while self.tab != -1:
@@ -557,7 +560,7 @@ class ElectrumGui(BaseElectrumGui, EventListener):
             if not address:
                 return
         message = self.str_recv_description
-        expiry = self.config.get('request_expiry', PR_DEFAULT_EXPIRATION_WHEN_CREATING)
+        expiry = self.config.WALLET_PAYREQ_EXPIRY_SECONDS
         key = self.wallet.create_request(amount_sat, message, expiry, address)
         self.do_clear_request()
         self.pos = self.max_pos
@@ -593,7 +596,7 @@ class ElectrumGui(BaseElectrumGui, EventListener):
     def parse_amount(self, text):
         try:
             x = Decimal(text)
-        except:
+        except Exception:
             return None
         power = pow(10, self.config.get_decimal_point())
         return int(power * x)
@@ -604,7 +607,7 @@ class ElectrumGui(BaseElectrumGui, EventListener):
             if invoice.amount_msat is None:
                 amount_sat = self.parse_amount(self.str_amount)
                 if amount_sat:
-                    invoice.amount_msat = int(amount_sat * 1000)
+                    invoice.set_amount_msat(int(amount_sat * 1000))
                 else:
                     self.show_error(_('No amount'))
                     return
@@ -671,10 +674,11 @@ class ElectrumGui(BaseElectrumGui, EventListener):
         else:
             password = None
         try:
-            tx = self.wallet.mktx(
+            tx = self.wallet.create_transaction(
                 outputs=invoice.outputs,
                 password=password,
-                fee=None)
+                fee=None,
+            )
         except Exception as e:
             self.show_message(repr(e))
             return
@@ -718,7 +722,7 @@ class ElectrumGui(BaseElectrumGui, EventListener):
         srv = 'auto-connect' if auto_connect else str(self.network.default_server)
         out = self.run_dialog('Network', [
             {'label':'server', 'type':'str', 'value':srv},
-            {'label':'proxy', 'type':'str', 'value':self.config.get('proxy', '')},
+            {'label':'proxy', 'type':'str', 'value':self.config.NETWORK_PROXY},
             ], buttons = 1)
         if out:
             if out.get('server'):
@@ -746,7 +750,7 @@ class ElectrumGui(BaseElectrumGui, EventListener):
         if out:
             if out.get('Default fee'):
                 fee = int(Decimal(out['Default fee']) * COIN)
-                self.config.set_key('fee_per_kb', fee, True)
+                self.config.FEE_EST_STATIC_FEERATE = fee
 
     def password_dialog(self):
         out = self.run_dialog('Password', [
@@ -854,7 +858,7 @@ class ElectrumGui(BaseElectrumGui, EventListener):
         req = self.wallet.get_request(key)
         addr = req.get_address() or ''
         URI = self.wallet.get_request_URI(req) or ''
-        lnaddr = req.lightning_invoice or ''
+        lnaddr = self.wallet.get_bolt11_invoice(req) or ''
         w = curses.newwin(self.maxy - 2, self.maxx - 2, 1, 1)
         pos = 4
         while True:

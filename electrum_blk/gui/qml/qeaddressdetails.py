@@ -2,33 +2,34 @@ from PyQt5.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject
 
 from electrum_blk.logging import get_logger
 
+from .auth import auth_protect, AuthMixin
 from .qetransactionlistmodel import QETransactionListModel
 from .qetypes import QEAmount
 from .qewallet import QEWallet
 
 
-class QEAddressDetails(QObject):
+class QEAddressDetails(AuthMixin, QObject):
+    _logger = get_logger(__name__)
+
+    detailsChanged = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
 
-    _logger = get_logger(__name__)
+        self._wallet = None
+        self._address = None
 
-    _wallet = None
-    _address = None
+        self._label = None
+        self._frozen = False
+        self._scriptType = None
+        self._status = None
+        self._balance = QEAmount()
+        self._pubkeys = None
+        self._privkey = None
+        self._derivationPath = None
+        self._numtx = 0
 
-    _label = None
-    _frozen = False
-    _scriptType = None
-    _status = None
-    _balance = QEAmount()
-    _pubkeys = None
-    _privkey = None
-    _derivationPath = None
-    _numtx = 0
-
-    _historyModel = None
-
-    detailsChanged = pyqtSignal()
+        self._historyModel = None
 
     walletChanged = pyqtSignal()
     @pyqtProperty(QEWallet, notify=walletChanged)
@@ -67,6 +68,10 @@ class QEAddressDetails(QObject):
         return self._pubkeys
 
     @pyqtProperty(str, notify=detailsChanged)
+    def privkey(self):
+        return self._privkey
+
+    @pyqtProperty(str, notify=detailsChanged)
     def derivationPath(self):
         return self._derivationPath
 
@@ -94,7 +99,7 @@ class QEAddressDetails(QObject):
             self._wallet.balanceChanged.emit()
 
     @pyqtSlot(str)
-    def set_label(self, label: str):
+    def setLabel(self, label: str):
         if label != self._label:
             self._wallet.wallet.set_label(self._address, label)
             self._label = label
@@ -107,6 +112,19 @@ class QEAddressDetails(QObject):
             self._historyModel = QETransactionListModel(self._wallet.wallet,
                                                         onchain_domain=[self._address], include_lightning=False)
         return self._historyModel
+
+    @pyqtSlot()
+    def requestShowPrivateKey(self):
+        self.retrieve_private_key()
+
+    @auth_protect(method='wallet')
+    def retrieve_private_key(self):
+        try:
+            self._privkey = self._wallet.wallet.export_private_key(self._address, self._wallet.password)
+        except Exception:
+            self._privkey = ''
+
+        self.detailsChanged.emit()
 
     def update(self):
         if self._wallet is None:
@@ -125,5 +143,4 @@ class QEAddressDetails(QObject):
         if self._wallet.derivationPrefix:
             self._derivationPath = self._derivationPath.replace('m', self._wallet.derivationPrefix)
         self._numtx = self._wallet.wallet.adb.get_address_history_len(self._address)
-        assert self._numtx == self.historyModel.rowCount(0)
         self.detailsChanged.emit()

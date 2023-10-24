@@ -5,40 +5,40 @@ from PyQt5.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject
 from electrum_blk import mnemonic
 from electrum_blk import keystore
 from electrum_blk.i18n import _
-from electrum_blk.bip32 import is_bip32_derivation, normalize_bip32_derivation, xpub_type
+from electrum_blk.bip32 import is_bip32_derivation, xpub_type
 from electrum_blk.logging import get_logger
 from electrum_blk.slip39 import decode_mnemonic, Slip39Error
-from electrum_blk.util import parse_URI, create_bip21_uri, InvalidBitcoinURI, get_asyncio_loop
+from electrum_blk.util import get_asyncio_loop
 from electrum_blk.transaction import tx_from_any
-from electrum_blk.mnemonic import is_any_2fa_seed_type
+from electrum_blk.mnemonic import Mnemonic, is_any_2fa_seed_type
+from electrum_blk.old_mnemonic import wordlist as old_wordlist
+from electrum_blk.bitcoin import is_address
 
-from .qetypes import QEAmount
 
 class QEBitcoin(QObject):
-    def __init__(self, config, parent=None):
-        super().__init__(parent)
-        self.config = config
-
     _logger = get_logger(__name__)
 
     generatedSeedChanged = pyqtSignal()
-    generatedSeed = ''
-
     seedTypeChanged = pyqtSignal()
-    seedType = ''
-
     validationMessageChanged = pyqtSignal()
-    _validationMessage = ''
 
-    @pyqtProperty('QString', notify=generatedSeedChanged)
-    def generated_seed(self):
-        return self.generatedSeed
+    def __init__(self, config, parent=None):
+        super().__init__(parent)
+        self.config = config
+        self._seed_type = ''
+        self._generated_seed = ''
+        self._validationMessage = ''
+        self._words = None
 
-    @pyqtProperty('QString', notify=seedTypeChanged)
-    def seed_type(self):
-        return self.seedType
+    @pyqtProperty(str, notify=generatedSeedChanged)
+    def generatedSeed(self):
+        return self._generated_seed
 
-    @pyqtProperty('QString', notify=validationMessageChanged)
+    @pyqtProperty(str, notify=seedTypeChanged)
+    def seedType(self):
+        return self._seed_type
+
+    @pyqtProperty(str, notify=validationMessageChanged)
     def validationMessage(self):
         return self._validationMessage
 
@@ -55,7 +55,7 @@ class QEBitcoin(QObject):
         self._logger.debug('generating seed of type ' + str(seed_type))
 
         async def co_gen_seed(seed_type, language):
-            self.generatedSeed = mnemonic.Mnemonic(language).make_seed(seed_type=seed_type)
+            self._generated_seed = mnemonic.Mnemonic(language).make_seed(seed_type=seed_type)
             self._logger.debug('seed generated')
             self.generatedSeedChanged.emit()
 
@@ -79,7 +79,7 @@ class QEBitcoin(QObject):
             if is_checksum:
                 seed_type = 'bip39'
                 seed_valid = True
-        elif seed_variant == 'slip39': # TODO: incomplete impl, this code only validates a single share.
+        elif seed_variant == 'slip39':  # TODO: incomplete impl, this code only validates a single share.
             try:
                 share = decode_mnemonic(seed)
                 seed_type = 'slip39'
@@ -98,7 +98,7 @@ class QEBitcoin(QObject):
         elif wallet_type == 'multisig' and seed_type not in ['standard', 'segwit', 'bip39']:
             seed_valid = False
 
-        self.seedType = seed_type
+        self._seed_type = seed_type
         self.seedTypeChanged.emit()
 
         self._logger.debug('seed verified: ' + str(seed_valid))
@@ -113,50 +113,47 @@ class QEBitcoin(QObject):
             return False
 
         k = keystore.from_master_key(key)
-        has_xpub = isinstance(k, keystore.Xpub)
-        assert has_xpub
-        t1 = xpub_type(k.xpub)
-
         if wallet_type == 'standard':
-            if t1 not in ['standard', 'p2wpkh', 'p2wpkh-p2sh']:
-                self.validationMessage = '%s: %s' % (_('Wrong key type'), t1)
+            if isinstance(k, keystore.Xpub):  # has bip32 xpub
+                t1 = xpub_type(k.xpub)
+                if t1 not in ['standard', 'p2wpkh', 'p2wpkh-p2sh']:  # disallow Ypub/Zpub
+                    self.validationMessage = '%s: %s' % (_('Wrong key type'), t1)
+                    return False
+            elif isinstance(k, keystore.Old_KeyStore):
+                pass
+            else:
+                self._logger.error(f"unexpected keystore type: {type(keystore)}")
                 return False
-            return True
         elif wallet_type == 'multisig':
-            if t1 not in ['standard', 'p2wsh', 'p2wsh-p2sh']:
+            if not isinstance(k, keystore.Xpub):  # old mpk?
+                self.validationMessage = '%s: %s' % (_('Wrong key type'), "not bip32")
+                return False
+            t1 = xpub_type(k.xpub)
+            if t1 not in ['standard', 'p2wsh', 'p2wsh-p2sh']:  # disallow ypub/zpub
                 self.validationMessage = '%s: %s' % (_('Wrong key type'), t1)
                 return False
-            return True
-
-        raise Exception(f'Unsupported wallet type: {wallet_type}')
+        else:
+            self.validationMessage = '%s: %s' % (_('Unsupported wallet type'), wallet_type)
+            self._logger.error(f'Unsupported wallet type: {wallet_type}')
+            return False
+        # looks okay
+        return True
 
     @pyqtSlot(str, result=bool)
     def verifyDerivationPath(self, path):
         return is_bip32_derivation(path)
-
-    @pyqtSlot(str, result='QVariantMap')
-    def parse_uri(self, uri: str) -> dict:
-        try:
-            return parse_URI(uri)
-        except InvalidBitcoinURI as e:
-            return { 'error': str(e) }
-
-    @pyqtSlot(str, QEAmount, str, int, int, result=str)
-    def create_bip21_uri(self, address, satoshis, message, timestamp, expiry):
-        extra_params = {}
-        if expiry:
-            extra_params['time'] = str(timestamp)
-            extra_params['exp'] = str(expiry)
-
-        return create_bip21_uri(address, satoshis.satsInt, message, extra_query_params=extra_params)
 
     @pyqtSlot(str, result=bool)
     def isRawTx(self, rawtx):
         try:
             tx_from_any(rawtx)
             return True
-        except:
+        except Exception:
             return False
+
+    @pyqtSlot(str, result=bool)
+    def isAddress(self, addr: str):
+        return is_address(addr)
 
     @pyqtSlot(str, result=bool)
     def isAddressList(self, csv: str):
@@ -165,3 +162,11 @@ class QEBitcoin(QObject):
     @pyqtSlot(str, result=bool)
     def isPrivateKeyList(self, csv: str):
         return keystore.is_private_key_list(csv)
+
+    @pyqtSlot(str, result='QVariantList')
+    def mnemonicsFor(self, fragment):
+        if not fragment:
+            return []
+        if not self._words:
+            self._words = set(Mnemonic('en').wordlist).union(set(old_wordlist))
+        return sorted(filter(lambda x: x.startswith(fragment), self._words))

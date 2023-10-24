@@ -31,215 +31,278 @@ Pane {
             clip:true
             interactive: height < contentHeight
 
-            GridLayout {
+            ColumnLayout {
                 id: rootLayout
                 width: parent.width
-                columns: 2
 
-                Label {
-                    Layout.columnSpan: 2
-                    text: qsTr('Channel details')
-                    font.pixelSize: constants.fontSizeLarge
-                    color: Material.accentColor
+                Heading {
+                    text: !channeldetails.isBackup ? qsTr('Lightning Channel') : qsTr('Channel Backup')
                 }
 
-                Rectangle {
-                    Layout.columnSpan: 2
+                GridLayout {
                     Layout.fillWidth: true
-                    height: 1
-                    color: Material.accentColor
-                }
+                    columns: 2
 
-                Label {
-                    visible: channeldetails.name
-                    text: qsTr('Node name')
-                    color: Material.accentColor
-                }
-
-                Label {
-                    visible: channeldetails.name
-                    text: channeldetails.name
-                }
-
-                Label {
-                    text: qsTr('Short channel ID')
-                    color: Material.accentColor
-                }
-
-                Label {
-                    text: channeldetails.short_cid
-                }
-
-                Label {
-                    text: qsTr('State')
-                    color: Material.accentColor
-                }
-
-                Label {
-                    text: channeldetails.state
-                }
-
-                Label {
-                    text: qsTr('Initiator')
-                    color: Material.accentColor
-                }
-
-                Label {
-                    text: channeldetails.initiator
-                }
-
-                Label {
-                    text: qsTr('Capacity')
-                    color: Material.accentColor
-                }
-
-                RowLayout {
                     Label {
-                        font.family: FixedFont
-                        text: Config.formatSats(channeldetails.capacity)
-                    }
-                    Label {
+                        visible: channeldetails.name
+                        text: qsTr('Node name')
                         color: Material.accentColor
-                        text: Config.baseUnit
                     }
-                    Label {
-                        text: Daemon.fx.enabled
-                            ? '(' + Daemon.fx.fiatValue(channeldetails.capacity) + ' ' + Daemon.fx.fiatCurrency + ')'
-                            : ''
-                    }
-                }
 
-                Label {
-                    text: qsTr('Can send')
-                    color: Material.accentColor
-                }
-
-                RowLayout {
-                    visible: !channeldetails.frozenForSending && channeldetails.isOpen
                     Label {
-                        font.family: FixedFont
-                        text: Config.formatSats(channeldetails.canSend)
+                        Layout.fillWidth: true
+                        visible: channeldetails.name
+                        text: channeldetails.name
                     }
+
                     Label {
+                        text: qsTr('Short channel ID')
                         color: Material.accentColor
-                        text: Config.baseUnit
                     }
-                    Label {
-                        text: Daemon.fx.enabled
-                            ? '(' + Daemon.fx.fiatValue(channeldetails.canSend) + ' ' + Daemon.fx.fiatCurrency + ')'
-                            : ''
-                    }
-                }
-                Label {
-                    visible: channeldetails.frozenForSending && channeldetails.isOpen
-                    text: qsTr('n/a (frozen)')
-                }
-                Label {
-                    visible: !channeldetails.isOpen
-                    text: qsTr('n/a (channel not open)')
-                }
 
-                Label {
-                    text: qsTr('Can Receive')
-                    color: Material.accentColor
-                }
-
-                RowLayout {
-                    visible: !channeldetails.frozenForReceiving && channeldetails.isOpen
                     Label {
-                        font.family: FixedFont
-                        text: Config.formatSats(channeldetails.canReceive)
+                        Layout.fillWidth: true
+                        text: channeldetails.shortCid
                     }
+
                     Label {
+                        text: qsTr('State')
                         color: Material.accentColor
-                        text: Config.baseUnit
                     }
+
                     Label {
-                        text: Daemon.fx.enabled
-                            ? '(' + Daemon.fx.fiatValue(channeldetails.canReceive) + ' ' + Daemon.fx.fiatCurrency + ')'
-                            : ''
+                        text: channeldetails.state
+                        color: channeldetails.state == 'OPEN'
+                                ? constants.colorChannelOpen
+                                : Material.foreground
                     }
-                }
-                Label {
-                    visible: channeldetails.frozenForReceiving && channeldetails.isOpen
-                    text: qsTr('n/a (frozen)')
-                }
-                Label {
-                    visible: !channeldetails.isOpen
-                    text: qsTr('n/a (channel not open)')
-                }
 
-                Label {
-                    text: qsTr('Channel type')
-                    color: Material.accentColor
-                }
+                    Label {
+                        visible: !channeldetails.isBackup
+                        text: qsTr('Initiator')
+                        color: Material.accentColor
+                    }
 
-                Label {
-                    text: channeldetails.channelType
-                }
+                    Label {
+                        visible: !channeldetails.isBackup
+                        text: channeldetails.initiator
+                    }
 
-                Label {
-                    text: qsTr('Remote node ID')
-                    Layout.columnSpan: 2
-                    color: Material.accentColor
-                }
+                    Label {
+                        text: qsTr('Channel type')
+                        color: Material.accentColor
+                    }
 
-                TextHighlightPane {
-                    Layout.columnSpan: 2
-                    Layout.fillWidth: true
-                    padding: 0
-                    leftPadding: constants.paddingSmall
+                    Label {
+                        text: channeldetails.channelType
+                    }
 
-                    RowLayout {
-                        width: parent.width
-                        Label {
-                            text: channeldetails.pubkey
-                            font.pixelSize: constants.fontSizeLarge
-                            font.family: FixedFont
-                            Layout.fillWidth: true
-                            wrapMode: Text.Wrap
-                        }
-                        ToolButton {
-                            icon.source: '../../icons/share.png'
-                            icon.color: 'transparent'
-                            onClicked: {
-                                var dialog = app.genericShareDialog.createObject(root,
-                                    { title: qsTr('Channel node ID'), text: channeldetails.pubkey }
-                                )
-                                dialog.open()
+                    Label {
+                        visible: channeldetails.isBackup
+                        text: qsTr('Backup type')
+                        color: Material.accentColor
+                    }
+
+                    Label {
+                        visible: channeldetails.isBackup
+                        text: channeldetails.backupType == 'imported'
+                                  ? qsTr('imported')
+                                  : channeldetails.backupType == 'on-chain'
+                                      ? qsTr('on-chain')
+                                      : '?'
+                    }
+
+                    Label {
+                        text: qsTr('Remote node ID')
+                        Layout.columnSpan: 2
+                        color: Material.accentColor
+                    }
+
+                    TextHighlightPane {
+                        Layout.columnSpan: 2
+                        Layout.fillWidth: true
+
+                        RowLayout {
+                            width: parent.width
+                            Label {
+                                text: channeldetails.pubkey
+                                font.pixelSize: constants.fontSizeLarge
+                                font.family: FixedFont
+                                Layout.fillWidth: true
+                                wrapMode: Text.Wrap
+                            }
+                            ToolButton {
+                                icon.source: '../../icons/share.png'
+                                icon.color: 'transparent'
+                                onClicked: {
+                                    var dialog = app.genericShareDialog.createObject(root, {
+                                        title: qsTr('Channel node ID'),
+                                        text: channeldetails.pubkey
+                                    })
+                                    dialog.open()
+                                }
                             }
                         }
                     }
                 }
 
-            }
-        }
+                Label {
+                    text: qsTr('Capacity and ratio')
+                    color: Material.accentColor
+                }
 
-        FlatButton {
-            Layout.fillWidth: true
-            text: qsTr('Backup');
-            onClicked: {
-                var dialog = app.genericShareDialog.createObject(root,
-                    {
-                        title: qsTr('Channel Backup for %1').arg(channeldetails.short_cid),
-                        text: channeldetails.channelBackup(),
-                        text_help: channeldetails.channelBackupHelpText()
+                TextHighlightPane {
+                    Layout.fillWidth: true
+                    padding: constants.paddingLarge
+
+                    GridLayout {
+                        width: parent.width
+                        columns: 2
+                        rowSpacing: constants.paddingSmall
+
+                        InfoTextArea {
+                            Layout.columnSpan: 2
+                            Layout.fillWidth: true
+                            Layout.bottomMargin: constants.paddingMedium
+                            visible: channeldetails.canSend.msatsInt < 0.5 * channeldetails.localCapacity.msatsInt
+                                && channeldetails.localCapacity.msatsInt > 0.2 * channeldetails.capacity.msatsInt
+                            iconStyle: InfoTextArea.IconStyle.Warn
+                            compact: true
+                            text: [qsTr('The amount available for sending is considerably lower than the local balance.'),
+                                qsTr('This can occur when mempool fees are high.')].join(' ')
+                        }
+
+                        ChannelBar {
+                            Layout.columnSpan: 2
+                            Layout.fillWidth: true
+                            Layout.topMargin: constants.paddingLarge
+                            Layout.bottomMargin: constants.paddingXLarge
+                            visible: channeldetails.stateCode != ChannelDetails.Redeemed
+                                && channeldetails.stateCode != ChannelDetails.Closed
+                                && !channeldetails.isBackup
+                            capacity: channeldetails.capacity
+                            localCapacity: channeldetails.localCapacity
+                            remoteCapacity: channeldetails.remoteCapacity
+                            canSend: channeldetails.canSend
+                            canReceive: channeldetails.canReceive
+                            frozenForSending: channeldetails.frozenForSending
+                            frozenForReceiving: channeldetails.frozenForReceiving
+                        }
+
+                        Label {
+                            text: qsTr('Capacity')
+                            color: Material.accentColor
+                        }
+
+                        FormattedAmount {
+                            amount: channeldetails.capacity
+                        }
+
+                        Label {
+                            text: qsTr('Can send')
+                            color: Material.accentColor
+                        }
+
+                        RowLayout {
+                            visible: channeldetails.isOpen
+                            FormattedAmount {
+                                visible: !channeldetails.frozenForSending
+                                amount: channeldetails.canSend
+                                singleLine: false
+                            }
+                            Label {
+                                visible: channeldetails.frozenForSending
+                                text: qsTr('n/a (frozen)')
+                            }
+                            Item {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 1
+                            }
+                            Pane {
+                                background: Rectangle { color: Material.dialogColor }
+                                padding: 0
+                                FlatButton {
+                                    Layout.minimumWidth: implicitWidth
+                                    text: channeldetails.frozenForSending ? qsTr('Unfreeze') : qsTr('Freeze')
+                                    onClicked: channeldetails.freezeForSending()
+                                }
+                            }
+                        }
+
+                        Label {
+                            visible: !channeldetails.isOpen
+                            text: qsTr('n/a (channel not open)')
+                        }
+
+                        Label {
+                            text: qsTr('Can receive')
+                            color: Material.accentColor
+                        }
+
+                        RowLayout {
+                            visible: channeldetails.isOpen
+                            FormattedAmount {
+                                visible: !channeldetails.frozenForReceiving
+                                amount: channeldetails.canReceive
+                                singleLine: false
+                            }
+
+                            Label {
+                                visible: channeldetails.frozenForReceiving
+                                text: qsTr('n/a (frozen)')
+                            }
+                            Item {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 1
+                            }
+                            Pane {
+                                background: Rectangle { color: Material.dialogColor }
+                                padding: 0
+                                FlatButton {
+                                    Layout.minimumWidth: implicitWidth
+                                    text: channeldetails.frozenForReceiving ? qsTr('Unfreeze') : qsTr('Freeze')
+                                    onClicked: channeldetails.freezeForReceiving()
+                                }
+                            }
+                        }
+
+                        Label {
+                            visible: !channeldetails.isOpen
+                            text: qsTr('n/a (channel not open)')
+                        }
                     }
-                )
-                dialog.open()
+
+                }
             }
-            icon.source: '../../icons/file.png'
         }
 
-        RowLayout {
+        ButtonContainer {
             Layout.fillWidth: true
+
+            FlatButton {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 1
+                visible: !channeldetails.isBackup
+                text: qsTr('Backup')
+                onClicked: {
+                    var dialog = app.genericShareDialog.createObject(root, {
+                        title: qsTr('Channel Backup for %1').arg(channeldetails.shortCid),
+                        text_qr: channeldetails.channelBackup(),
+                        text_help: channeldetails.channelBackupHelpText(),
+                        iconSource: Qt.resolvedUrl('../../icons/file.png')
+                    })
+                    dialog.open()
+                }
+                icon.source: '../../icons/file.png'
+            }
+
             FlatButton {
                 Layout.fillWidth: true
                 Layout.preferredWidth: 1
                 text: qsTr('Close channel');
-                enabled: channeldetails.canClose
+                visible: channeldetails.canClose
                 onClicked: {
-                    var dialog = closechannel.createObject(root, { 'channelid': channelid })
+                    var dialog = closechannel.createObject(root, { channelid: channelid })
                     dialog.open()
                 }
                 icon.source: '../../icons/closebutton.png'
@@ -249,45 +312,22 @@ Pane {
                 Layout.fillWidth: true
                 Layout.preferredWidth: 1
                 text: qsTr('Delete channel');
-                enabled: channeldetails.canDelete
+                visible: channeldetails.canDelete
                 onClicked: {
-                    var dialog = app.messageDialog.createObject(root,
-                            {
-                                'text': qsTr('Are you sure you want to delete this channel? This will purge associated transactions from your wallet history.'),
-                                'yesno': true
-                            }
-                    )
-                    dialog.yesClicked.connect(function() {
+                    var dialog = app.messageDialog.createObject(root, {
+                        title: qsTr('Are you sure?'),
+                        text: channeldetails.isBackup ? '' : qsTr('This will purge associated transactions from your wallet history.'),
+                        yesno: true
+                    })
+                    dialog.accepted.connect(function() {
                         channeldetails.deleteChannel()
                         app.stack.pop()
-                        Daemon.currentWallet.historyModel.init_model() // needed here?
-                        Daemon.currentWallet.channelModel.remove_channel(channelid)
+                        Daemon.currentWallet.historyModel.initModel(true) // needed here?
+                        Daemon.currentWallet.channelModel.removeChannel(channelid)
                     })
                     dialog.open()
                 }
                 icon.source: '../../icons/delete.png'
-            }
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            visible: channeldetails.isOpen
-
-            FlatButton {
-                Layout.fillWidth: true
-                Layout.preferredWidth: 1
-                enabled: channeldetails.isOpen
-                text: channeldetails.frozenForSending ? qsTr('Unfreeze (for sending)') : qsTr('Freeze (for sending)')
-                icon.source: '../../icons/seal.png'
-                onClicked: channeldetails.freezeForSending()
-            }
-            FlatButton {
-                Layout.fillWidth: true
-                Layout.preferredWidth: 1
-                enabled: channeldetails.isOpen
-                text: channeldetails.frozenForReceiving ? qsTr('Unfreeze (for receiving)') : qsTr('Freeze (for receiving)')
-                icon.source: '../../icons/seal.png'
-                onClicked: channeldetails.freezeForReceiving()
             }
         }
 
@@ -297,6 +337,14 @@ Pane {
         id: channeldetails
         wallet: Daemon.currentWallet
         channelid: root.channelid
+        onTrampolineFrozenInGossipMode: {
+            var dialog = app.messageDialog.createObject(root, {
+                title: qsTr('Cannot unfreeze channel'),
+                text: [qsTr('Non-Trampoline channels cannot be used for sending while in trampoline mode.'),
+                        qsTr('Disable trampoline mode to enable sending from this channel.')].join(' ')
+            })
+            dialog.open()
+        }
     }
 
     Component {

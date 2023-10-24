@@ -6,7 +6,7 @@ import time
 from hashlib import sha256
 from binascii import hexlify
 from decimal import Decimal
-from typing import Optional, TYPE_CHECKING, Type
+from typing import Optional, TYPE_CHECKING, Type, Dict, Any
 
 import random
 import bitstring
@@ -184,6 +184,7 @@ def lnencode(addr: 'LnAddr', privkey) -> str:
     tags_set = set()
 
     # Payment hash
+    assert addr.paymenthash is not None
     data += tagged_bytes('p', addr.paymenthash)
     tags_set.add('p')
 
@@ -196,7 +197,7 @@ def lnencode(addr: 'LnAddr', privkey) -> str:
         # BOLT #11:
         #
         # A writer MUST NOT include more than one `d`, `h`, `n` or `x` fields,
-        if k in ('d', 'h', 'n', 'x', 'p', 's'):
+        if k in ('d', 'h', 'n', 'x', 'p', 's', '9'):
             if k in tags_set:
                 raise LnEncodeException("Duplicate '{}' tag".format(k))
 
@@ -272,7 +273,6 @@ class LnAddr(object):
         self.pubkey = None
         self.net = constants.net if net is None else net  # type: Type[AbstractNet]
         self._amount = amount  # type: Optional[Decimal]  # in bitcoins
-        self._min_final_cltv_expiry = 18
 
     @property
     def amount(self) -> Optional[Decimal]:
@@ -318,6 +318,17 @@ class LnAddr(object):
         from .lnutil import LnFeatures
         return LnFeatures(self.get_tag('9') or 0)
 
+    def validate_and_compare_features(self, myfeatures: 'LnFeatures') -> None:
+        """Raises IncompatibleOrInsaneFeatures.
+
+        note: these checks are not done by the parser (in lndecode), as then when we started requiring a new feature,
+              old saved already paid invoices could no longer be parsed.
+        """
+        from .lnutil import validate_features, ln_compare_features
+        invoice_features = self.get_features()
+        validate_features(invoice_features)
+        ln_compare_features(myfeatures.for_invoice(), invoice_features)
+
     def __str__(self):
         return "LnAddr[{}, amount={}{} tags=[{}]]".format(
             hexlify(self.pubkey.serialize()).decode('utf-8') if self.pubkey else None,
@@ -325,8 +336,11 @@ class LnAddr(object):
             ", ".join([k + '=' + str(v) for k, v in self.tags])
         )
 
-    def get_min_final_cltv_expiry(self) -> int:
-        return self._min_final_cltv_expiry
+    def get_min_final_cltv_delta(self) -> int:
+        cltv = self.get_tag('c')
+        if cltv is None:
+            return 18
+        return int(cltv)
 
     def get_tag(self, tag):
         for k, v in self.tags:
@@ -352,6 +366,25 @@ class LnAddr(object):
         # we treat it as 0 seconds here (instead of never)
         return now > self.get_expiry() + self.date
 
+    def to_debug_json(self) -> Dict[str, Any]:
+        d = {
+            'pubkey': self.pubkey.serialize().hex(),
+            'amount_BTC': str(self.amount),
+            'rhash': self.paymenthash.hex(),
+            'payment_secret': self.payment_secret.hex() if self.payment_secret else None,
+            'description': self.get_description(),
+            'exp': self.get_expiry(),
+            'time': self.date,
+            'min_final_cltv_delta': self.get_min_final_cltv_delta(),
+            'features': self.get_features().get_names(),
+            'tags': self.tags,
+            'unknown_tags': self.unknown_tags,
+        }
+        if ln_routing_info := self.get_routing_info('r'):
+            # show the last hop of routing hints. (our invoices only have one hop)
+            d['r_tags'] = [str((a.hex(),b.hex(),c,d,e)) for a,b,c,d,e in ln_routing_info[-1]]
+        return d
+
 
 class SerializableKey:
     def __init__(self, pubkey):
@@ -360,6 +393,9 @@ class SerializableKey:
         return self.pubkey.get_public_key_bytes(True)
 
 def lndecode(invoice: str, *, verbose=False, net=None) -> LnAddr:
+    """Parses a string into an LnAddr object.
+    Can raise LnDecodeException or IncompatibleOrInsaneFeatures.
+    """
     if net is None:
         net = constants.net
     decoded_bech32 = bech32_decode(invoice, ignore_long_length=True)
@@ -482,14 +518,16 @@ def lndecode(invoice: str, *, verbose=False, net=None) -> LnAddr:
             addr.pubkey = pubkeybytes
 
         elif tag == 'c':
-            addr._min_final_cltv_expiry = tagdata.uint
+            addr.tags.append(('c', tagdata.uint))
 
         elif tag == '9':
             features = tagdata.uint
             addr.tags.append(('9', features))
-            from .lnutil import validate_features
-            validate_features(features)
-
+            # note: The features are not validated here in the parser,
+            #       instead, validation is done just before we try paying the invoice (in lnworker._check_invoice).
+            #       Context: invoice parsing happens when opening a wallet. If there was a backwards-incompatible
+            #       change to a feature, and we raised, some existing wallets could not be opened. Such a change
+            #       can happen to features not-yet-merged-to-BOLTs (e.g. trampoline feature bit was moved and reused).
         else:
             addr.unknown_tags.append((tag, tagdata))
 

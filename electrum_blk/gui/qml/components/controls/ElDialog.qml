@@ -1,22 +1,63 @@
-import QtQuick 2.6
+import QtQuick 2.15
 import QtQuick.Layouts 1.0
 import QtQuick.Controls 2.3
+import QtQuick.Controls.Material 2.0
 
 Dialog {
     id: abstractdialog
 
     property bool allowClose: true
     property string iconSource
+    property bool resizeWithKeyboard: true
 
+    property bool _result: false
+    // workaround: remember opened state, to inhibit closed -> closed event
+    property bool _wasOpened: false
+
+    // called to finally close dialog after checks by onClosing handler in main.qml
     function doClose() {
-        close()
+        doReject()
     }
+
+    // avoid potential multiple signals, only emit once
+    function doAccept() {
+        if (_result)
+            return
+        _result = true
+        accept()
+    }
+
+    // avoid potential multiple signals, only emit once
+    function doReject() {
+        if (_result)
+            return
+        _result = true
+        reject()
+    }
+
+    parent: resizeWithKeyboard ? Overlay.overlay.children[0] : Overlay.overlay
+    modal: true
+    Overlay.modal: Rectangle {
+        color: "#aa000000"
+    }
+
+    closePolicy: allowClose
+        ? Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        : Popup.NoAutoClose
 
     onOpenedChanged: {
         if (opened) {
             app.activeDialogs.push(abstractdialog)
+            _wasOpened = true
         } else {
-            app.activeDialogs.pop()
+            if (!_wasOpened)
+                return
+            if (app.activeDialogs.indexOf(abstractdialog) < 0) {
+                console.log('dialog should exist in activeDialogs!')
+                app.activeDialogs.pop()
+                return
+            }
+            app.activeDialogs.splice(app.activeDialogs.indexOf(abstractdialog),1)
         }
     }
 
@@ -38,11 +79,13 @@ Dialog {
 
             Label {
                 text: title
+                wrapMode: Text.Wrap
                 elide: Label.ElideRight
                 Layout.fillWidth: true
                 leftPadding: constants.paddingXLarge
                 topPadding: constants.paddingXLarge
                 bottomPadding: constants.paddingXLarge
+                rightPadding: constants.paddingXLarge
                 font.bold: true
                 font.pixelSize: constants.fontSizeMedium
             }
@@ -57,4 +100,11 @@ Dialog {
         }
     }
 
+    background: Rectangle {
+        id: bg
+        color: Material.dialogColor
+        TapHandler {
+            onTapped: bg.forceActiveFocus()
+        }
+    }
 }

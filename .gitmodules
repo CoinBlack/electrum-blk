@@ -4,6 +4,3 @@
 [submodule "electrum_blk/www"]
 	path = electrum_blk/plugins/payserver/www
 	url = https://github.com/spesmilo/electrum-http.git
-[submodule "electrum_blk/gui/kivy/theming/atlas"]
-	path = electrum_blk/gui/kivy/theming/atlas
-	url = https://github.com/spesmilo/electrum-kivy-atlas

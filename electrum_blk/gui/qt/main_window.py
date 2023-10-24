@@ -26,7 +26,6 @@ import sys
 import time
 import threading
 import os
-import traceback
 import json
 import weakref
 import csv
@@ -52,15 +51,14 @@ import electrum_blk as electrum
 from electrum_blk.gui import messages
 from electrum_blk import (keystore, ecc, constants, util, bitcoin, commands,
                       paymentrequest, lnutil)
-from electrum_blk.bitcoin import COIN, is_address
+from electrum_blk.bitcoin import COIN, is_address, DummyAddress
 from electrum_blk.plugin import run_hook, BasePlugin
 from electrum_blk.i18n import _
-from electrum_blk.util import (format_time, get_asyncio_loop,
-                           UserCancelled, profiler,
-                           bh2u, bfh, InvalidPassword,
-                           UserFacingException, FailedToParsePaymentIdentifier,
-                           get_new_wallet_name, send_exception_to_crash_reporter,
-                           AddTransactionException, BITCOIN_BIP21_URI_SCHEME, os_chmod)
+from electrum_blk.util import (format_time, UserCancelled, profiler, bfh, InvalidPassword,
+                           UserFacingException, get_new_wallet_name, send_exception_to_crash_reporter,
+                           AddTransactionException, os_chmod)
+from electrum_blk.bip21 import BITCOIN_BIP21_URI_SCHEME
+from electrum_blk.payment_identifier import PaymentIdentifier
 from electrum_blk.invoices import PR_PAID, Invoice
 from electrum_blk.transaction import (Transaction, PartialTxInput,
                                   PartialTransaction, PartialTxOutput)
@@ -72,8 +70,9 @@ from electrum_blk.network import Network, UntrustedServerReturnedError, NetworkE
 from electrum_blk.exchange_rate import FxThread
 from electrum_blk.simple_config import SimpleConfig
 from electrum_blk.logging import Logger
-from electrum_blk.lnutil import ln_dummy_address, extract_nodeid, ConnStringFormatError
+from electrum_blk.lnutil import extract_nodeid, ConnStringFormatError
 from electrum_blk.lnaddr import lndecode
+from electrum_blk.submarine_swaps import SwapServerError
 
 from .exception_window import Exception_Hook
 from .amountedit import BTCAmountEdit
@@ -91,17 +90,18 @@ from .util import (read_QIcon, ColorScheme, text_dialog, icon_path, WaitingDialo
                    getOpenFileName, getSaveFileName, BlockingWaitingDialog, font_height)
 from .util import ButtonsLineEdit, ShowQRLineEdit
 from .util import QtEventListener, qt_event_listener, event_listener
-from .installwizard import WIF_HELP_TEXT
+from .wizard.wallet import WIF_HELP_TEXT
 from .history_list import HistoryList, HistoryModel
 from .update_checker import UpdateCheck, UpdateCheckThread
 from .channels_list import ChannelsList
 from .confirm_tx_dialog import ConfirmTxDialog
 from .rbf_dialog import BumpFeeDialog, DSCancelDialog
 from .qrreader import scan_qrcode
-from .swap_dialog import SwapDialog
+from .swap_dialog import SwapDialog, InvalidSwapParameters
 from .balance_dialog import BalanceToolButton, COLOR_FROZEN, COLOR_UNMATURED, COLOR_UNCONFIRMED, COLOR_CONFIRMED, COLOR_LIGHTNING, COLOR_FROZEN_LIGHTNING
 
 if TYPE_CHECKING:
+    from electrum_blk.simple_config import ConfigVarWithConfig
     from . import ElectrumGui
 
 
@@ -110,14 +110,14 @@ LN_NUM_PAYMENT_ATTEMPTS = 10
 
 class StatusBarButton(QToolButton):
     # note: this class has a custom stylesheet applied in stylesheet_patcher.py
-    def __init__(self, icon, tooltip, func):
+    def __init__(self, icon, tooltip, func, sb_height):
         QToolButton.__init__(self)
         self.setText('')
         self.setIcon(icon)
         self.setToolTip(tooltip)
         self.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self.setAutoRaise(True)
-        size = max(25, round(1.8 * font_height()))
+        size = max(25, round(0.9 * sb_height))
         self.setMaximumWidth(size)
         self.clicked.connect(self.onPress)
         self.func = func
@@ -163,6 +163,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
     computing_privkeys_signal = pyqtSignal()
     show_privkeys_signal = pyqtSignal()
     show_error_signal = pyqtSignal(str)
+    show_message_signal = pyqtSignal(str)
+    labels_changed_signal = pyqtSignal()
 
     def __init__(self, gui_object: 'ElectrumGui', wallet: Abstract_Wallet):
         QMainWindow.__init__(self)
@@ -171,8 +173,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         self.gui_thread = gui_object.gui_thread
         assert wallet, "no wallet"
         self.wallet = wallet
-        if wallet.has_lightning():
-            self.wallet.config.set_key('show_channels_tab', True)
+        if wallet.has_lightning() and not self.config.cv.GUI_QT_SHOW_TAB_CHANNELS.is_set():
+            self.config.GUI_QT_SHOW_TAB_CHANNELS = True  # override default, but still allow disabling tab manually
 
         Exception_Hook.maybe_setup(config=self.config, wallet=self.wallet)
 
@@ -214,19 +216,18 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         tabs.addTab(self.send_tab, read_QIcon("tab_send.png"), _('Send'))
         tabs.addTab(self.receive_tab, read_QIcon("tab_receive.png"), _('Receive'))
 
-        def add_optional_tab(tabs, tab, icon, description, name):
+        def add_optional_tab(tabs, tab, icon, description):
             tab.tab_icon = icon
             tab.tab_description = description
             tab.tab_pos = len(tabs)
-            tab.tab_name = name
-            if self.config.get('show_{}_tab'.format(name), False):
+            if tab.is_shown_cv.get():
                 tabs.addTab(tab, icon, description.replace("&", ""))
 
-        add_optional_tab(tabs, self.addresses_tab, read_QIcon("tab_addresses.png"), _("&Addresses"), "addresses")
-        add_optional_tab(tabs, self.channels_tab, read_QIcon("lightning.png"), _("Channels"), "channels")
-        add_optional_tab(tabs, self.utxo_tab, read_QIcon("tab_coins.png"), _("Co&ins"), "utxo")
-        add_optional_tab(tabs, self.contacts_tab, read_QIcon("tab_contacts.png"), _("Con&tacts"), "contacts")
-        add_optional_tab(tabs, self.console_tab, read_QIcon("tab_console.png"), _("Con&sole"), "console")
+        add_optional_tab(tabs, self.addresses_tab, read_QIcon("tab_addresses.png"), _("&Addresses"))
+        add_optional_tab(tabs, self.channels_tab, read_QIcon("lightning.png"), _("Channels"))
+        add_optional_tab(tabs, self.utxo_tab, read_QIcon("tab_coins.png"), _("Co&ins"))
+        add_optional_tab(tabs, self.contacts_tab, read_QIcon("tab_contacts.png"), _("Con&tacts"))
+        add_optional_tab(tabs, self.console_tab, read_QIcon("tab_console.png"), _("Con&sole"))
 
         tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
@@ -240,7 +241,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
 
         self.setMinimumWidth(640)
         self.setMinimumHeight(400)
-        if self.config.get("is_maximized"):
+        if self.config.GUI_QT_WINDOW_IS_MAXIMIZED:
             self.showMaximized()
 
         self.setWindowIcon(read_QIcon("electrum.png"))
@@ -263,6 +264,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         self.app.update_fiat_signal.connect(self.update_fiat)
 
         self.show_error_signal.connect(self.show_error)
+        self.show_message_signal.connect(self.show_message)
         self.history_list.setFocus()
 
         # network callbacks
@@ -278,14 +280,14 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         self.contacts.fetch_openalias(self.config)
 
         # If the option hasn't been set yet
-        if config.get('check_updates') is None:
+        if not config.cv.AUTOMATIC_CENTRALIZED_UPDATE_CHECKS.is_set():
             choice = self.question(title="Electrum-BLK - " + _("Enable update check"),
                                    msg=_("For security reasons we advise that you always use the latest version of Electrum.") + " " +
                                        _("Would you like to be notified when there is a newer version of Electrum available?"))
-            config.set_key('check_updates', bool(choice), save=True)
+            config.AUTOMATIC_CENTRALIZED_UPDATE_CHECKS = bool(choice)
 
         self._update_check_thread = None
-        if config.get('check_updates', False):
+        if config.AUTOMATIC_CENTRALIZED_UPDATE_CHECKS:
             # The references to both the thread and the window need to be stored somewhere
             # to prevent GC from getting in our way.
             def on_version_received(v):
@@ -296,6 +298,27 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
             self._update_check_thread = UpdateCheckThread()
             self._update_check_thread.checked.connect(on_version_received)
             self._update_check_thread.start()
+
+    def run_coroutine_dialog(self, coro, text, on_result, on_cancelled):
+        """ run coroutine in a waiting dialog, with a Cancel button that cancels the coroutine """
+        from electrum import util
+        loop = util.get_asyncio_loop()
+        assert util.get_running_loop() != loop, 'must not be called from asyncio thread'
+        future = asyncio.run_coroutine_threadsafe(coro, loop)
+        def task():
+            try:
+                return future.result()
+            except concurrent.futures.CancelledError:
+                on_cancelled()
+        try:
+            WaitingDialog(
+                self, text, task,
+                on_success=on_result,
+                on_error=self.on_error,
+                on_cancel=future.cancel)
+        except Exception as e:
+            self.show_error(str(e))
+            raise
 
     def run_coroutine_from_thread(self, coro, name, on_result=None):
         if self._cleaned_up:
@@ -337,10 +360,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         self.address_list.refresh_all()
 
     def toggle_tab(self, tab):
-        show = not self.config.get('show_{}_tab'.format(tab.tab_name), False)
-        self.config.set_key('show_{}_tab'.format(tab.tab_name), show)
-        item_text = (_("Hide {}") if show else _("Show {}")).format(tab.tab_description)
-        tab.menu_action.setText(item_text)
+        show = not tab.is_shown_cv.get()
+        tab.is_shown_cv.set(show)
         if show:
             # Find out where to place the tab
             index = len(self.tabs)
@@ -497,7 +518,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         self.channels_list.update()
         self.tabs.show()
         self.init_geometry()
-        if self.config.get('hide_gui') and self.gui_object.tray.isVisible():
+        if self.config.GUI_QT_HIDE_ON_STARTUP and self.gui_object.tray.isVisible():
             self.hide()
         else:
             self.show()
@@ -515,7 +536,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
             screen = self.app.desktop().screenGeometry()
             assert screen.contains(QRect(*winpos))
             self.setGeometry(*winpos)
-        except:
+        except Exception:
             self.logger.info("using default geometry")
             self.setGeometry(100, 100, 840, 400)
 
@@ -552,7 +573,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         if not constants.net.TESTNET:
             return
         # user might have opted out already
-        if self.config.get('dont_show_testnet_warning', False):
+        if self.config.DONT_SHOW_TESTNET_WARNING:
             return
         # only show once per process lifecycle
         if getattr(self.gui_object, '_warned_testnet', False):
@@ -571,7 +592,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         cb.stateChanged.connect(on_cb)
         self.show_warning(msg, title=_('Testnet'), checkbox=cb)
         if cb_checked:
-            self.config.set_key('dont_show_testnet_warning', True)
+            self.config.DONT_SHOW_TESTNET_WARNING = True
 
     def open_wallet(self):
         try:
@@ -585,10 +606,10 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         self.gui_object.new_window(filename)
 
     def select_backup_dir(self, b):
-        name = self.config.get('backup_dir', '')
+        name = self.config.WALLET_BACKUP_DIRECTORY or ""
         dirname = QFileDialog.getExistingDirectory(self, "Select your wallet backup directory", name)
         if dirname:
-            self.config.set_key('backup_dir', dirname)
+            self.config.WALLET_BACKUP_DIRECTORY = dirname
             self.backup_dir_e.setText(dirname)
 
     def backup_wallet(self):
@@ -596,7 +617,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         vbox = QVBoxLayout(d)
         grid = QGridLayout()
         backup_help = ""
-        backup_dir = self.config.get('backup_dir')
+        backup_dir = self.config.WALLET_BACKUP_DIRECTORY
         backup_dir_label = HelpLabel(_('Backup directory') + ':', backup_help)
         msg = _('Please select a backup directory')
         if self.wallet.has_lightning() and self.wallet.lnworker.channels:
@@ -628,17 +649,17 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         return True
 
     def update_recently_visited(self, filename):
-        recent = self.config.get('recently_open', [])
+        recent = self.config.RECENTLY_OPEN_WALLET_FILES or []
         try:
             sorted(recent)
-        except:
+        except Exception:
             recent = []
         if filename in recent:
             recent.remove(filename)
         recent.insert(0, filename)
         recent = [path for path in recent if os.path.exists(path)]
         recent = recent[:5]
-        self.config.set_key('recently_open', recent)
+        self.config.RECENTLY_OPEN_WALLET_FILES = recent
         self.recently_visited_menu.clear()
         for i, k in enumerate(sorted(recent)):
             b = os.path.basename(k)
@@ -690,34 +711,18 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         self.import_address_menu = wallet_menu.addAction(_("Import addresses"), self.import_addresses)
         wallet_menu.addSeparator()
 
-        addresses_menu = wallet_menu.addMenu(_("&Addresses"))
-        addresses_menu.addAction(_("&Filter"), lambda: self.address_list.toggle_toolbar(self.config))
         labels_menu = wallet_menu.addMenu(_("&Labels"))
         labels_menu.addAction(_("&Import"), self.do_import_labels)
         labels_menu.addAction(_("&Export"), self.do_export_labels)
-        history_menu = wallet_menu.addMenu(_("&History"))
-        history_menu.addAction(_("&Filter"), lambda: self.history_list.toggle_toolbar(self.config))
-        history_menu.addAction(_("&Summary"), self.history_list.show_summary)
-        history_menu.addAction(_("&Plot"), self.history_list.plot_history_dialog)
-        history_menu.addAction(_("&Export"), self.history_list.export_history_dialog)
-        contacts_menu = wallet_menu.addMenu(_("Contacts"))
-        contacts_menu.addAction(_("&New"), self.new_contact_dialog)
-        contacts_menu.addAction(_("Import"), lambda: self.import_contacts())
-        contacts_menu.addAction(_("Export"), lambda: self.export_contacts())
-        invoices_menu = wallet_menu.addMenu(_("Invoices"))
-        invoices_menu.addAction(_("Import"), lambda: self.import_invoices())
-        invoices_menu.addAction(_("Export"), lambda: self.export_invoices())
-        requests_menu = wallet_menu.addMenu(_("Requests"))
-        requests_menu.addAction(_("Import"), lambda: self.import_requests())
-        requests_menu.addAction(_("Export"), lambda: self.export_requests())
 
         wallet_menu.addSeparator()
         wallet_menu.addAction(_("Find"), self.toggle_search).setShortcut(QKeySequence("Ctrl+F"))
 
         def add_toggle_action(view_menu, tab):
-            is_shown = self.config.get('show_{}_tab'.format(tab.tab_name), False)
-            item_name = (_("Hide") if is_shown else _("Show")) + " " + tab.tab_description
-            tab.menu_action = view_menu.addAction(item_name, lambda: self.toggle_tab(tab))
+            is_shown = tab.is_shown_cv.get()
+            tab.menu_action = view_menu.addAction(tab.tab_description, lambda: self.toggle_tab(tab))
+            tab.menu_action.setCheckable(True)
+            tab.menu_action.setChecked(is_shown)
 
         view_menu = menubar.addMenu(_("&View"))
         add_toggle_action(view_menu, self.addresses_tab)
@@ -745,9 +750,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         tools_menu.addAction(_("&Sign/verify message"), self.sign_verify_message)
         tools_menu.addAction(_("&Encrypt/decrypt message"), self.encrypt_message)
         tools_menu.addSeparator()
-
-        paytomany_menu = tools_menu.addAction(_("&Pay to many"), self.send_tab.paytomany)
-        tools_menu.addAction(_("&Show QR code in separate window"), self.toggle_qr_window)
 
         raw_transaction_menu = tools_menu.addMenu(_("&Load transaction"))
         raw_transaction_menu.addAction(_("&From file"), self.do_process_from_file)
@@ -854,14 +856,26 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
             self.update_status()
         # resolve aliases
         # FIXME this might do blocking network calls that has a timeout of several seconds
-        self.send_tab.payto_e.on_timer_check_text()
+        # self.send_tab.payto_e.on_timer_check_text()
         self.notify_transactions()
 
-    def format_amount(self, amount_sat, is_diff=False, whitespaces=False) -> str:
+    def format_amount(
+        self,
+        amount_sat,
+        is_diff=False,
+        whitespaces=False,
+        *,
+        add_thousands_sep: bool = None,
+    ) -> str:
         """Formats amount as string, converting to desired unit.
         E.g. 500_000 -> '0.005'
         """
-        return self.config.format_amount(amount_sat, is_diff=is_diff, whitespaces=whitespaces)
+        return self.config.format_amount(
+            amount_sat,
+            is_diff=is_diff,
+            whitespaces=whitespaces,
+            add_thousands_sep=add_thousands_sep,
+        )
 
     def format_amount_and_units(self, amount_sat, *, timestamp: int = None) -> str:
         """Returns string with both blackcoin and fiat amounts, in desired units.
@@ -911,7 +925,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
                 else:
                     fiat_e.follows = True
                     fiat_e.setText(self.fx.ccy_amount_str(
-                        amount * Decimal(rate) / COIN, False))
+                        amount * Decimal(rate) / COIN, add_thousands_sep=False))
                     fiat_e.setStyleSheet(ColorScheme.BLUE.as_stylesheet())
                     fiat_e.follows = False
 
@@ -1031,32 +1045,40 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
 
     def create_channels_tab(self):
         self.channels_list = ChannelsList(self)
-        t = self.channels_list.get_toolbar()
-        return self.create_list_tab(self.channels_list, t)
+        tab = self.create_list_tab(self.channels_list)
+        tab.is_shown_cv = self.config.cv.GUI_QT_SHOW_TAB_CHANNELS
+        return tab
 
     def create_history_tab(self):
         self.history_model = HistoryModel(self)
         self.history_list = l = HistoryList(self, self.history_model)
         self.history_model.set_view(self.history_list)
         l.searchable_list = l
-        toolbar = l.create_toolbar(self.config)
-        tab = self.create_list_tab(l, toolbar)
-        toolbar_shown = bool(self.config.get('show_toolbar_history', False))
-        l.show_toolbar(toolbar_shown)
+        tab = self.create_list_tab(self.history_list)
         return tab
 
-    def show_address(self, addr):
+    def show_address(self, addr: str, *, parent: QWidget = None):
         from . import address_dialog
-        d = address_dialog.AddressDialog(self, addr)
+        d = address_dialog.AddressDialog(self, addr, parent=parent)
+        d.exec_()
+
+    def show_utxo(self, utxo):
+        from . import utxo_dialog
+        d = utxo_dialog.UTXODialog(self, utxo)
         d.exec_()
 
     def show_channel_details(self, chan):
         from .channel_details import ChannelDetailsDialog
         ChannelDetailsDialog(self, chan).show()
 
-    def show_transaction(self, tx, *, tx_desc=None):
-        '''tx_desc is set only for txs created in the Send tab'''
-        show_transaction(tx, parent=self, desc=tx_desc)
+    def show_transaction(
+        self,
+        tx: Transaction,
+        *,
+        external_keypairs=None,
+        payment_identifier: PaymentIdentifier = None,
+    ):
+        show_transaction(tx, parent=self, external_keypairs=external_keypairs, payment_identifier=payment_identifier)
 
     def show_lightning_transaction(self, tx_item):
         from .lightning_tx_dialog import LightningTxDialog
@@ -1067,13 +1089,14 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         from .receive_tab import ReceiveTab
         return ReceiveTab(self)
 
-    def do_copy(self, content: str, *, title: str = None) -> None:
-        self.app.clipboard().setText(content)
-        if title is None:
-            tooltip_text = _("Text copied to clipboard").format(title)
-        else:
-            tooltip_text = _("{} copied to clipboard").format(title)
-        QToolTip.showText(QCursor.pos(), tooltip_text, self)
+    def do_copy(self, text: str, *, title: str = None) -> None:
+        self.app.clipboard().setText(text)
+        message = _("Text copied to Clipboard") if title is None else _("{} copied to Clipboard").format(title)
+        self.show_tooltip_after_delay(message)
+
+    def show_tooltip_after_delay(self, message):
+        # tooltip cannot be displayed immediately when called from a menu; wait 200ms
+        self.gui_object.timer.singleShot(200, lambda: QToolTip.showText(QCursor.pos(), message, self))
 
     def toggle_qr_window(self):
         from . import qrwindow
@@ -1088,6 +1111,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
             else:
                 self.qr_window_geometry = self.qr_window.geometry()
                 self.qr_window.setVisible(False)
+        self.receive_tab.update_receive_qr_window()
 
     def show_send_tab(self):
         self.tabs.setCurrentIndex(self.tabs.indexOf(self.send_tab))
@@ -1115,11 +1139,25 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         if not self.network:
             self.show_error(_("You are offline."))
             return
+        if not self.wallet.lnworker:
+            self.show_error(_('Lightning is disabled'))
+            return
+        if not self.wallet.lnworker.num_sats_can_send() and not self.wallet.lnworker.num_sats_can_receive():
+            self.show_error(_("You do not have liquidity in your active channels."))
+            return
         def get_pairs_thread():
             self.network.run_from_another_thread(self.wallet.lnworker.swap_manager.get_pairs())
-        BlockingWaitingDialog(self, _('Please wait...'), get_pairs_thread)
+        try:
+            BlockingWaitingDialog(self, _('Please wait...'), get_pairs_thread)
+        except SwapServerError as e:
+            self.show_error(str(e))
+            return
         d = SwapDialog(self, is_reverse=is_reverse, recv_amount_sat=recv_amount_sat, channels=channels)
-        return d.run()
+        try:
+            return d.run()
+        except InvalidSwapParameters as e:
+            self.show_error(str(e))
+            return
 
     @qt_event_listener
     def on_event_request_status(self, wallet, key, status):
@@ -1137,7 +1175,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
             msg += '\n' + req.get_message()
             self.notify(msg)
             self.receive_tab.request_list.delete_item(key)
-            self.receive_tab.receive_tabs.setVisible(False)
+            self.receive_tab.do_clear()
             self.need_update.set()
         else:
             self.receive_tab.request_list.refresh_item(key)
@@ -1166,17 +1204,18 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
             return
         invoice = self.wallet.get_invoice(key)
         if invoice and invoice.is_lightning() and invoice.get_address():
+            # fixme: we should display this popup only if the user initiated the payment
             if self.question(_('Payment failed') + '\n\n' + reason + '\n\n'+ 'Fallback to onchain payment?'):
-                self.send_tab.pay_onchain_dialog(self.get_coins(), invoice.get_outputs())
+                self.send_tab.pay_onchain_dialog(invoice.get_outputs())
         else:
-            self.show_error(_('Payment failed') + '\n\n' + reason)
+            self.notify(_('Payment failed') + '\n\n' + reason)
 
-    def get_coins(self, *, nonlocal_only=False) -> Sequence[PartialTxInput]:
+    def get_coins(self, **kwargs) -> Sequence[PartialTxInput]:
         coins = self.get_manually_selected_coins()
         if coins is not None:
             return coins
         else:
-            return self.wallet.get_spendable_coins(None, nonlocal_only=nonlocal_only)
+            return self.wallet.get_spendable_coins(None, **kwargs)
 
     def get_manually_selected_coins(self) -> Optional[Sequence[PartialTxInput]]:
         """Return a list of selected coins or None.
@@ -1185,18 +1224,18 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         """
         return self.utxo_list.get_spend_list()
 
-    def broadcast_or_show(self, tx: Transaction):
+    def broadcast_or_show(self, tx: Transaction, *, payment_identifier: PaymentIdentifier = None):
         if not tx.is_complete():
-            self.show_transaction(tx)
+            self.show_transaction(tx, payment_identifier=payment_identifier)
             return
         if not self.network:
             self.show_error(_("You can't broadcast a transaction without a live network connection."))
-            self.show_transaction(tx)
+            self.show_transaction(tx, payment_identifier=payment_identifier)
             return
-        self.broadcast_transaction(tx)
+        self.broadcast_transaction(tx, payment_identifier=payment_identifier)
 
-    def broadcast_transaction(self, tx: Transaction):
-        self.send_tab.broadcast_transaction(tx)
+    def broadcast_transaction(self, tx: Transaction, *, payment_identifier: PaymentIdentifier = None):
+        self.send_tab.broadcast_transaction(tx, payment_identifier=payment_identifier)
 
     @protected
     def sign_tx(self, tx, *, callback, external_keypairs, password):
@@ -1206,6 +1245,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         '''Sign the transaction in a separate thread.  When done, calls
         the callback with a success code of True or False.
         '''
+
         def on_success(result):
             callback(True)
         def on_failure(exc_info):
@@ -1221,9 +1261,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         WaitingDialog(self, msg, task, on_success, on_failure)
 
     def mktx_for_open_channel(self, *, funding_sat, node_id):
-        coins = self.get_coins(nonlocal_only=True)
-        make_tx = lambda fee_est: self.wallet.lnworker.mktx_for_open_channel(
-            coins=coins,
+        make_tx = lambda fee_est, *, confirmed_only=False: self.wallet.lnworker.mktx_for_open_channel(
+            coins = self.get_coins(nonlocal_only=True, confirmed_only=confirmed_only),
             funding_sat=funding_sat,
             node_id=node_id,
             fee_est=fee_est)
@@ -1239,19 +1278,18 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
             msg = messages.MGS_CONFLICTING_BACKUP_INSTANCE
             if not self.question(msg):
                 return
-        # use ConfirmTxDialog
         # we need to know the fee before we broadcast, because the txid is required
         make_tx = self.mktx_for_open_channel(funding_sat=funding_sat, node_id=node_id)
-        d = ConfirmTxDialog(window=self, make_tx=make_tx, output_value=funding_sat, is_sweep=False)
-        # disable preview button because the user must not broadcast tx before establishment_flow
-        d.preview_button.setEnabled(False)
-        cancelled, is_send, password, funding_tx = d.run()
-        if not is_send:
+        d = ConfirmTxDialog(window=self, make_tx=make_tx, output_value=funding_sat, allow_preview=False)
+        funding_tx = d.run()
+        if not funding_tx:
             return
-        if cancelled:
-            return
+        self._open_channel(connect_str, funding_sat, push_amt, funding_tx)
+
+    @protected
+    def _open_channel(self, connect_str, funding_sat, push_amt, funding_tx, password):
         # read funding_sat from tx; converts '!' to int value
-        funding_sat = funding_tx.output_value_for_address(ln_dummy_address())
+        funding_sat = funding_tx.output_value_for_address(DummyAddress.CHANNEL)
         def task():
             return self.wallet.lnworker.open_channel(
                 connect_str=connect_str,
@@ -1270,7 +1308,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         lnworker = self.wallet.lnworker
         if not chan.has_onchain_backup():
             data = lnworker.export_channel_backup(chan.channel_id)
-            help_text = _(messages.MSG_CREATED_NON_RECOVERABLE_CHANNEL)
+            help_text = messages.MSG_CREATED_NON_RECOVERABLE_CHANNEL
             help_text += '\n\n' + _('Alternatively, you can save a backup of your wallet file from the File menu')
             self.show_qrcode(
                 data, _('Save channel backup'),
@@ -1289,23 +1327,29 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         else:
             self.show_message(message)
 
-    def query_choice(self, msg, choices):
+    def query_choice(self, msg, choices, title=None, default_choice=None):
         # Needed by QtHandler for hardware wallets
-        dialog = WindowModalDialog(self.top_level_window(), title='Question')
+        if title is None:
+            title = _('Question')
+        dialog = WindowModalDialog(self.top_level_window(), title=title)
         dialog.setMinimumWidth(400)
-        clayout = ChoicesLayout(msg, choices)
+        clayout = ChoicesLayout(msg, choices, checked_index=default_choice)
         vbox = QVBoxLayout(dialog)
         vbox.addLayout(clayout.layout())
-        vbox.addLayout(Buttons(CancelButton(dialog), OkButton(dialog)))
+        cancel_button = CancelButton(dialog)
+        vbox.addLayout(Buttons(cancel_button, OkButton(dialog)))
+        cancel_button.setFocus()
         if not dialog.exec_():
             return None
         return clayout.selected_index()
 
-    def handle_payment_identifier(self, *args, **kwargs):
-        try:
-            self.send_tab.handle_payment_identifier(*args, **kwargs)
-        except FailedToParsePaymentIdentifier as e:
-            self.show_error(str(e))
+    def handle_payment_identifier(self, text: str):
+        pi = PaymentIdentifier(self.wallet, text)
+        if pi.is_valid():
+            self.send_tab.set_payment_identifier(text)
+        else:
+            if pi.error:
+                self.show_error(str(pi.error))
 
     def set_frozen_state_of_addresses(self, addrs, freeze: bool):
         self.wallet.set_frozen_state_of_addresses(addrs, freeze)
@@ -1319,36 +1363,41 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         self.utxo_list.refresh_all()
         self.utxo_list.selectionModel().clearSelection()
 
-    def create_list_tab(self, l, toolbar=None):
+    def create_list_tab(self, l):
         w = QWidget()
         w.searchable_list = l
         vbox = QVBoxLayout()
         w.setLayout(vbox)
         #vbox.setContentsMargins(0, 0, 0, 0)
         #vbox.setSpacing(0)
+        toolbar = l.create_toolbar(self.config)
         if toolbar:
             vbox.addLayout(toolbar)
         vbox.addWidget(l)
+        if toolbar:
+            l.show_toolbar()
         return w
 
     def create_addresses_tab(self):
         from .address_list import AddressList
-        self.address_list = l = AddressList(self)
-        toolbar = l.create_toolbar(self.config)
-        tab =  self.create_list_tab(l, toolbar)
-        toolbar_shown = bool(self.config.get('show_toolbar_addresses', False))
-        l.show_toolbar(toolbar_shown)
+        self.address_list = AddressList(self)
+        tab =  self.create_list_tab(self.address_list)
+        tab.is_shown_cv = self.config.cv.GUI_QT_SHOW_TAB_ADDRESSES
         return tab
 
     def create_utxo_tab(self):
         from .utxo_list import UTXOList
         self.utxo_list = UTXOList(self)
-        return self.create_list_tab(self.utxo_list)
+        tab = self.create_list_tab(self.utxo_list)
+        tab.is_shown_cv = self.config.cv.GUI_QT_SHOW_TAB_UTXO
+        return tab
 
     def create_contacts_tab(self):
         from .contact_list import ContactList
         self.contact_list = l = ContactList(self)
-        return self.create_list_tab(l)
+        tab = self.create_list_tab(l)
+        tab.is_shown_cv = self.config.cv.GUI_QT_SHOW_TAB_CONTACTS
+        return tab
 
     def remove_address(self, addr):
         if not self.question(_("Do you want to remove {} from your wallet?").format(addr)):
@@ -1406,7 +1455,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
             grid.addWidget(QLabel(format_time(invoice.exp + invoice.time)), 4, 1)
         if invoice.bip70:
             pr = paymentrequest.PaymentRequest(bytes.fromhex(invoice.bip70))
-            pr.verify(self.contacts)
+            pr.verify()
             grid.addWidget(QLabel(_("Requestor") + ':'), 5, 0)
             grid.addWidget(QLabel(pr.get_requestor()), 5, 1)
             grid.addWidget(QLabel(_("Signature") + ':'), 6, 0)
@@ -1435,6 +1484,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         d.exec_()
 
     def show_lightning_invoice(self, invoice: Invoice):
+        from electrum_blk.util import format_short_id
         lnaddr = lndecode(invoice.lightning_invoice)
         d = WindowModalDialog(self, _("Lightning Invoice"))
         vbox = QVBoxLayout(d)
@@ -1454,16 +1504,26 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
             grid.addWidget(QLabel(_("Expiration time") + ':'), 4, 0)
             grid.addWidget(QLabel(format_time(invoice.time + invoice.exp)), 4, 1)
         grid.addWidget(QLabel(_('Features') + ':'), 5, 0)
-        grid.addWidget(QLabel('\n'.join(lnaddr.get_features().get_names())), 5, 1)
+        grid.addWidget(QLabel(', '.join(lnaddr.get_features().get_names())), 5, 1)
         payhash_e = ShowQRLineEdit(lnaddr.paymenthash.hex(), self.config, title=_("Payment Hash"))
         grid.addWidget(QLabel(_("Payment Hash") + ':'), 6, 0)
         grid.addWidget(payhash_e, 6, 1)
+        fallback = lnaddr.get_fallback_address()
+        if fallback:
+            fallback_e = ShowQRLineEdit(fallback, self.config, title=_("Fallback address"))
+            grid.addWidget(QLabel(_("Fallback address") + ':'), 7, 0)
+            grid.addWidget(fallback_e, 7, 1)
         invoice_e = ShowQRTextEdit(config=self.config)
         invoice_e.setFont(QFont(MONOSPACE_FONT))
         invoice_e.addCopyButton()
         invoice_e.setText(invoice.lightning_invoice)
-        grid.addWidget(QLabel(_('Text') + ':'), 7, 0)
-        grid.addWidget(invoice_e, 7, 1)
+        grid.addWidget(QLabel(_('Text') + ':'), 8, 0)
+        grid.addWidget(invoice_e, 8, 1)
+        r_tags = lnaddr.get_routing_info('r')
+        r_tags = '\n'.join(repr([(x[0].hex(), format_short_id(x[1]), x[2], x[3]) for x in r]) for r in r_tags)
+        routing_e = QTextEdit(str(r_tags))
+        grid.addWidget(QLabel(_("Routing Hints") + ':'), 9, 0)
+        grid.addWidget(routing_e, 9, 1)
         vbox.addLayout(grid)
         vbox.addLayout(Buttons(CloseButton(d),))
         d.exec_()
@@ -1471,11 +1531,12 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
     def create_console_tab(self):
         from .console import Console
         self.console = console = Console()
+        console.is_shown_cv = self.config.cv.GUI_QT_SHOW_TAB_CONSOLE
         return console
 
     def update_console(self):
         console = self.console
-        console.history = self.wallet.db.get("qt-console-history", [])
+        console.history = self.wallet.db.get_stored_item("qt-console-history", [])
         console.history_index = len(console.history)
 
         console.updateNamespace({
@@ -1489,6 +1550,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
             'util': util,
             'bitcoin': bitcoin,
             'lnutil': lnutil,
+            'channels': list(self.wallet.lnworker.channels.values()) if self.wallet.lnworker else []
         })
 
         c = commands.Commands(
@@ -1546,18 +1608,18 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         self.tasks_label = QLabel('')
         sb.addPermanentWidget(self.tasks_label)
 
-        self.password_button = StatusBarButton(QIcon(), _("Password"), self.change_password_dialog)
+        self.password_button = StatusBarButton(QIcon(), _("Password"), self.change_password_dialog, sb_height)
         sb.addPermanentWidget(self.password_button)
 
-        sb.addPermanentWidget(StatusBarButton(read_QIcon("preferences.png"), _("Preferences"), self.settings_dialog))
-        self.seed_button = StatusBarButton(read_QIcon("seed.png"), _("Seed"), self.show_seed_dialog)
+        sb.addPermanentWidget(StatusBarButton(read_QIcon("preferences.png"), _("Preferences"), self.settings_dialog, sb_height))
+        self.seed_button = StatusBarButton(read_QIcon("seed.png"), _("Seed"), self.show_seed_dialog, sb_height)
         sb.addPermanentWidget(self.seed_button)
-        self.lightning_button = StatusBarButton(read_QIcon("lightning.png"), _("Lightning Network"), self.gui_object.show_lightning_dialog)
+        self.lightning_button = StatusBarButton(read_QIcon("lightning.png"), _("Lightning Network"), self.gui_object.show_lightning_dialog, sb_height)
         sb.addPermanentWidget(self.lightning_button)
         self.update_lightning_icon()
         self.status_button = None
         if self.network:
-            self.status_button = StatusBarButton(read_QIcon("status_disconnected.png"), _("Network"), self.gui_object.show_network_dialog)
+            self.status_button = StatusBarButton(read_QIcon("status_disconnected.png"), _("Network"), self.gui_object.show_network_dialog, sb_height)
             sb.addPermanentWidget(self.status_button)
         run_hook('create_status_bar', sb)
         self.setStatusBar(sb)
@@ -1574,7 +1636,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         self.coincontrol_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         sb.addWidget(self.coincontrol_label)
 
-        clear_cc_button = EnterButton(_('Reset'), lambda: self.utxo_list.set_spend_list(None))
+        clear_cc_button = EnterButton(_('Reset'), lambda: self.utxo_list.clear_coincontrol())
         clear_cc_button.setStyleSheet("margin-right: 5px;")
         sb.addPermanentWidget(clear_cc_button)
 
@@ -1674,6 +1736,23 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         if hasattr(tab, 'searchable_list'):
             tab.searchable_list.filter(t)
 
+    def new_channel_dialog(self, *, amount_sat=None, min_amount_sat=None):
+        from electrum_blk.lnutil import MIN_FUNDING_SAT
+        from .new_channel_dialog import NewChannelDialog
+        confirmed, unconfirmed, unmatured, frozen, lightning, f_lightning = self.wallet.get_balances_for_piechart()
+        min_amount_sat = min_amount_sat or MIN_FUNDING_SAT
+        if confirmed < min_amount_sat:
+            msg = _('Not enough funds') + '\n\n' + _('You need at least {} to open a channel.').format(self.format_amount_and_units(min_amount_sat))
+            self.show_error(msg)
+            return
+        lnworker = self.wallet.lnworker
+        if not lnworker.channels and not lnworker.channel_backups:
+            msg = _('Do you want to create your first channel?') + '\n\n' + messages.MSG_LIGHTNING_WARNING
+            if not self.question(msg):
+                return
+        d = NewChannelDialog(self, amount_sat, min_amount_sat)
+        return d.run()
+
     def new_contact_dialog(self):
         d = WindowModalDialog(self, _("New Contact"))
         vbox = QVBoxLayout(d)
@@ -1729,28 +1808,38 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         keystore_types = [k.get_type_text() for k in self.wallet.get_keystores()]
         grid = QGridLayout()
         basename = os.path.basename(self.wallet.storage.path)
-        grid.addWidget(WWLabel(_("Wallet name")+ ':'), 0, 0)
-        grid.addWidget(WWLabel(basename), 0, 1)
-        grid.addWidget(WWLabel(_("Wallet type")+ ':'), 1, 0)
-        grid.addWidget(WWLabel(wallet_type), 1, 1)
-        grid.addWidget(WWLabel(_("Script type")+ ':'), 2, 0)
-        grid.addWidget(WWLabel(self.wallet.txin_type), 2, 1)
-        grid.addWidget(WWLabel(_("Seed available") + ':'), 3, 0)
-        grid.addWidget(WWLabel(str(seed_available)), 3, 1)
+        cur_row = 0
+        grid.addWidget(WWLabel(_("Wallet name")+ ':'), cur_row, 0)
+        grid.addWidget(WWLabel(basename), cur_row, 1)
+        cur_row += 1
+        if db_metadata := self.wallet.db.get_db_metadata():
+            grid.addWidget(WWLabel(_("File created") + ':'), cur_row, 0)
+            grid.addWidget(WWLabel(db_metadata.to_str()), cur_row, 1)
+            cur_row += 1
+        grid.addWidget(WWLabel(_("Wallet type")+ ':'), cur_row, 0)
+        grid.addWidget(WWLabel(wallet_type), cur_row, 1)
+        cur_row += 1
+        grid.addWidget(WWLabel(_("Script type")+ ':'), cur_row, 0)
+        grid.addWidget(WWLabel(self.wallet.txin_type), cur_row, 1)
+        cur_row += 1
+        grid.addWidget(WWLabel(_("Seed available") + ':'), cur_row, 0)
+        grid.addWidget(WWLabel(str(seed_available)), cur_row, 1)
+        cur_row += 1
         if len(keystore_types) <= 1:
-            grid.addWidget(WWLabel(_("Keystore type") + ':'), 4, 0)
+            grid.addWidget(WWLabel(_("Keystore type") + ':'), cur_row, 0)
             ks_type = str(keystore_types[0]) if keystore_types else _('No keystore')
-            grid.addWidget(WWLabel(ks_type), 4, 1)
+            grid.addWidget(WWLabel(ks_type), cur_row, 1)
+            cur_row += 1
         # lightning
-        grid.addWidget(WWLabel(_('Lightning') + ':'), 5, 0)
+        grid.addWidget(WWLabel(_('Lightning') + ':'), cur_row, 0)
         from .util import IconLabel
         if self.wallet.has_lightning():
             if self.wallet.lnworker.has_deterministic_node_id():
-                grid.addWidget(WWLabel(_('Enabled')), 5, 1)
+                grid.addWidget(WWLabel(_('Enabled')), cur_row, 1)
             else:
                 label = IconLabel(text='Enabled, non-recoverable channels')
-                label.setIcon(read_QIcon('nocloud'))
-                grid.addWidget(label, 5, 1)
+                label.setIcon(read_QIcon('cloud_no'))
+                grid.addWidget(label, cur_row, 1)
                 if self.wallet.db.get('seed_type') == 'segwit':
                     msg = _("Your channels cannot be recovered from seed, because they were created with an old version of Electrum. "
                             "This means that you must save a backup of your wallet everytime you create a new channel.\n\n"
@@ -1759,20 +1848,24 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
                     msg = _("Your channels cannot be recovered from seed. "
                             "This means that you must save a backup of your wallet everytime you create a new channel.\n\n"
                             "If you want to have recoverable channels, you must create a new wallet with an Electrum seed")
-                grid.addWidget(HelpButton(msg), 5, 3)
-            grid.addWidget(WWLabel(_('Lightning Node ID:')), 7, 0)
+                grid.addWidget(HelpButton(msg), cur_row, 3)
+            cur_row += 1
+            grid.addWidget(WWLabel(_('Lightning Node ID:')), cur_row, 0)
+            cur_row += 1
             nodeid_text = self.wallet.lnworker.node_keypair.pubkey.hex()
             nodeid_e = ShowQRLineEdit(nodeid_text, self.config, title=_("Node ID"))
-            grid.addWidget(nodeid_e, 8, 0, 1, 4)
+            grid.addWidget(nodeid_e, cur_row, 0, 1, 4)
+            cur_row += 1
         else:
             if self.wallet.can_have_lightning():
-                grid.addWidget(WWLabel('Not enabled'), 5, 1)
+                grid.addWidget(WWLabel('Not enabled'), cur_row, 1)
                 button = QPushButton(_("Enable"))
                 button.pressed.connect(lambda: self.init_lightning_dialog(dialog))
-                grid.addWidget(button, 5, 3)
+                grid.addWidget(button, cur_row, 3)
             else:
-                grid.addWidget(WWLabel(_("Not available for this wallet.")), 5, 1)
-                grid.addWidget(HelpButton(_("Lightning is currently not available for Blackcoin.")), 5, 2)
+                grid.addWidget(WWLabel(_("Not available for this wallet.")), cur_row, 1)
+                grid.addWidget(HelpButton(_("Lightning is currently restricted to HD wallets with p2wpkh addresses.")), cur_row, 2)
+            cur_row += 1
         vbox.addLayout(grid)
 
         labels_clayout = None
@@ -1877,10 +1970,12 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         d = SeedDialog(self, seed, passphrase, config=self.config)
         d.exec_()
 
-    def show_qrcode(self, data, title = _("QR code"), parent=None, *,
+    def show_qrcode(self, data, title=None, parent=None, *,
                     help_text=None, show_copy_text_btn=False):
         if not data:
             return
+        if title is None:
+            title = _("QR code")
         d = QRDialog(
             data=data,
             parent=parent or self,
@@ -2092,6 +2187,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
     def import_channel_backup(self, encrypted: str):
         if not self.question('Import channel backup?'):
             return
+        if not self.wallet.lnworker:
+            self.show_error(_('Lightning is disabled'))
+            return
         try:
             self.wallet.lnworker.import_channel_backup(encrypted)
         except Exception as e:
@@ -2171,30 +2269,44 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         if tx:
             self.show_transaction(tx)
 
-    def do_process_from_txid(self):
+    def do_process_from_txid(self, *, parent: QWidget = None, txid: str = None):
+        if parent is None:
+            parent = self
         from electrum_blk import transaction
-        txid, ok = QInputDialog.getText(self, _('Lookup transaction'), _('Transaction ID') + ':')
-        if ok and txid:
-            txid = str(txid).strip()
-            raw_tx = self._fetch_tx_from_network(txid)
+        if txid is None:
+            txid, ok = QInputDialog.getText(parent, _('Lookup transaction'), _('Transaction ID') + ':')
+            if not ok:
+                txid = None
+        if not txid:
+            return
+        txid = str(txid).strip()
+        tx = self.wallet.adb.get_transaction(txid)
+        if tx is None:
+            raw_tx = self._fetch_tx_from_network(txid, parent=parent)
             if not raw_tx:
                 return
             tx = transaction.Transaction(raw_tx)
-            self.show_transaction(tx)
+        self.show_transaction(tx)
 
-    def _fetch_tx_from_network(self, txid: str) -> Optional[str]:
+    def _fetch_tx_from_network(self, txid: str, *, parent: QWidget = None) -> Optional[str]:
         if not self.network:
-            self.show_message(_("You are offline."))
+            self.show_message(_("You are offline."), parent=parent)
             return
         try:
             raw_tx = self.network.run_from_another_thread(
                 self.network.get_transaction(txid, timeout=10))
         except UntrustedServerReturnedError as e:
             self.logger.info(f"Error getting transaction from network: {repr(e)}")
-            self.show_message(_("Error getting transaction from network") + ":\n" + e.get_message_for_gui())
+            self.show_message(
+                _("Error getting transaction from network") + ":\n" + e.get_message_for_gui(),
+                parent=parent,
+            )
             return
         except Exception as e:
-            self.show_message(_("Error getting transaction from network") + ":\n" + repr(e))
+            self.show_message(
+                _("Error getting transaction from network") + ":\n" + repr(e),
+                parent=parent,
+            )
             return
         return raw_tx
 
@@ -2221,7 +2333,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         e.setReadOnly(True)
         vbox.addWidget(e)
 
-        defaultname = 'electrum-blk-private-keys.csv'
+        defaultname = f'electrum-blk-private-keys-{self.wallet.basename()}.csv'
         select_msg = _('Select file to export your private keys to')
         hbox, filename_e, csv_button = filename_field(self, self.config, defaultname, select_msg)
         vbox.addLayout(hbox)
@@ -2329,6 +2441,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
 
 
     def sweep_key_dialog(self):
+        if not self.network:
+            self.show_error(_("You are offline."))
+            return
         d = WindowModalDialog(self, title=_('Sweep private keys'))
         d.setMinimumSize(600, 300)
         vbox = QVBoxLayout(d)
@@ -2392,7 +2507,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
             coins, keypairs = result
             outputs = [PartialTxOutput.from_address_and_value(addr, value='!')]
             self.warn_if_watching_only()
-            self.send_tab.pay_onchain_dialog(coins, outputs, external_keypairs=keypairs)
+            self.send_tab.pay_onchain_dialog(
+                outputs, external_keypairs=keypairs, get_coins=lambda *args, **kwargs: coins)
         def on_failure(exc_info):
             self.on_error(exc_info)
         msg = _('Preparing sweep transaction...')
@@ -2453,7 +2569,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         self.send_tab.fiat_send_e.setVisible(b)
         self.receive_tab.fiat_receive_e.setVisible(b)
         self.history_model.refresh('update_fiat')
-        self.history_list.update()
+        self.history_list.update_toolbar_menu()
         self.address_list.refresh_headers()
         self.address_list.update()
         self.update_status()
@@ -2485,12 +2601,11 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         for fut in coro_keys:
             fut.cancel()
         self.unregister_callbacks()
-        self.config.set_key("is_maximized", self.isMaximized())
+        self.config.GUI_QT_WINDOW_IS_MAXIMIZED = self.isMaximized()
         if not self.isMaximized():
             g = self.geometry()
             self.wallet.db.put("winpos-qt", [g.left(),g.top(),
                                                   g.width(),g.height()])
-        self.wallet.db.put("qt-console-history", self.console.history[-50:])
         if self.qr_window:
             self.qr_window.close()
         self.close_wallet()
@@ -2662,27 +2777,11 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
             return
         self.show_transaction(new_tx)
 
-    def _add_info_to_tx_from_wallet_and_network(self, tx: PartialTransaction) -> bool:
-        """Returns whether successful."""
-        # note side-effect: tx is being mutated
-        assert isinstance(tx, PartialTransaction)
-        try:
-            # note: this might download input utxos over network
-            BlockingWaitingDialog(
-                self,
-                _("Adding info to tx, from wallet and network..."),
-                lambda: tx.add_info_from_wallet(self.wallet, ignore_network_issues=False),
-            )
-        except NetworkException as e:
-            self.show_error(repr(e))
-            return False
-        return True
-
     def bump_fee_dialog(self, tx: Transaction):
         txid = tx.txid()
         if not isinstance(tx, PartialTransaction):
             tx = PartialTransaction.from_tx(tx)
-        if not self._add_info_to_tx_from_wallet_and_network(tx):
+        if not tx.add_info_from_wallet_and_network(wallet=self.wallet, show_error=self.show_error):
             return
         d = BumpFeeDialog(main_window=self, tx=tx, txid=txid)
         d.run()
@@ -2691,7 +2790,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         txid = tx.txid()
         if not isinstance(tx, PartialTransaction):
             tx = PartialTransaction.from_tx(tx)
-        if not self._add_info_to_tx_from_wallet_and_network(tx):
+        if not tx.add_info_from_wallet_and_network(wallet=self.wallet, show_error=self.show_error):
             return
         d = DSCancelDialog(main_window=self, tx=tx, txid=txid)
         d.run()
@@ -2732,3 +2831,14 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
             return
         d = RebalanceDialog(self, chan1, chan2, amount_sat)
         d.run()
+
+    def on_swap_result(self, txid):
+        msg = _("Submarine swap") + ': ' + (_("Success") if txid else _("Expired")) + '\n\n'
+        if txid:
+            msg += _("Funding transaction") + ': ' + txid + '\n'
+            msg += _("Please remain online until the funding transaction is confirmed.")
+            self.show_message_signal.emit(msg)
+        else:
+            msg += _("Lightning funds were not received.")
+            self.show_error_signal.emit(msg)
+

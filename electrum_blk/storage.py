@@ -29,6 +29,7 @@ import hashlib
 import base64
 import zlib
 from enum import IntEnum
+from typing import Optional
 
 from . import ecc
 from .util import (profiler, InvalidPassword, WalletFileException, bfh, standardize_path,
@@ -68,12 +69,16 @@ class WalletStorage(Logger):
         except IOError as e:
             raise StorageReadWriteError(e) from e
         if self.file_exists():
-            with open(self.path, "r", encoding='utf-8') as f:
-                self.raw = f.read()
+            with open(self.path, "rb") as f:
+                self.raw = f.read().decode("utf-8")
+                self.pos = f.seek(0, os.SEEK_END)
+                self.init_pos = self.pos
             self._encryption_version = self._init_encryption_version()
         else:
             self.raw = ''
             self._encryption_version = StorageEncryptionVersion.PLAINTEXT
+            self.pos = 0
+            self.init_pos = 0
 
     def read(self):
         return self.decrypted if self.is_encrypted() else self.raw
@@ -81,16 +86,15 @@ class WalletStorage(Logger):
     def write(self, data: str) -> None:
         s = self.encrypt_before_writing(data)
         temp_path = "%s.tmp.%s" % (self.path, os.getpid())
-        with open(temp_path, "w", encoding='utf-8') as f:
-            f.write(s)
+        with open(temp_path, "wb") as f:
+            f.write(s.encode("utf-8"))
+            self.pos = f.seek(0, os.SEEK_END)
             f.flush()
             os.fsync(f.fileno())
-
         try:
             mode = os.stat(self.path).st_mode
         except FileNotFoundError:
             mode = stat.S_IREAD | stat.S_IWRITE
-
         # assert that wallet file does not exist, to prevent wallet corruption (see issue #5082)
         if not self.file_exists():
             assert not os.path.exists(self.path)
@@ -98,6 +102,20 @@ class WalletStorage(Logger):
         os_chmod(self.path, mode)
         self._file_exists = True
         self.logger.info(f"saved {self.path}")
+
+    def append(self, data: str) -> None:
+        """ append data to file. for the moment, only non-encrypted file"""
+        assert not self.is_encrypted()
+        with open(self.path, "rb+") as f:
+            pos = f.seek(0, os.SEEK_END)
+            assert pos == self.pos, (self.pos, pos)
+            f.write(data.encode("utf-8"))
+            self.pos = f.seek(0, os.SEEK_END)
+            f.flush()
+            os.fsync(f.fileno())
+
+    def needs_consolidation(self):
+        return self.pos > 2 * self.init_pos
 
     def file_exists(self) -> bool:
         return self._file_exists
@@ -141,7 +159,7 @@ class WalletStorage(Logger):
                 return StorageEncryptionVersion.XPUB_PASSWORD
             else:
                 return StorageEncryptionVersion.PLAINTEXT
-        except:
+        except Exception:
             return StorageEncryptionVersion.PLAINTEXT
 
     @staticmethod
@@ -178,6 +196,7 @@ class WalletStorage(Logger):
     def encrypt_before_writing(self, plaintext: str) -> str:
         s = plaintext
         if self.pubkey:
+            self.decrypted = plaintext
             s = bytes(s, 'utf8')
             c = zlib.compress(s, level=zlib.Z_BEST_SPEED)
             enc_magic = self._get_encryption_magic()
@@ -186,9 +205,11 @@ class WalletStorage(Logger):
             s = s.decode('utf8')
         return s
 
-    def check_password(self, password) -> None:
+    def check_password(self, password: Optional[str]) -> None:
         """Raises an InvalidPassword exception on invalid password"""
         if not self.is_encrypted():
+            if password is not None:
+                raise InvalidPassword("password given but wallet has no password")
             return
         if not self.is_past_initial_decryption():
             self.decrypt(password)  # this sets self.pubkey

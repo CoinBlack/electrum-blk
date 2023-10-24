@@ -1,25 +1,33 @@
-import QtQuick 2.6
+import QtQuick 2.15
 import QtQuick.Layouts 1.0
 import QtQuick.Controls 2.1
+
+import org.electrum 1.0
 
 import "../controls"
 
 ElDialog {
     id: wizard
-    modal: true
     focus: true
 
     width: parent.width
     height: parent.height
 
+    padding: 0
+
     title: wizardTitle + (pages.currentItem.title ? ' - ' + pages.currentItem.title : '')
     iconSource: '../../../icons/electrum.png'
+
+    // android back button triggers close() on Popups. Disabling close here,
+    // we handle that via Keys.onReleased event handler in the root layout.
+    closePolicy: Popup.NoAutoClose
 
     property string wizardTitle
 
     property var wizard_data
     property alias pages: pages
     property QtObject wiz
+    property alias finishButtonText: finishButton.text
 
     function doClose() {
         if (pages.currentIndex == 0)
@@ -31,7 +39,7 @@ ElDialog {
     function _setWizardData(wdata) {
         wizard_data = {}
         Object.assign(wizard_data, wdata) // deep copy
-        console.log('wizard data is now :' + JSON.stringify(wizard_data))
+        // console.log('wizard data is now :' + JSON.stringify(wizard_data))
     }
 
     // helper function to dynamically load wizard page components
@@ -57,11 +65,15 @@ ElDialog {
         Object.assign(wdata_copy, wdata)
         var page = comp.createObject(pages, {wizard_data: wdata_copy})
         page.validChanged.connect(function() {
+            if (page != pages.currentItem)
+                return
             pages.pagevalid = page.valid
-        } )
+        })
         page.lastChanged.connect(function() {
+            if (page != pages.currentItem)
+                return
             pages.lastpage = page.last
-        } )
+        })
         page.next.connect(function() {
             var newview = wiz.submit(page.wizard_data)
             if (newview.view) {
@@ -73,7 +85,6 @@ ElDialog {
         })
         page.prev.connect(function() {
             var wdata = wiz.prev()
-            console.log('prev view data: ' + JSON.stringify(wdata))
         })
 
         pages.pagevalid = page.valid
@@ -86,10 +97,19 @@ ElDialog {
         anchors.fill: parent
         spacing: 0
 
+        // root Item in Wizard, capture back button here and delegate to main
+        Keys.onReleased: {
+            if (event.key == Qt.Key_Back) {
+                console.log("Back button within wizard")
+                app.close() // this handles unwind of dialogs/stack
+            }
+        }
+
         SwipeView {
             id: pages
             Layout.fillWidth: true
             Layout.fillHeight: true
+
             interactive: false
 
             clip:true
@@ -113,7 +133,7 @@ ElDialog {
             function finish() {
                 currentItem.accept()
                 _setWizardData(pages.contentChildren[currentIndex].wizard_data)
-                wizard.accept()
+                wizard.doAccept()
             }
 
             property bool pagevalid: false
@@ -123,6 +143,11 @@ ElDialog {
                 _setWizardData({})
             }
 
+            Binding {
+                target: AppController
+                property: 'secureWindow'
+                value: pages.contentChildren[pages.currentIndex].securePage
+            }
         }
 
         ColumnLayout {
@@ -137,46 +162,43 @@ ElDialog {
                 currentIndex: pages.currentIndex
             }
 
-            RowLayout {
-                Layout.alignment: Qt.AlignHCenter
-                Button {
+            ButtonContainer {
+                Layout.fillWidth: true
+
+                FlatButton {
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 1
                     visible: pages.currentIndex == 0
                     text: qsTr("Cancel")
-                    onClicked: wizard.reject()
+                    onClicked: wizard.doReject()
                 }
-
-                Button {
+                FlatButton {
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 1
                     visible: pages.currentIndex > 0
                     text: qsTr('Back')
                     onClicked: pages.prev()
                 }
-
-                Button {
+                FlatButton {
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 1
                     text: qsTr("Next")
                     visible: !pages.lastpage
                     enabled: pages.pagevalid
                     onClicked: pages.next()
                 }
-
-                Button {
+                FlatButton {
+                    id: finishButton
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 1
                     text: qsTr("Finish")
                     visible: pages.lastpage
                     enabled: pages.pagevalid
                     onClicked: pages.finish()
                 }
-
             }
-        }
-    }
 
-    // make clicking the dialog background move the scope away from textedit fields
-    // so the keyboard goes away
-    // TODO: here it works on desktop, but not android. hmm.
-    MouseArea {
-        anchors.fill: parent
-        z: -1000
-        onClicked: { parkFocus.focus = true }
-        FocusScope { id: parkFocus }
+        }
     }
 
 }

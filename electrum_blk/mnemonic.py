@@ -30,7 +30,7 @@ import string
 from typing import Sequence, Dict
 from types import MappingProxyType
 
-from .util import resource_path, bfh, bh2u, randrange
+from .util import resource_path, bfh, randrange
 from .crypto import hmac_oneshot
 from . import version
 from .logging import Logger
@@ -88,6 +88,16 @@ def normalize_text(seed: str) -> str:
     # remove whitespaces between CJK
     seed = u''.join([seed[i] for i in range(len(seed)) if not (seed[i] in string.whitespace and is_CJK(seed[i-1]) and is_CJK(seed[i+1]))])
     return seed
+
+
+def is_matching_seed(*, seed: str, seed_again: str) -> bool:
+    """Compare two seeds for equality, as used in "confirm seed" screen in wizard.
+    Not just for electrum seeds, but other types (e.g. bip39) as well.
+    Note: we don't use normalize_text, as that is specific to electrum seeds.
+    """
+    seed = " ".join(seed.split())
+    seed_again = " ".join(seed_again.split())
+    return seed == seed_again
 
 
 _WORDLIST_CACHE = {}  # type: Dict[str, Wordlist]
@@ -224,7 +234,7 @@ class Mnemonic(Logger):
 
 def is_new_seed(x: str, prefix=version.SEED_PREFIX) -> bool:
     x = normalize_text(x)
-    s = bh2u(hmac_oneshot(b"Seed version", x.encode('utf8'), hashlib.sha512))
+    s = hmac_oneshot(b"Seed version", x.encode('utf8'), hashlib.sha512).hex()
     return s.startswith(prefix)
 
 
