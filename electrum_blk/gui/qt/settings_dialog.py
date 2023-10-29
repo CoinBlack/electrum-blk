@@ -171,6 +171,11 @@ class SettingsDialog(QDialog, QtEventListener):
                 self.app.refresh_tabs_signal.emit()
         msat_cb.stateChanged.connect(on_msat_checked)
 
+        # Blackcoin: disable lightning settings
+        trampoline_cb.setEnabled(False)
+        legacy_add_trampoline_cb.setEnabled(False)
+        remote_wt_cb.setEnabled(False)
+
         # units
         units = base_units_list
         msg = (_('Base unit of your wallet.')
