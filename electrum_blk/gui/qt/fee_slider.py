@@ -12,6 +12,8 @@ class FeeComboBox(QComboBox):
         QComboBox.__init__(self)
         self.config = fee_slider.config
         self.fee_slider = fee_slider
+        # Blackcoin
+        '''
         self.addItems([_('Static'), _('ETA'), _('Mempool')])
         self.setCurrentIndex((2 if self.config.use_mempool_fees() else 1) if self.config.is_dynfee() else 0)
         self.currentIndexChanged.connect(self.on_fee_type)
@@ -19,6 +21,14 @@ class FeeComboBox(QComboBox):
             _('Static: the fee slider uses static values'),
             _('ETA: fee rate is based on average confirmation time estimates'),
             _('Mempool based: fee rate is targeting a depth in the memory pool')
+            ]
+        )
+        '''
+        self.addItems([_('Static')])
+        self.setCurrentIndex(0)
+        self.currentIndexChanged.connect(self.on_fee_type)
+        self.help_msg = '\n'.join([
+            _('Static: the fee slider uses static values'),
             ]
         )
 
