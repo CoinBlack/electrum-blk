@@ -429,8 +429,10 @@ class SimpleConfig(Logger):
             with open(path, "w", encoding='utf-8') as f:
                 f.write(s)
             os_chmod(path, stat.S_IREAD | stat.S_IWRITE)
-        except FileNotFoundError:
-            # datadir probably deleted while running...
+        except OSError:
+            # datadir probably deleted while running... e.g. portable exe running on ejected USB drive
+            # (in which case it is typically either FileNotFoundError or PermissionError,
+            #  but let's just catch the more generic OSError and test explicitly)
             if os.path.exists(self.path):  # or maybe not?
                 raise
 
@@ -1107,6 +1109,8 @@ This will result in longer routes; it might increase your fees and decrease the 
 
     GUI_QML_PREFERRED_REQUEST_TYPE = ConfigVar('preferred_request_type', default='bolt11', type_=str)
     GUI_QML_USER_KNOWS_PRESS_AND_HOLD = ConfigVar('user_knows_press_and_hold', default=False, type_=bool)
+    GUI_QML_ADDRESS_LIST_SHOW_TYPE = ConfigVar('address_list_show_type', default=1, type_=int)
+    GUI_QML_ADDRESS_LIST_SHOW_USED = ConfigVar('address_list_show_used', default=False, type_=bool)
 
     BTC_AMOUNTS_DECIMAL_POINT = ConfigVar('decimal_point', default=DECIMAL_POINT_DEFAULT, type_=int)
     BTC_AMOUNTS_FORCE_NZEROS_AFTER_DECIMAL_POINT = ConfigVar(
@@ -1177,6 +1181,11 @@ This will result in longer routes; it might increase your fees and decrease the 
     SWAPSERVER_URL = ConfigVar('swapserver_url', default=_default_swapserver_url, type_=str)
     SWAPSERVER_PORT = ConfigVar('swapserver_port', default=5455, type_=int)
     TEST_SWAPSERVER_REFUND = ConfigVar('test_swapserver_refund', default=False, type_=bool)
+
+    # zeroconf channels
+    ACCEPT_ZEROCONF_CHANNELS = ConfigVar('accept_zeroconf_channels', default=False, type_=bool)
+    ZEROCONF_TRUSTED_NODE = ConfigVar('zeroconf_trusted_node', default='', type_=str)
+    ZEROCONF_MIN_OPENING_FEE = ConfigVar('zeroconf_min_opening_fee', default=5000, type_=int)
 
     # connect to remote WT
     WATCHTOWER_CLIENT_ENABLED = ConfigVar(

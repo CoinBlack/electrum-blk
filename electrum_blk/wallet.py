@@ -3035,24 +3035,26 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         long_warning = None
         short_warning = None
         allow_send = True
-
         # Blackcoin: check minimum fee before/after fork
         is_low_fee = feerate < self.relayfee() / 1000 if calendar.timegm(datetime.datetime.utcnow().utctimetuple()) < constants.net.FIRST_POSV3_1_BLOCK_TIME else fee < ((1 + tx_size // 1000) * MIN_TX_FEE_PER_KB) 
         if is_low_fee:
-            long_warning = (
-                    _("This transaction requires a higher fee, or it will not be propagated by your current server.") + " "
-                    + _("Try to raise your transaction fee."))
+            long_warning = ' '.join([
+                _("This transaction requires a higher fee, or it will not be propagated by your current server."),
+                _("Try to raise your transaction fee.")
+            ])
             short_warning = _("below minimum fee") + "!"
             allow_send = False
         elif fee_ratio >= FEE_RATIO_HIGH_WARNING:
-            long_warning = (
-                    _("The fee for this transaction seems unusually high.")
-                    + f' ({fee_ratio*100:.2f}% of amount)')
+            long_warning = ' '.join([
+                _("The fee for this transaction seems unusually high."),
+                _("({}% of amount)").format(f'{fee_ratio*100:.2f}')
+            ])
             short_warning = _("high fee ratio") + "!"
         elif feerate > FEERATE_WARNING_HIGH_FEE / 1000:
-            long_warning = (
-                    _("The fee for this transaction seems unusually high.")
-                    + f' (feerate: {feerate:.2f} sat/byte)')
+            long_warning = ' '.join([
+                _("The fee for this transaction seems unusually high."),
+                _("(feerate: {} sat/byte)").format(f'{feerate:.2f}')
+            ])
             short_warning = _("high fee rate") + "!"
         if long_warning is None:
             return None
@@ -3156,7 +3158,8 @@ class Simple_Wallet(Abstract_Wallet):
         pass
 
     def get_public_keys(self, address: str) -> Sequence[str]:
-        return [self.get_public_key(address)]
+        pk = self.get_public_key(address)
+        return [pk] if pk else []
 
 
 class Imported_Wallet(Simple_Wallet):
@@ -3646,6 +3649,9 @@ class Multisig_Wallet(Deterministic_Wallet):
                 raise Exception(f"unexpected keystore type={type(ks)} in multisig")
             if bip32.xpub_type(self.keystore.xpub) != bip32.xpub_type(ks.xpub):
                 raise Exception(f"multisig wallet needs to have homogeneous xpub types")
+        bip32_nodes = set({ks.get_bip32_node_for_xpub() for ks in self.get_keystores()})
+        if len(bip32_nodes) != len(self.get_keystores()):
+            raise Exception(f"duplicate xpubs in multisig")
 
     def get_public_keys(self, address):
         return [pk.hex() for pk in self.get_public_keys_with_deriv_info(address)]

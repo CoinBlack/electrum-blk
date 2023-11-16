@@ -1,8 +1,8 @@
-import QtQuick 2.6
-import QtQuick.Controls 2.15
-import QtQuick.Controls.Material 2.15
-import QtQuick.Controls.impl 2.15
-import QtQuick.Controls.Material.impl 2.15
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Controls.Material
+import QtQuick.Controls.impl
+import QtQuick.Controls.Material.impl
 
 TabButton {
     id: control
@@ -11,6 +11,8 @@ TabButton {
     property bool textUnderIcon: true
 
     font.pixelSize: constants.fontSizeSmall
+    icon.width: constants.iconSizeMedium
+    icon.height: constants.iconSizeMedium
     display: textUnderIcon ? IconLabel.TextUnderIcon : IconLabel.TextBesideIcon
 
     contentItem: IconLabel {

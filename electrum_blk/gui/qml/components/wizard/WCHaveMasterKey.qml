@@ -1,7 +1,7 @@
-import QtQuick 2.6
-import QtQuick.Layouts 1.0
-import QtQuick.Controls 2.1
-import QtQuick.Controls.Material 2.0
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls
+import QtQuick.Controls.Material
 
 import org.electrum 1.0
 
@@ -122,10 +122,10 @@ WizardComponent {
         }
 
         RowLayout {
-            TextArea {
+            ElTextArea {
                 id: masterkey_ta
                 Layout.fillWidth: true
-                Layout.minimumHeight: 80
+                Layout.minimumHeight: 160
                 font.family: FixedFont
                 wrapMode: TextEdit.WrapAnywhere
                 onTextChanged: {
@@ -133,8 +133,12 @@ WizardComponent {
                         verifyMasterKey(text)
                 }
                 inputMethodHints: Qt.ImhSensitiveData | Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
+                background: PaneInsetBackground {
+                    baseColor: constants.darkerDialogBackground
+                }
             }
             ColumnLayout {
+                Layout.alignment: Qt.AlignTop
                 ToolButton {
                     icon.source: '../../../icons/paste.png'
                     icon.height: constants.iconSizeMedium

@@ -1,6 +1,6 @@
 import threading
 
-from PyQt5.QtCore import pyqtSignal, pyqtSlot
+from PyQt6.QtCore import pyqtSignal, pyqtSlot
 
 from electrum_blk.i18n import _
 from electrum_blk.plugin import hook

@@ -1,7 +1,7 @@
-import QtQuick 2.15
-import QtQuick.Layouts 1.0
-import QtQuick.Controls 2.14
-import QtQuick.Controls.Material 2.0
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls
+import QtQuick.Controls.Material
 
 import org.electrum 1.0
 
@@ -99,6 +99,18 @@ ElDialog {
                         icon.color: 'transparent'
                         onClicked: {
                             plaintext.text = AppController.clipboardToText()
+                        }
+                    }
+                    ToolButton {
+                        icon.source: '../../icons/share.png'
+                        icon.color: enabled ? 'transparent' : Material.iconDisabledColor
+                        enabled: plaintext.text
+                        onClicked: {
+                            var dialog = app.genericShareDialog.createObject(app, {
+                                title: qsTr('Message'),
+                                text_qr: plaintext.text
+                            })
+                            dialog.open()
                         }
                     }
                 }

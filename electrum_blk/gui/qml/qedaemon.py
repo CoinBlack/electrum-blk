@@ -3,8 +3,8 @@ import os
 import threading
 from typing import TYPE_CHECKING
 
-from PyQt5.QtCore import Qt, QAbstractListModel, QModelIndex
-from PyQt5.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject
+from PyQt6.QtCore import Qt, QAbstractListModel, QModelIndex
+from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject
 
 from electrum_blk.i18n import _
 from electrum_blk.logging import get_logger
@@ -27,12 +27,15 @@ if TYPE_CHECKING:
 
 # wallet list model. supports both wallet basenames (wallet file basenames)
 # and whole Wallet instances (loaded wallets)
+from .util import check_password_strength
+
+
 class QEWalletListModel(QAbstractListModel):
     _logger = get_logger(__name__)
 
     # define listmodel rolemap
     _ROLE_NAMES= ('name', 'path', 'active')
-    _ROLE_KEYS = range(Qt.UserRole, Qt.UserRole + len(_ROLE_NAMES))
+    _ROLE_KEYS = range(Qt.ItemDataRole.UserRole, Qt.ItemDataRole.UserRole + len(_ROLE_NAMES))
     _ROLE_MAP  = dict(zip(_ROLE_KEYS, [bytearray(x.encode()) for x in _ROLE_NAMES]))
 
     def __init__(self, daemon, parent=None):
@@ -49,7 +52,7 @@ class QEWalletListModel(QAbstractListModel):
 
     def data(self, index, role):
         (wallet_name, wallet_path) = self._wallets[index.row()]
-        role_index = role - Qt.UserRole
+        role_index = role - Qt.ItemDataRole.UserRole
         role_name = self._ROLE_NAMES[role_index]
         if role_name == 'name':
             return wallet_name
@@ -366,3 +369,9 @@ class QEDaemon(AuthMixin, QObject):
         except Exception as e:
             verified = False
         return verified
+
+    @pyqtSlot(str, result=int)
+    def passwordStrength(self, password):
+        if len(password) == 0:
+            return 0
+        return check_password_strength(password)[0]

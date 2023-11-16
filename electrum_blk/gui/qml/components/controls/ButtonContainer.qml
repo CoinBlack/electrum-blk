@@ -1,10 +1,12 @@
-import QtQuick 2.6
-import QtQuick.Layouts 1.0
-import QtQuick.Controls 2.15
-import QtQuick.Controls.Material 2.0
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls
+import QtQuick.Controls.Material
 
 Container {
     id: root
+
+    property bool showSeparator: true
 
     property Item _layout
 
@@ -48,7 +50,7 @@ Container {
             required property int pheight
             required property int master_idx
             Layout.fillWidth: false
-            Layout.preferredWidth: 2
+            Layout.preferredWidth: showSeparator ? 2 : 0
             Layout.preferredHeight: pheight
             Layout.alignment: Qt.AlignVCenter
             color: constants.darkerBackground

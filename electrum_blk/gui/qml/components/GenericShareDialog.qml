@@ -1,7 +1,7 @@
-import QtQuick 2.6
-import QtQuick.Layouts 1.0
-import QtQuick.Controls 2.14
-import QtQuick.Controls.Material 2.0
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls
+import QtQuick.Controls.Material
 
 import "controls"
 
@@ -42,28 +42,38 @@ ElDialog {
                 width: parent.width
                 spacing: constants.paddingMedium
 
-                QRImage {
-                    id: qr
-                    render: dialog.enter ? false : true
-                    qrdata: dialog.text_qr ? dialog.text_qr : dialog.text
-                    Layout.alignment: Qt.AlignHCenter
-                    Layout.topMargin: constants.paddingSmall
-                    Layout.bottomMargin: constants.paddingSmall
-                }
-
                 TextHighlightPane {
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.fillWidth: true
                     Layout.leftMargin: constants.paddingMedium
                     Layout.rightMargin: constants.paddingMedium
-                    Layout.fillWidth: true
-                    visible: dialog.text
-                    Label {
+
+                    ColumnLayout {
                         width: parent.width
-                        text: dialog.text
-                        wrapMode: Text.Wrap
-                        font.pixelSize: constants.fontSizeLarge
-                        font.family: FixedFont
-                        maximumLineCount: 4
-                        elide: Text.ElideRight
+
+                        QRImage {
+                            id: qr
+                            render: dialog.enter ? false : true
+                            qrdata: dialog.text_qr ? dialog.text_qr : dialog.text
+                            Layout.alignment: Qt.AlignHCenter
+                            Layout.topMargin: constants.paddingMedium
+                            Layout.bottomMargin: constants.paddingMedium
+                        }
+
+                        TextHighlightPane {
+                            Layout.fillWidth: true
+                            visible: dialog.text
+
+                            Label {
+                                width: parent.width
+                                text: dialog.text
+                                wrapMode: Text.Wrap
+                                font.pixelSize: constants.fontSizeLarge
+                                font.family: FixedFont
+                                maximumLineCount: 4
+                                elide: Text.ElideRight
+                            }
+                        }
                     }
                 }
 

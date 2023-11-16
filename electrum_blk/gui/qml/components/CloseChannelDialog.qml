@@ -1,7 +1,7 @@
-import QtQuick 2.6
-import QtQuick.Layouts 1.0
-import QtQuick.Controls 2.3
-import QtQuick.Controls.Material 2.0
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls
+import QtQuick.Controls.Material
 
 import org.electrum 1.0
 
@@ -19,8 +19,6 @@ ElDialog {
     iconSource: Qt.resolvedUrl('../../icons/lightning_disconnected.png')
 
     property string _closing_method
-
-    closePolicy: Popup.NoAutoClose
 
     padding: 0
 
@@ -120,14 +118,14 @@ ElDialog {
                         id: closetypeRemoteForce
                         ButtonGroup.group: closetypegroup
                         property string closetype: 'remote_force'
-                        enabled: !channeldetails.isClosing && channeldetails.canForceClose
+                        enabled: !channeldetails.isClosing && channeldetails.canRequestForceClose
                         text: qsTr('Request Force-close')
                     }
                     ElRadioButton {
                         id: closetypeLocalForce
                         ButtonGroup.group: closetypegroup
                         property string closetype: 'local_force'
-                        enabled: !channeldetails.isClosing && channeldetails.canForceClose && !channeldetails.isBackup
+                        enabled: !channeldetails.isClosing && channeldetails.canLocalForceClose && !channeldetails.isBackup
                         text: qsTr('Local Force-close')
                     }
                 }
@@ -202,7 +200,7 @@ ElDialog {
         wallet: Daemon.currentWallet
         channelid: dialog.channelid
 
-        onAuthRequired: {
+        onAuthRequired: (method, authMessage) => {
             app.handleAuthRequired(channeldetails, method, authMessage)
         }
 
@@ -213,8 +211,10 @@ ElDialog {
             // init default choice
             if (channeldetails.canCoopClose)
                 closetypeCoop.checked = true
-            else
+            else if (channeldetails.canRequestForceClose)
                 closetypeRemoteForce.checked = true
+            else
+                closetypeLocalForce.checked = true
         }
 
         onChannelCloseSuccess: {
@@ -228,7 +228,7 @@ ElDialog {
             dialog.close()
         }
 
-        onChannelCloseFailed: {
+        onChannelCloseFailed: (message) => {
             errorText.text = message
         }
     }

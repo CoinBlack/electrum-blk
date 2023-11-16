@@ -1,7 +1,7 @@
-import QtQuick 2.6
-import QtQuick.Layouts 1.0
-import QtQuick.Controls 2.3
-import QtQuick.Controls.Material 2.0
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls
+import QtQuick.Controls.Material
 
 import org.electrum 1.0
 
@@ -16,6 +16,7 @@ Pane {
     property string address
 
     signal addressDetailsChanged
+    signal addressDeleted
 
     ColumnLayout {
         anchors.fill: parent
@@ -192,6 +193,7 @@ Pane {
                 Label {
                     Layout.columnSpan: 2
                     Layout.topMargin: constants.paddingSmall
+                    visible: addressdetails.pubkeys.length
                     text: qsTr('Public keys')
                     color: Material.accentColor
                 }
@@ -215,9 +217,10 @@ Pane {
                                 icon.source: '../../icons/share.png'
                                 enabled: modelData
                                 onClicked: {
-                                    var dialog = app.genericShareDialog.createObject(root,
-                                        { title: qsTr('Public key'), text: modelData }
-                                    )
+                                    var dialog = app.genericShareDialog.createObject(root, {
+                                        title: qsTr('Public key'),
+                                        text: modelData
+                                    })
                                     dialog.open()
                                 }
                             }
@@ -286,7 +289,7 @@ Pane {
                 Layout.preferredWidth: 1
                 text: addressdetails.isFrozen ? qsTr('Unfreeze address') : qsTr('Freeze address')
                 onClicked: addressdetails.freeze(!addressdetails.isFrozen)
-                icon.source: '../../icons/seal.png'
+                icon.source: '../../icons/freeze.png'
             }
             FlatButton {
                 Layout.fillWidth: true
@@ -301,6 +304,25 @@ Pane {
                     dialog.open()
                 }
             }
+            FlatButton {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 1
+                visible: addressdetails.canDelete
+                text: qsTr('Delete')
+                onClicked: {
+                    var confirmdialog = app.messageDialog.createObject(root, {
+                        text: qsTr('Are you sure you want to delete this address from the wallet?'),
+                        yesno: true
+                    })
+                    confirmdialog.accepted.connect(function () {
+                        addressdetails.deleteAddress()
+                        addressDeleted()
+                        app.stack.pop()
+                    })
+                    confirmdialog.open()
+                }
+                icon.source: '../../icons/delete.png'
+            }
         }
     }
 
@@ -310,7 +332,7 @@ Pane {
         address: root.address
         onFrozenChanged: addressDetailsChanged()
         onLabelChanged: addressDetailsChanged()
-        onAuthRequired: {
+        onAuthRequired: (method, authMessage) => {
             app.handleAuthRequired(addressdetails, method, authMessage)
         }
     }

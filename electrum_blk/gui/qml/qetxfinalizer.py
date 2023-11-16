@@ -2,7 +2,7 @@ from decimal import Decimal
 from typing import Optional, TYPE_CHECKING
 from functools import partial
 
-from PyQt5.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject
+from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject
 
 from electrum_blk.logging import get_logger
 from electrum_blk.i18n import _
@@ -442,11 +442,11 @@ class TxMonMixin(QtEventListener):
             self.txidChanged.emit()
 
     # override
-    def get_tx(self):
+    def get_tx(self) -> None:
         pass
 
     # override
-    def tx_verified(self):
+    def tx_verified(self) -> None:
         pass
 
 

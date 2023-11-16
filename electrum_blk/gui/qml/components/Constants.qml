@@ -1,8 +1,8 @@
-import QtQuick 2.6
-import QtQuick.Controls.Material 2.0
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Controls.Material
 
 Item {
-    readonly property int paddingTiny: 4 //deprecated
     readonly property int paddingXXSmall: 4
     readonly property int paddingXSmall: 6
     readonly property int paddingSmall: 8
@@ -43,6 +43,7 @@ Item {
     property color colorDone: '#ff80ff80'
     property color colorValidBackground: '#ff008000'
     property color colorInvalidBackground: '#ff800000'
+    property color colorAcceptable: '#ff8080ff'
 
     property color colorLightningLocal: "#6060ff"
     property color colorLightningLocalReserve: "#0000a0"
