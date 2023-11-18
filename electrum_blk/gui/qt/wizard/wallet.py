@@ -677,9 +677,11 @@ class WCScriptAndDerivation(WizardComponent, Logger):
             else:
                 # Blackcoin: disable SegWit wallets for now
                 # default_choice = 'p2wsh'
-                default_choice = 'p2sh'
+                default_choice = 'standard'
         else:
-            default_choice = 'p2wpkh'
+            # Blackcoin: disable SegWit wallets for now
+            # default_choice = 'p2wpkh'
+            default_choice = 'standard'
             choices = [
                 # TODO: nicer to refactor 'standard' to 'p2pkh', but backend wallet still uses 'standard'
                 ('standard', 'legacy (p2pkh)', bip44_derivation(0, bip43_purpose=44)),
