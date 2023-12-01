@@ -41,7 +41,7 @@ git submodule update --init
 
 if ([ "$OMIT_UNCLEAN_FILES" = 1 ]); then
     # FIXME side-effecting repo... though in practice, this script probably runs in fresh_clone
-    rm -f "$PROJECT_ROOT/electrum/paymentrequest_pb2.py"
+    rm -f "$PROJECT_ROOT/electrum_blk/paymentrequest_pb2.py"
 fi
 
 (
@@ -62,7 +62,7 @@ import importlib.util
 import os
 
 # load version.py; needlessly complicated alternative to "imp.load_source":
-version_spec = importlib.util.spec_from_file_location('version', 'electrum/version.py')
+version_spec = importlib.util.spec_from_file_location('version', 'electrum_blk/version.py')
 version_module = importlib.util.module_from_spec(version_spec)
 version_spec.loader.exec_module(version_module)
 

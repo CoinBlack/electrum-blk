@@ -88,7 +88,7 @@ class ElectrumGui(BaseElectrumGui, Logger):
 
         # Initialize any QML plugins
         run_hook('init_qml', self.app)
-        self.app.engine.load('electrum/gui/qml/components/main.qml')
+        self.app.engine.load('electrum_blk/gui/qml/components/main.qml')
 
     def close(self):
         self.app.quit()
