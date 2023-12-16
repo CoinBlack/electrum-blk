@@ -169,7 +169,7 @@ class ExchangeBase(Logger):
 
     def get_cached_spot_quote(self, ccy: str) -> Decimal:
         """Returns the cached exchange rate as a Decimal"""
-        if ccy == 'BTC':
+        if ccy == 'BLK':
             return Decimal(1)
         rate = self._quotes.get(ccy)
         if rate is None:
@@ -343,9 +343,9 @@ class CoinDesk(ExchangeBase):
 class CoinGecko(ExchangeBase):
 
     async def get_rates(self, ccy):
-        json = await self.get_json('api.coingecko.com', '/api/v3/coins/blackcoin?localization=false&tickers=false&community_data=false&developer_data=false&sparkline=false')
-        return dict([(ccy.upper(), to_decimal(d))
-                     for ccy, d in json['market_data']['current_price'].items()])
+        json = await self.get_json('api.coingecko.com', '/api/v3/exchange_rates')
+        return dict([(ccy.upper(), to_decimal(d['value']))
+                     for ccy, d in json['rates'].items()])
 
     def history_ccys(self):
         # CoinGecko seems to have historical data for all ccys it supports
