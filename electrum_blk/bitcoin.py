@@ -41,6 +41,7 @@ if TYPE_CHECKING:
 
 ################################## transactions
 
+COINBASE_MATURITY = 500
 COIN = 100000000
 TOTAL_COIN_SUPPLY_LIMIT_IN_BTC = 100000000000000
 
