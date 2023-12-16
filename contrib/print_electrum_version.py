@@ -6,8 +6,8 @@
 # $ VERSION=$("$CONTRIB"/print_electrum_version.py)
 # $ VERSION=$("$CONTRIB"/print_electrum_version.py APK_VERSION)
 # instead of
-# $ VERSION=$(python3 -c "import electrum_blk; print(electrum.version.ELECTRUM_VERSION)")
-# $ VERSION=$(python3 -c "import electrum_blk; print(electrum.version.APK_VERSION)")
+# $ VERSION=$(python3 -c "import electrum_blk; print(electrum_blk.version.ELECTRUM_VERSION)")
+# $ VERSION=$(python3 -c "import electrum_blk; print(electrum_blk.version.APK_VERSION)")
 
 import importlib.util
 import os
