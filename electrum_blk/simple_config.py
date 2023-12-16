@@ -466,7 +466,7 @@ class SimpleConfig(Logger):
 
         return new_path
 
-    def get_fallback_wallet_path(self):
+    def get_datadir_wallet_path(self):
         util.assert_datadir_available(self.path)
         dirpath = os.path.join(self.path, "wallets")
         make_dir(dirpath, allow_symlink=False)

@@ -1576,7 +1576,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
             'plugins': self.gui_object.plugins,
             'window': self,
             'config': self.config,
-            'electrum': electrum,
+            'electrum': electrum_blk,
             'daemon': self.gui_object.daemon,
             'util': util,
             'bitcoin': bitcoin,
