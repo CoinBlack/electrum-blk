@@ -326,7 +326,7 @@ class WCWalletName(WizardComponent, Logger):
             self.wallet_is_open = False
             self.wallet_needs_hw_unlock = False
             if filename:
-                _path = os.path.join(wallet_folder, filename)
+                _path = os.path.join(datadir_wallet_folder, filename)
                 wallet_from_memory = self.wizard._daemon.get_wallet(_path)
                 try:
                     if wallet_from_memory:
