@@ -110,7 +110,7 @@ Section
   Delete "$SMPROGRAMS\${PRODUCT_NAME}\*.*"
 
   ;Files to pack into the installer
-  File /r "dist\electrum-blk\*.*"
+  File /r "dist\electrum_blk\*.*"
   File "..\..\electrum_blk\gui\icons\electrum.ico"
 
   ;Store installation folder
