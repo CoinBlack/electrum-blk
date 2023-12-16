@@ -28,7 +28,8 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Dict, Optional, Set, Tuple, NamedTuple, Sequence, List
 
 from .crypto import sha256
-from . import bitcoin, constants, util
+from . import bitcoin, util
+from .bitcoin import COINBASE_MATURITY
 from .util import profiler, bfh, TxMinedInfo, UnrelatedTransactionException, with_lock, OldTaskGroup
 from .transaction import Transaction, TxOutput, TxInput, PartialTxInput, TxOutpoint, PartialTransaction
 from .synchronizer import Synchronizer
@@ -109,8 +110,14 @@ class AddressSynchronizer(Logger, EventListener):
         self.remove_local_transactions_we_dont_have()
 
     def is_mine(self, address: Optional[str]) -> bool:
-        """Returns whether an address is in our set
-        Note: This class has a larget set of addresses than the wallet
+        """Returns whether an address is in our set.
+
+        Differences between adb.is_mine and wallet.is_mine:
+        - adb.is_mine: addrs that we are watching (e.g. via Synchronizer)
+            - lnwatcher adds its own lightning-related addresses that are not part of the wallet
+        - wallet.is_mine: addrs that are part of the wallet balance or the wallet might sign for
+            - an offline wallet might learn from a PSBT about addrs beyond its gap limit
+        Neither set is guaranteed to be a subset of the other.
         """
         if not address: return False
         return self.db.is_addr_in_history(address)
@@ -885,7 +892,7 @@ class AddressSynchronizer(Logger, EventListener):
             v = utxo.value_sats()
             tx_height = utxo.block_height
             is_cb = utxo.is_coinbase_output()
-            if is_cb and tx_height + constants.net.COINBASE_MATURITY > mempool_height:
+            if is_cb and tx_height + COINBASE_MATURITY > mempool_height:
                 x += v
             elif tx_height > 0:
                 c += v
@@ -952,7 +959,7 @@ class AddressSynchronizer(Logger, EventListener):
                 if nonlocal_only and txo.block_height in (TX_HEIGHT_LOCAL, TX_HEIGHT_FUTURE):
                     continue
                 if (mature_only and txo.is_coinbase_output()
-                        and txo.block_height + constants.net.COINBASE_MATURITY > mempool_height):
+                        and txo.block_height + COINBASE_MATURITY > mempool_height):
                     continue
                 coins.append(txo)
                 continue

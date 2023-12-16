@@ -12,12 +12,11 @@ from electrum_blk import SimpleConfig
 from electrum_blk import util
 from electrum_blk.address_synchronizer import TX_HEIGHT_UNCONFIRMED, TX_HEIGHT_UNCONF_PARENT
 from electrum_blk.wallet import (sweep, Multisig_Wallet, Standard_Wallet, Imported_Wallet,
-                             restore_wallet_from_text, Abstract_Wallet, CannotBumpFee)
-from electrum_blk.util import (
-    bfh, NotEnoughFunds, UnrelatedTransactionException,
-    UserFacingException)
-from electrum_blk.transaction import (TxOutput, Transaction, PartialTransaction, PartialTxOutput,
-                                  PartialTxInput, tx_from_any, TxOutpoint)
+                             restore_wallet_from_text, Abstract_Wallet, CannotBumpFee, BumpFeeStrategy,
+                             TransactionPotentiallyDangerousException, TransactionDangerousException,
+                             TxSighashRiskLevel)
+from electrum_blk.util import bfh, NotEnoughFunds, UnrelatedTransactionException, UserFacingException
+from electrum_blk.transaction import Transaction, PartialTxOutput, tx_from_any, Sighash
 from electrum_blk.mnemonic import seed_type
 from electrum_blk.network import Network
 
@@ -1229,7 +1228,7 @@ class TestWalletSending(ElectrumTestCase):
         tx = wallet.bump_fee(
             tx=tx_from_any(orig_rbf_tx.serialize()),
             new_fee_rate=60,
-            decrease_payment=True,
+            strategy=BumpFeeStrategy.DECREASE_PAYMENT,
         )
         tx.locktime = 1936085
         tx.version = 2
@@ -1271,7 +1270,7 @@ class TestWalletSending(ElectrumTestCase):
         tx = wallet.bump_fee(
             tx=tx_from_any(orig_rbf_tx.serialize()),
             new_fee_rate=60,
-            decrease_payment=True,
+            strategy=BumpFeeStrategy.DECREASE_PAYMENT,
         )
         tx.locktime = 1936095
         tx.version = 2
@@ -1313,19 +1312,19 @@ class TestWalletSending(ElectrumTestCase):
             tx = wallet.bump_fee(
                 tx=tx_from_any(orig_rbf_tx.serialize()),
                 new_fee_rate=99999,
-                decrease_payment=True,
+                strategy=BumpFeeStrategy.DECREASE_PAYMENT,
             )
         with self.assertRaises(CannotBumpFee):
             tx = wallet.bump_fee(
                 tx=tx_from_any(orig_rbf_tx.serialize()),
                 new_fee_rate=99999,
-                decrease_payment=False,
+                strategy=BumpFeeStrategy.PRESERVE_PAYMENT,
             )
 
         tx = wallet.bump_fee(
             tx=tx_from_any(orig_rbf_tx.serialize()),
             new_fee_rate=60,
-            decrease_payment=True,
+            strategy=BumpFeeStrategy.DECREASE_PAYMENT,
         )
         tx.locktime = 1936085
         tx.version = 2
@@ -1647,7 +1646,7 @@ class TestWalletSending(ElectrumTestCase):
         self.assertEqual((0, 0, 0), wallet.get_balance())
 
         # bump tx
-        tx = wallet.bump_fee(tx=tx_from_any(tx.serialize()), new_fee_rate=70.0, decrease_payment=True)
+        tx = wallet.bump_fee(tx=tx_from_any(tx.serialize()), new_fee_rate=70.0, strategy=BumpFeeStrategy.DECREASE_PAYMENT)
         tx.locktime = 1325500
         tx.version = 1
         if simulate_moving_txs:
@@ -2963,12 +2962,22 @@ class TestWalletSending(ElectrumTestCase):
                                              partial_tx)
                         # load tx into cosignerB's offline wallet
                         tx = tx_from_any(partial_tx)
-                        wallet1b_offline.sign_transaction(tx, password=None)
+                        wallet1b_offline.sign_transaction(tx, password=None, ignore_warnings=True)
 
                         self.assertEqual('02000000014e375f685f3205e0c7841036525b10f01654632c5ae91e7e04513b815e46a5e100000000d9004730440220414287f36a02b004d2e9a3892e1862edaf49c35d50b65ae10b601879b8c793ef0220073234c56d5a8ae9f4fcfeaecaa757e2724bf830d45aabfab8ffe37329ebf4590147304402203ba7cc21e407ce31c1eecd11c367df716a5d47f06e0bf7109f08063ede25a364022039f6bef0dd401aa2c3103b8cbab57cc4fed3905ccb0a726dc6594bf5930ae0b401475221026addf5fd752c92e8a53955e430ca5964feb1b900ce569f968290f65ae7fecbfd2103a8b896e5216fe7239516a494407c0cc90c6dc33918c7df04d1cda8d57a3bb98152aefdffffff02400d0300000000001600144770c0bc4c42ed1cad089749cc887856ec0f9d99588004000000000017a914493900cdec652a41c633436b53d574647e329b18871c112500',
                                          str(tx))
                         self.assertEqual('d6823918ff82ed240995e9e6f02e0d2f3f15e0b942616ab34481ce8a3399dc72', tx.txid())
                         self.assertEqual('d6823918ff82ed240995e9e6f02e0d2f3f15e0b942616ab34481ce8a3399dc72', tx.wtxid())
+
+                        # again, but raise on warnings (here: signing non-segwit inputs is risky)
+                        tx = tx_from_any(partial_tx)
+                        try:
+                            wallet1b_offline.sign_transaction(tx, password=None)
+                            self.assertFalse(uses_qr_code2)
+                        except TransactionDangerousException:
+                            raise
+                        except TransactionPotentiallyDangerousException:
+                            self.assertTrue(uses_qr_code2)
 
     @mock.patch.object(wallet.Abstract_Wallet, 'save_db')
     async def test_we_dont_sign_tx_including_dummy_address(self, mock_save_db):
@@ -2990,6 +2999,50 @@ class TestWalletSending(ElectrumTestCase):
         tx = wallet1.make_unsigned_transaction(coins=coins, outputs=outputs, fee=5000)
         with self.assertRaises(bitcoin.DummyAddressUsedInTxException):
             wallet1.sign_transaction(tx, password=None)
+
+    @mock.patch.object(wallet.Abstract_Wallet, 'save_db')
+    async def test_sighash_warnings(self, mock_save_db):
+        wallet1 = self.create_standard_wallet_from_seed('bitter grass shiver impose acquire brush forget axis eager alone wine silver')
+
+        # bootstrap wallet1
+        funding_tx = Transaction('01000000014576dacce264c24d81887642b726f5d64aa7825b21b350c7b75a57f337da6845010000006b483045022100a3f8b6155c71a98ad9986edd6161b20d24fad99b6463c23b463856c0ee54826d02200f606017fd987696ebbe5200daedde922eee264325a184d5bbda965ba5160821012102e5c473c051dae31043c335266d0ef89c1daab2f34d885cc7706b267f3269c609ffffffff0240420f00000000001600148a28bddb7f61864bdcf58b2ad13d5aeb3abc3c42a2ddb90e000000001976a914c384950342cb6f8df55175b48586838b03130fad88ac00000000')
+        self.assertEqual('add2535aedcbb5ba79cc2260868bb9e57f328738ca192937f2c92e0e94c19203', funding_tx.txid())
+        wallet1.adb.receive_tx_callback(funding_tx, TX_HEIGHT_UNCONFIRMED)
+        funding_tx = Transaction('0200000000010141f2de02db45f99c3618e4bfb51cd3e5ec64db096886cfd8253bdbaf0bba58c72c01000000fdffffff0220e00900000000001600144d46b4729c7bf894fa5c510d6e72bec1d02b1aa640420f0000000000160014284520c815980d426264766d8d930013dd20aa6002473044022078a86cd15acb981a5aa4948176cb66583a4a4f4b728962f1497fbdd5f323ae3e02205301e5e3b34232bc139ca311a795377a3416b109b7bb8c70f3f6bb3fcc40e589012103cf9ad82ebea31e5c1bf08219c38302cc0ce5eba2ff5eecd90b9d3a951eebfb1cca2c1800')
+        self.assertEqual('9d221a69ca3997cbeaf5624d723e7dc5f829b1023078c177d37bdae95f37c539', funding_tx.txid())
+        wallet1.adb.receive_tx_callback(funding_tx, TX_HEIGHT_UNCONFIRMED)
+
+        outputs = [PartialTxOutput.from_address_and_value('tb1qgacvp0zvgtk3etggjayuezrc2mkql8veshv4xw', '!')]
+        coins = wallet1.get_spendable_coins(domain=None)
+        tx = wallet1.make_unsigned_transaction(coins=coins, outputs=outputs, fee=1000)
+        self.assertEqual(2, len(tx.inputs()))
+
+        tx.inputs()[0].sighash = Sighash.NONE
+        tx.inputs()[1].sighash = Sighash.ALL
+        self.assertEqual(TxSighashRiskLevel.INSANE_SIGHASH, wallet1.check_sighash(tx).risk_level)
+        with self.assertRaises(TransactionDangerousException):
+            wallet1.sign_transaction(tx, password=None)
+        with self.assertRaises(TransactionDangerousException):
+            wallet1.sign_transaction(tx, password=None, ignore_warnings=True)
+
+        tx.inputs()[0].sighash = Sighash.ALL
+        tx.inputs()[1].sighash = Sighash.SINGLE
+        self.assertEqual(TxSighashRiskLevel.WEIRD_SIGHASH, wallet1.check_sighash(tx).risk_level)
+        with self.assertRaises(TransactionPotentiallyDangerousException):
+            wallet1.sign_transaction(tx, password=None)
+
+        tx.inputs()[0].sighash = Sighash.ALL | Sighash.ANYONECANPAY
+        tx.inputs()[1].sighash = Sighash.ALL
+        self.assertEqual(TxSighashRiskLevel.WEIRD_SIGHASH, wallet1.check_sighash(tx).risk_level)
+        with self.assertRaises(TransactionPotentiallyDangerousException):
+            wallet1.sign_transaction(tx, password=None)
+
+        tx.inputs()[0].sighash = Sighash.ALL
+        tx.inputs()[1].sighash = Sighash.ALL
+        self.assertEqual(TxSighashRiskLevel.SAFE, wallet1.check_sighash(tx).risk_level)
+        self.assertFalse(tx.is_complete())
+        wallet1.sign_transaction(tx, password=None)
+        self.assertTrue(tx.is_complete())
 
 
 class TestWalletOfflineSigning(ElectrumTestCase):
@@ -3095,7 +3148,7 @@ class TestWalletOfflineSigning(ElectrumTestCase):
                 self.assertEqual(tx.txid(), tx_copy.txid())
 
                 # sign tx
-                tx = wallet_offline.sign_transaction(tx_copy, password=None)
+                tx = wallet_offline.sign_transaction(tx_copy, password=None, ignore_warnings=True)
                 self.assertTrue(tx.is_complete())
                 self.assertFalse(tx.is_segwit())
                 self.assertEqual('d9c21696eca80321933e7444ca928aaf25eeda81aaa2f4e5c085d4d0a9cf7aa7', tx.txid())
@@ -3362,10 +3415,11 @@ class TestWalletOfflineSigning(ElectrumTestCase):
 
         # create unsigned tx
         outputs = [PartialTxOutput.from_address_and_value('tb1quk7ahlhr3qmjndy0uvu9y9hxfesrtahtta9ghm', 2500000)]
-<<<<<<< HEAD:electrum_blk/tests/test_wallet_vertical.py
-        tx = wallet_online.mktx(outputs=outputs, password=None, fee=5000, rbf=False)
-=======
         tx = wallet_online.create_transaction(outputs=outputs, password=None, fee=5000, rbf=False)
+        tx.locktime = 1325340
+        tx.version = 1
+
+        self.assertFalse(tx.is_complete())
         self.assertEqual(1, len(tx.inputs()))
         partial_tx = tx.serialize_as_bytes().hex()
         self.assertEqual("70736274ff0100710100000001626bbbb7a4ad82dbf7f6bd64ac3f40d0e2695b606d7953f2802b9ea426ea080a0000000000fdffffff02a025260000000000160014e5bddbfee3883729b48fe3385216e64e6035f6eb585d720000000000160014dab37af8fefbbb31887a0a5f9b2698f4a7b45f6a1c3914000001011f8096980000000000160014dab37af8fefbbb31887a0a5f9b2698f4a7b45f6a0100fd200101000000000101197a89cff51096b9dd4214cdee0eb90cb27a25477e739521d728a679724042730100000000fdffffff048096980000000000160014dab37af8fefbbb31887a0a5f9b2698f4a7b45f6a80969800000000001976a91405a20074ef7eb42c7c6fcd4f499faa699742783288ac809698000000000017a914b808938a8007bc54509cd946944c479c0fa6554f87131b2c0400000000160014a04dfdb9a9aeac3b3fada6f43c2a66886186e2440247304402204f5dbb9dda65eab26179f1ca7c37c8baf028153815085dd1bbb2b826296e3b870220379fcd825742d6e2bdff772f347b629047824f289a5499a501033f6c3495594901210363c9c98740fe0455c646215cea9b13807b758791c8af7b74e62968bef57ff8ae1e391400000000",

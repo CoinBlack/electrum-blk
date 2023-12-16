@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Copyright 2013 Soren Stoutner <soren@stoutner.com> -->
 <component type="desktop-application">
-  <id>org.electrum_blk.electrum_blk</id>
+  <id>org.electrum-blk.electrum_blk</id>
 
   <name>Electrum-BLK</name>
   <summary>Blackcoin Wallet</summary>

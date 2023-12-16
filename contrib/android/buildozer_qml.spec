@@ -4,10 +4,10 @@
 title = Electrum-BLK
 
 # (str) Package name
-package.name = Electrum_BLK
+package.name = Electrum-BLK
 
 # (str) Package domain (needed for android/ios packaging)
-package.domain = org.electrum_blk
+package.domain = org.electrum-blk
 
 # (str) Source code where the main.py live
 source.dir = .
@@ -22,8 +22,9 @@ source.exclude_exts = spec
 source.exclude_dirs = bin, build, dist, contrib, env,
     electrum_blk/tests,
     electrum_blk/www,
+    electrum_blk/scripts,
+    electrum_blk/utils,
     electrum_blk/gui/qt,
-    electrum_blk/gui/kivy,
     electrum_blk/plugins/payserver,
     packages/qdarkstyle,
     packages/qtpy,
@@ -133,7 +134,7 @@ android.accept_sdk_license = True
 #android.add_jars = foo.jar,bar.jar,path/to/more/*.jar
 #android.add_jars = lib/android/zbar.jar
 
-android.add_jars = .buildozer/android/platform/*/build/libs_collections/Electrum_BLK/jar/*.jar
+android.add_jars = .buildozer/android/platform/*/build/libs_collections/Electrum-BLK/jar/*.jar
 
 
 # (list) List of Java files to add to the android project (can be java or a
@@ -144,7 +145,7 @@ android.gradle_dependencies =
     com.android.support:support-compat:28.0.0,
     me.dm7.barcodescanner:zxing:1.9.8
 
-android.add_activities = org.electrum.qr.SimpleScannerActivity
+android.add_activities = org.electrum-blk.qr.SimpleScannerActivity
 
 # (list) Put these files or directories in the apk res directory.
 # The option may be used in three ways, the value may contain one or zero ':'
@@ -201,6 +202,12 @@ android.whitelist = lib-dynload/_csv.so
 
 # (bool) enables Android auto backup feature (Android API >=23)
 android.allow_backup = False
+
+# (str) The format used to package the app for release mode (aab or apk or aar).
+android.release_artifact = apk
+
+# (str) The format used to package the app for debug mode (apk or aar).
+android.debug_artifact = apk
 
 #
 # Python for android (p4a) specific

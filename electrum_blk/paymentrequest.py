@@ -55,8 +55,8 @@ if TYPE_CHECKING:
 _logger = get_logger(__name__)
 
 
-REQUEST_HEADERS = {'Accept': 'application/blackcoin-paymentrequest', 'User-Agent': 'Electrum'}
-ACK_HEADERS = {'Content-Type':'application/blackcoin-payment','Accept':'application/blackcoin-paymentack','User-Agent':'Electrum'}
+REQUEST_HEADERS = {'Accept': 'application/blackcoin-paymentrequest', 'User-Agent': 'Electrum-BLK'}
+ACK_HEADERS = {'Content-Type':'application/blackcoin-payment','Accept':'application/blackcoin-paymentack','User-Agent':'Electrum-BLK'}
 
 ca_path = certifi.where()
 ca_list = None

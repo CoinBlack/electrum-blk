@@ -213,6 +213,30 @@ Pane {
                     }
 
                     Label {
+                        text: qsTr('Local SCID alias')
+                        color: Material.accentColor
+                        visible: channeldetails.localScidAlias
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: channeldetails.localScidAlias
+                        visible: channeldetails.localScidAlias
+                    }
+
+                    Label {
+                        text: qsTr('Remote SCID alias')
+                        color: Material.accentColor
+                        visible: channeldetails.remoteScidAlias
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: channeldetails.remoteScidAlias
+                        visible: channeldetails.remoteScidAlias
+                    }
+
+                    Label {
                         visible: !channeldetails.isBackup
                         text: qsTr('Initiator')
                         color: Material.accentColor
@@ -316,6 +340,50 @@ Pane {
                                     var dialog = app.genericShareDialog.createObject(root, {
                                         title: qsTr('Funding Outpoint'),
                                         text: channeldetails.fundingOutpoint.txid + ':' + channeldetails.fundingOutpoint.index
+                                    })
+                                    dialog.open()
+                                }
+                            }
+                        }
+                    }
+
+                    Label {
+                        Layout.columnSpan: 2
+                        Layout.topMargin: constants.paddingSmall
+                        visible: channeldetails.closingTxid
+                        text: qsTr('Closing transaction')
+                        color: Material.accentColor
+                    }
+
+                    TextHighlightPane {
+                        Layout.columnSpan: 2
+                        Layout.fillWidth: true
+                        visible: channeldetails.closingTxid
+
+                        RowLayout {
+                            width: parent.width
+                            Label {
+                                text: channeldetails.closingTxid
+                                font.pixelSize: constants.fontSizeLarge
+                                font.family: FixedFont
+                                Layout.fillWidth: true
+                                wrapMode: Text.Wrap
+
+                                TapHandler {
+                                    onTapped: {
+                                        app.stack.push(Qt.resolvedUrl('TxDetails.qml'), {
+                                            txid: channeldetails.closingTxid
+                                        })
+                                    }
+                                }
+                            }
+                            ToolButton {
+                                icon.source: '../../icons/share.png'
+                                icon.color: 'transparent'
+                                onClicked: {
+                                    var dialog = app.genericShareDialog.createObject(root, {
+                                        title: qsTr('Channel close transaction'),
+                                        text: channeldetails.closingTxid
                                     })
                                     dialog.open()
                                 }

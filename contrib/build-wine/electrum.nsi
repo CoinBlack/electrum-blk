@@ -8,7 +8,7 @@
 
   !define PRODUCT_NAME "Electrum-BLK"
   !define PRODUCT_WEB_SITE "https://github.com/CoinBlack/electrum-blk"
-  !define PRODUCT_PUBLISHER "Electrum Technologies GmbH"
+  !define PRODUCT_PUBLISHER "The Blackcoin Developers"
   !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
 
 ;--------------------------------

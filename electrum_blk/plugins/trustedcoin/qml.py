@@ -17,7 +17,6 @@ if TYPE_CHECKING:
 
 
 class Plugin(TrustedCoinPlugin):
-
     def __init__(self, *args):
         super().__init__(*args)
 
@@ -74,7 +73,7 @@ class Plugin(TrustedCoinPlugin):
             'trustedcoin_keep_disable': {
                 'gui': '../../../../plugins/trustedcoin/qml/KeepDisable',
             },
-            'trustedcoin_tos_email': {
+            'trustedcoin_tos': {
                 'gui': '../../../../plugins/trustedcoin/qml/Terms',
             },
             'trustedcoin_show_confirm_otp': {

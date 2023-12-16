@@ -299,6 +299,9 @@ class CoinCap(ExchangeBase):
         json = await self.get_json('api.coincap.io', '/v2/rates/bitcoin/')
         return {'USD': to_decimal(json['data']['rateUsd'])}
 
+    def history_ccys(self):
+        return ['USD']
+
     async def request_history(self, ccy):
         # Currently 2000 days is the maximum in 1 API call
         # (and history starts on 2017-03-23)
@@ -306,6 +309,7 @@ class CoinCap(ExchangeBase):
                                       '/v2/assets/bitcoin/history?interval=d1&limit=2000')
         return dict([(datetime.utcfromtimestamp(h['time']/1000).strftime('%Y-%m-%d'), str(h['priceUsd']))
                      for h in history['data']])
+
 
 class CoinDesk(ExchangeBase):
 
