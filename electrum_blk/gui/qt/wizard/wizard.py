@@ -10,7 +10,7 @@ from PyQt5.QtWidgets import (QDialog, QPushButton, QWidget, QLabel, QVBoxLayout,
 
 from electrum_blk.i18n import _
 from electrum_blk.logging import get_logger
-from electrum_blk.gui.qt.util import Buttons, icon_path, MessageBoxMixin, WWLabel
+from electrum_blk.gui.qt.util import Buttons, icon_path, MessageBoxMixin, WWLabel, ResizableStackedWidget
 
 if TYPE_CHECKING:
     from electrum_blk.simple_config import SimpleConfig
