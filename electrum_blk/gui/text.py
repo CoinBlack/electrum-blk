@@ -9,7 +9,7 @@ import logging
 import pyperclip
 from typing import TYPE_CHECKING, Optional
 
-import electrum_blk as electrum
+import electrum_blk
 from electrum_blk.gui import BaseElectrumGui
 from electrum_blk.bip21 import parse_bip21_URI
 from electrum_blk.util import format_satoshis, format_time

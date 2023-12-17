@@ -6,8 +6,8 @@
 # $ VERSION=$("$CONTRIB"/print_electrum_version.py)
 # $ VERSION=$("$CONTRIB"/print_electrum_version.py APK_VERSION)
 # instead of
-# $ VERSION=$(python3 -c "import electrum; print(electrum.version.ELECTRUM_VERSION)")
-# $ VERSION=$(python3 -c "import electrum; print(electrum.version.APK_VERSION)")
+# $ VERSION=$(python3 -c "import electrum_blk; print(electrum_blk.version.ELECTRUM_VERSION)")
+# $ VERSION=$(python3 -c "import electrum_blk; print(electrum_blk.version.APK_VERSION)")
 
 import importlib.util
 import os
@@ -21,7 +21,7 @@ if __name__ == '__main__':
         attr_name = "ELECTRUM_VERSION"
 
     project_root = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-    version_file_path = os.path.join(project_root, "electrum", "version.py")
+    version_file_path = os.path.join(project_root, "electrum_blk", "version.py")
 
     # load version.py; needlessly complicated alternative to "imp.load_source":
     version_spec = importlib.util.spec_from_file_location('version', version_file_path)

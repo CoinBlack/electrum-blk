@@ -45,5 +45,5 @@ MSG_NON_TRAMPOLINE_CHANNEL_FROZEN_WITHOUT_GOSSIP = _(
 If you want to keep using this channel, you need to disable trampoline routing in your preferences."""
 )
 
-MSG_FREEZE_ADDRESS = _("When you freeze an address, the funds in that address will not be used for sending bitcoins.")
-MSG_FREEZE_COIN = _("When you freeze a coin, it will not be used for sending bitcoins.")
+MSG_FREEZE_ADDRESS = _("When you freeze an address, the funds in that address will not be used for sending blackcoins.")
+MSG_FREEZE_COIN = _("When you freeze a coin, it will not be used for sending blackcoins.")

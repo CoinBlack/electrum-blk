@@ -6,7 +6,7 @@ from typing import Optional
 import asyncio
 import inspect
 
-import electrum_blk as electrum
+import electrum_blk
 from electrum_blk.wallet_db import WalletDBUpgrader, WalletDB, WalletRequiresUpgrade, WalletRequiresSplit
 from electrum_blk.wallet import Wallet
 from electrum_blk import constants
