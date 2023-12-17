@@ -41,8 +41,8 @@ We currently build the release binaries on macOS 11.7.10, and these seem to run 
 - We recommend creating a VM with a macOS guest, e.g. using VirtualBox,
   and building there.
 - The guest should run macOS 11.7.10 (that specific version).
-- The unix username should be `vagrant`, and `electrum_blk` should be cloned directly
-  to the user's home dir: `/Users/vagrant/electrum_blk`.
+- The unix username should be `vagrant`, and `electrum-blk` should be cloned directly
+  to the user's home dir: `/Users/vagrant/electrum-blk`.
 - Builders need to use the same version of Xcode; and note that
   full Xcode and Xcode commandline tools differ!
   We use the Xcode CLI tools as installed by brew. (version 13.2)
@@ -111,7 +111,7 @@ repository.
 2. Use the provided `compare_dmg` script to compare the binary you built with
    the official release binary.
     ```
-    $ ./contrib/osx/compare_dmg dist/electrum-*.dmg electrum_dmg_official_release.dmg
+    $ ./contrib/osx/compare_dmg dist/electrum-blk-*.dmg electrum_dmg_official_release.dmg
     ```
    The `compare_dmg` script is mostly only needed as the official release binary is
    codesigned and notarized. Otherwise, the built `.app` bundles should be byte-identical.

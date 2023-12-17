@@ -41,11 +41,11 @@ info "apk building phase starts."
 # e.g. to allow simultaneous mainnet and testnet installs of the apk.
 # defaults:
 #   export APP_PACKAGE_NAME=Electrum-BLK
-#   export APP_PACKAGE_DOMAIN=org.electrum_blk
+#   export APP_PACKAGE_DOMAIN=org.electrum-blk
 # FIXME: changing "APP_PACKAGE_NAME" seems to require a clean rebuild of ".buildozer/",
 #        to avoid that, maybe change "APP_PACKAGE_DOMAIN" instead.
 # So, in particular, to build a testnet apk, simply uncomment:
-#export APP_PACKAGE_DOMAIN=org.electrum_blk.testnet
+#export APP_PACKAGE_DOMAIN=org.electrum-blk.testnet
 
 if [ $CI ]; then
     # override log level specified in buildozer.spec to "debug":
@@ -58,7 +58,7 @@ if [[ "$3" == "release" ]] ; then
     export P4A_RELEASE_KEYSTORE_PASSWD="$4"
     export P4A_RELEASE_KEYALIAS_PASSWD="$4"
     export P4A_RELEASE_KEYSTORE=~/.keystore
-    export P4A_RELEASE_KEYALIAS=electrum_blk
+    export P4A_RELEASE_KEYALIAS=electrum-blk
     if [ -z "$P4A_RELEASE_KEYSTORE_PASSWD" ] || [ -z "$P4A_RELEASE_KEYALIAS_PASSWD" ]; then
         echo "p4a password not defined"
         exit 1
@@ -72,7 +72,7 @@ elif [[ "$3" == "debug" ]] ; then
     export P4A_DEBUG_KEYSTORE="$CONTRIB_ANDROID"/android_debug.keystore
     export P4A_DEBUG_KEYSTORE_PASSWD=unsafepassword
     export P4A_DEBUG_KEYALIAS_PASSWD=unsafepassword
-    export P4A_DEBUG_KEYALIAS=electrum_blk
+    export P4A_DEBUG_KEYALIAS=electrum-blk
     # create keystore if needed
     if [ ! -f "$P4A_DEBUG_KEYSTORE" ]; then
         keytool -genkey -v -keystore "$CONTRIB_ANDROID"/android_debug.keystore \

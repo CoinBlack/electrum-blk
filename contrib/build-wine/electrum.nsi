@@ -8,7 +8,7 @@
 
   !define PRODUCT_NAME "Electrum-BLK"
   !define PRODUCT_WEB_SITE "https://github.com/CoinBlack/electrum-blk"
-  !define PRODUCT_PUBLISHER "Electrum Technologies GmbH"
+  !define PRODUCT_PUBLISHER "The Blackcoin Developers"
   !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
 
 ;--------------------------------
@@ -110,7 +110,7 @@ Section
   Delete "$SMPROGRAMS\${PRODUCT_NAME}\*.*"
 
   ;Files to pack into the installer
-  File /r "dist\electrum-blk\*.*"
+  File /r "dist\electrum_blk\*.*"
   File "..\..\electrum_blk\gui\icons\electrum.ico"
 
   ;Store installation folder

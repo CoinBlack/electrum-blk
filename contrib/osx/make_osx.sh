@@ -150,7 +150,7 @@ PYINSTALLER_COMMIT="413cce49ff28d87fad4472f4953489226ec90c84"
     echo "const char *electrum_tag = \"tagged by Electrum@$ELECTRUM_COMMIT_HASH\";" >> ./bootloader/src/pyi_main.c
     pushd bootloader
     # compile bootloader
-    python3 ./waf --no-universal2 all CFLAGS="-static"
+    python3 ./waf all CFLAGS="-static"
     popd
     # sanity check bootloader is there:
     [[ -e "PyInstaller/bootloader/Darwin-64bit/runw" ]] || fail "Could not find runw in target dir!"
@@ -219,10 +219,7 @@ python3 -m pip install --no-build-isolation --no-dependencies --no-binary :all: 
     || fail "Could not install hardware wallet requirements"
 
 info "Installing dependencies specific to binaries..."
-brew install openssl
-export CFLAGS="-I$(brew --prefix openssl)/include $CFLAGS"
-export LDFLAGS="-L$(brew --prefix openssl)/lib $LDFLAGS"
-python3 -m pip install --no-build-isolation --no-dependencies --no-binary :all: --only-binary PyQt5,PyQt5-Qt5,cryptography,scrypt \
+python3 -m pip install --no-build-isolation --no-dependencies --no-binary :all: --only-binary PyQt5,PyQt5-Qt5,scrypt,cryptography \
     --no-warn-script-location \
     -Ir ./contrib/deterministic-build/requirements-binaries-mac.txt \
     || fail "Could not install dependencies specific to binaries"
@@ -232,7 +229,7 @@ python3 -m pip install --no-build-isolation --no-dependencies \
     --no-warn-script-location . > /dev/null || fail "Could not build $PACKAGE"
 # pyinstaller needs to be able to "import electrum", for which we need libsecp256k1:
 # (or could try "pip install -e" instead)
-cp "$PROJECT_ROOT/electrum"/libsecp256k1.*.dylib "$VENV_DIR/lib/python$PY_VER_MAJOR/site-packages/electrum/"
+cp "$PROJECT_ROOT/electrum_blk"/libsecp256k1.*.dylib "$VENV_DIR/lib/python$PY_VER_MAJOR/site-packages/electrum_blk/"
 
 # strip debug symbols of some compiled libs
 # - hidapi (hid.cpython-39-darwin.so) in particular is not reproducible without this
@@ -240,7 +237,7 @@ find "$VENV_DIR/lib/python$PY_VER_MAJOR/site-packages/" -type f -name '*.so' -pr
     | xargs -0 -t strip -x
 
 info "Faking timestamps..."
-sudo find . -exec touch -t '200101220000' {} + || true
+find . -exec touch -t '200101220000' {} + || true
 
 VERSION=$(git describe --tags --dirty --always)
 

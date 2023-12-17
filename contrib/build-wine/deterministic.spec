@@ -4,9 +4,9 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules, coll
 
 import sys, os
 
-PYPKG="electrum"
+PYPKG="electrum_blk"
 MAIN_SCRIPT="run_electrum"
-PROJECT_ROOT = "C:/electrum"
+PROJECT_ROOT = "C:/electrum-blk"
 ICONS_FILE=f"{PROJECT_ROOT}/{PYPKG}/gui/icons/electrum.ico"
 
 cmdline_name = os.environ.get("ELECTRUM_CMDLINE_NAME")

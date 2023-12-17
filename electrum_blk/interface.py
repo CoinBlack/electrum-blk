@@ -907,7 +907,6 @@ class Interface(Logger):
         with blockchain.blockchains_lock: chains = list(blockchain.blockchains.values())
         local_max = max([-1] + [x.height() for x in chains]) if 'mock' not in header else float('inf')
         height = min(local_max + 1, height - 1)
-
         while await iterate():
             bad, bad_header = height, header
             delta = self.tip - height

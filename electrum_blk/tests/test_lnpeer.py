@@ -14,7 +14,7 @@ from typing import Iterable, NamedTuple, Tuple, List, Dict
 
 from aiorpcx import timeout_after, TaskTimeout
 
-import electrum_blk as electrum
+import electrum_blk
 import electrum_blk.trampoline
 from electrum_blk import bitcoin
 from electrum_blk import util

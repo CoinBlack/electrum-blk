@@ -7,7 +7,7 @@ project_root = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 locale_path = os.path.join(project_root, "electrum", "locale")
 
 # download latest .po files from crowdin
-locale_update = os.path.join(project_root, "contrib", "deterministic-build", "electrum-locale", "update.py")
+locale_update = os.path.join(project_root, "contrib", "deterministic-build", "electrum-blk-locale", "update.py")
 assert os.path.exists(locale_update)
 # load update.py; needlessly complicated alternative to "imp.load_source":
 lu_spec = importlib.util.spec_from_file_location('update', locale_update)

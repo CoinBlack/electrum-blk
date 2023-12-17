@@ -67,7 +67,7 @@ version_module = importlib.util.module_from_spec(version_spec)
 version_spec.loader.exec_module(version_module)
 
 VER = version_module.ELECTRUM_VERSION
-os.rename(f"dist/_sourceonly/Electrum-{VER}.tar.gz", f"dist/Electrum-sourceonly-{VER}.tar.gz")
+os.rename(f"dist/_sourceonly/Electrum-BLK-{VER}.tar.gz", f"dist/Electrum-BLK-sourceonly-{VER}.tar.gz")
 EOF
         rmdir "$PY_DISTDIR"
     fi
