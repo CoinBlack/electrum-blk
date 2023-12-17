@@ -22,8 +22,9 @@ source.exclude_exts = spec
 source.exclude_dirs = bin, build, dist, contrib, env,
     electrum_blk/tests,
     electrum_blk/www,
+    electrum_blk/scripts,
+    electrum_blk/utils,
     electrum_blk/gui/qt,
-    electrum_blk/gui/kivy,
     electrum_blk/plugins/payserver,
     packages/qdarkstyle,
     packages/qtpy,
@@ -201,6 +202,12 @@ android.whitelist = lib-dynload/_csv.so
 
 # (bool) enables Android auto backup feature (Android API >=23)
 android.allow_backup = False
+
+# (str) The format used to package the app for release mode (aab or apk or aar).
+android.release_artifact = apk
+
+# (str) The format used to package the app for debug mode (apk or aar).
+android.debug_artifact = apk
 
 #
 # Python for android (p4a) specific

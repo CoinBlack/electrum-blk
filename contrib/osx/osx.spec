@@ -4,83 +4,66 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules, coll
 
 import sys, os
 
-PACKAGE='Electrum-BLK'
+PACKAGE_NAME='Electrum-BLK.app'
 PYPKG='electrum_blk'
 MAIN_SCRIPT='run_electrum'
-ICONS_FILE=PYPKG + '/gui/icons/electrum.icns'
+PROJECT_ROOT = os.path.abspath(".")
+ICONS_FILE=f"{PROJECT_ROOT}/{PYPKG}/gui/icons/electrum.icns"
 
 
 VERSION = os.environ.get("ELECTRUM_VERSION")
 if not VERSION:
     raise Exception('no version')
 
-electrum = os.path.abspath(".") + "/"
 block_cipher = None
 
 # see https://github.com/pyinstaller/pyinstaller/issues/2005
 hiddenimports = []
 hiddenimports += collect_submodules('pkg_resources')  # workaround for https://github.com/pypa/setuptools/issues/1963
-hiddenimports += collect_submodules('trezorlib')
-hiddenimports += collect_submodules('safetlib')
-hiddenimports += collect_submodules('btchip')          # device plugin: ledger
-hiddenimports += collect_submodules('ledger_bitcoin')  # device plugin: ledger
-hiddenimports += collect_submodules('keepkeylib')
-hiddenimports += collect_submodules('websocket')
-hiddenimports += collect_submodules('ckcc')
-hiddenimports += collect_submodules('bitbox02')
-hiddenimports += ['electrum_blk.plugins.jade.jade']
-hiddenimports += ['electrum_blk.plugins.jade.jadepy.jade']
-hiddenimports += ['_scrypt', 'PyQt5.QtPrintSupport']  # needed by Revealer
+hiddenimports += collect_submodules(f"{PYPKG}.plugins")
+hiddenimports += ['_scrypt']
+
+binaries = []
+# Workaround for "Retro Look":
+binaries += [b for b in collect_dynamic_libs('PyQt5') if 'macstyle' in b[0]]
+# add libsecp256k1, libusb, etc:
+binaries += [(f"{PROJECT_ROOT}/{PYPKG}/*.dylib", ".")]
+
 
 datas = [
-    (electrum + PYPKG + '/*.json', PYPKG),
-    (electrum + PYPKG + '/lnwire/*.csv', PYPKG + '/lnwire'),
-    (electrum + PYPKG + '/wordlist/english.txt', PYPKG + '/wordlist'),
-    (electrum + PYPKG + '/wordlist/slip39.txt', PYPKG + '/wordlist'),
-    (electrum + PYPKG + '/locale', PYPKG + '/locale'),
-    (electrum + PYPKG + '/plugins', PYPKG + '/plugins'),
-    (electrum + PYPKG + '/gui/icons', PYPKG + '/gui/icons'),
+    (f"{PROJECT_ROOT}/{PYPKG}/*.json", PYPKG),
+    (f"{PROJECT_ROOT}/{PYPKG}/lnwire/*.csv", f"{PYPKG}/lnwire"),
+    (f"{PROJECT_ROOT}/{PYPKG}/wordlist/english.txt", f"{PYPKG}/wordlist"),
+    (f"{PROJECT_ROOT}/{PYPKG}/wordlist/slip39.txt", f"{PYPKG}/wordlist"),
+    (f"{PROJECT_ROOT}/{PYPKG}/locale", f"{PYPKG}/locale"),
+    (f"{PROJECT_ROOT}/{PYPKG}/plugins", f"{PYPKG}/plugins"),
+    (f"{PROJECT_ROOT}/{PYPKG}/gui/icons", f"{PYPKG}/gui/icons"),
 ]
-datas += collect_data_files('trezorlib')
+datas += collect_data_files(f"{PYPKG}.plugins")
+datas += collect_data_files('trezorlib')  # TODO is this needed? and same question for other hww libs
 datas += collect_data_files('safetlib')
 datas += collect_data_files('btchip')
 datas += collect_data_files('keepkeylib')
 datas += collect_data_files('ckcc')
 datas += collect_data_files('bitbox02')
 
-# Add libusb so Trezor and Safe-T mini will work
-binaries = [(electrum + "electrum_blk/libusb-1.0.dylib", ".")]
-binaries += [(electrum + "electrum_blk/libsecp256k1.2.dylib", ".")]
-binaries += [(electrum + "electrum_blk/libzbar.0.dylib", ".")]
-
-# Workaround for "Retro Look":
-binaries += [b for b in collect_dynamic_libs('PyQt5') if 'macstyle' in b[0]]
-
 # We don't put these files in to actually include them in the script but to make the Analysis method scan them for imports
-a = Analysis([electrum+ MAIN_SCRIPT,
-              electrum+'electrum_blk/gui/qt/main_window.py',
-              electrum+'electrum_blk/gui/qt/qrreader/qtmultimedia/camera_dialog.py',
-              electrum+'electrum_blk/gui/text.py',
-              electrum+'electrum_blk/util.py',
-              electrum+'electrum_blk/wallet.py',
-              electrum+'electrum_blk/simple_config.py',
-              electrum+'electrum_blk/bitcoin.py',
-              electrum+'electrum_blk/blockchain.py',
-              electrum+'electrum_blk/dnssec.py',
-              electrum+'electrum_blk/commands.py',
-              electrum+'electrum_blk/plugins/cosigner_pool/qt.py',
-              electrum+'electrum_blk/plugins/trezor/qt.py',
-              electrum+'electrum_blk/plugins/safe_t/client.py',
-              electrum+'electrum_blk/plugins/safe_t/qt.py',
-              electrum+'electrum_blk/plugins/keepkey/qt.py',
-              electrum+'electrum_blk/plugins/ledger/qt.py',
-              electrum+'electrum_blk/plugins/coldcard/qt.py',
-              electrum+'electrum_blk/plugins/jade/qt.py',
+a = Analysis([f"{PROJECT_ROOT}/{MAIN_SCRIPT}",
+              f"{PROJECT_ROOT}/{PYPKG}/gui/qt/main_window.py",
+              f"{PROJECT_ROOT}/{PYPKG}/gui/qt/qrreader/qtmultimedia/camera_dialog.py",
+              f"{PROJECT_ROOT}/{PYPKG}/gui/text.py",
+              f"{PROJECT_ROOT}/{PYPKG}/util.py",
+              f"{PROJECT_ROOT}/{PYPKG}/wallet.py",
+              f"{PROJECT_ROOT}/{PYPKG}/simple_config.py",
+              f"{PROJECT_ROOT}/{PYPKG}/bitcoin.py",
+              f"{PROJECT_ROOT}/{PYPKG}/dnssec.py",
+              f"{PROJECT_ROOT}/{PYPKG}/commands.py",
               ],
              binaries=binaries,
              datas=datas,
              hiddenimports=hiddenimports,
              hookspath=[])
+
 
 # http://stackoverflow.com/questions/19055089/pyinstaller-onefile-warning-pyconfig-h-when-importing-scipy-or-scipy-signal
 for d in a.datas:
@@ -107,7 +90,7 @@ exe = EXE(
     debug=False,
     strip=False,
     upx=True,
-    icon=electrum+ICONS_FILE,
+    icon=ICONS_FILE,
     console=False,
     target_arch='x86_64',  # TODO investigate building 'universal2'
 )
@@ -117,9 +100,9 @@ app = BUNDLE(
     a.binaries,
     a.zipfiles,
     a.datas,
-    version = VERSION,
-    name=PACKAGE + '.app',
-    icon=electrum+ICONS_FILE,
+    version=VERSION,
+    name=PACKAGE_NAME,
+    icon=ICONS_FILE,
     bundle_identifier=None,
     info_plist={
         'NSHighResolutionCapable': 'True',

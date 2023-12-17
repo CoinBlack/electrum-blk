@@ -8,6 +8,7 @@ from electrum_blk.gui import messages
 from electrum_blk.logging import get_logger
 from electrum_blk.lnutil import LOCAL, REMOTE
 from electrum_blk.lnchannel import ChanCloseOption, ChannelState
+from electrum_blk.util import format_short_id
 
 from .auth import AuthMixin, auth_protect
 from .qewallet import QEWallet
@@ -100,6 +101,16 @@ class QEChannelDetails(AuthMixin, QObject, QtEventListener):
         return self._channel.short_id_for_GUI()
 
     @pyqtProperty(str, notify=channelChanged)
+    def localScidAlias(self):
+        lsa = self._channel.get_local_scid_alias()
+        return format_short_id(lsa) if lsa else ''
+
+    @pyqtProperty(str, notify=channelChanged)
+    def remoteScidAlias(self):
+        rsa = self._channel.get_remote_scid_alias()
+        return format_short_id(rsa) if rsa else ''
+
+    @pyqtProperty(str, notify=channelChanged)
     def state(self):
         return self._channel.get_state_for_GUI()
 
@@ -120,6 +131,17 @@ class QEChannelDetails(AuthMixin, QObject, QtEventListener):
             'txid': outpoint.txid,
             'index': outpoint.output_index
         }
+
+    @pyqtProperty(str, notify=channelChanged)
+    def closingTxid(self):
+        if not self._channel.is_closed():
+            return ''
+        item = self._channel.get_closing_height()
+        if item:
+            closing_txid, closing_height, timestamp = item
+            return closing_txid
+        else:
+            return ''
 
     @pyqtProperty(QEAmount, notify=channelChanged)
     def capacity(self):

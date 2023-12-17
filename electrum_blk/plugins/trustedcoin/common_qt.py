@@ -4,10 +4,14 @@ import base64
 import sys
 from typing import TYPE_CHECKING
 
-if getattr(sys, '_GUI_QT_VERSION') == 5:  # FIXME: remove when both desktop and mobile are Qt6
+from electrum_blk.gui.common_qt import get_qt_major_version
+
+if (qt_ver := get_qt_major_version()) == 5:
     from PyQt5.QtCore import pyqtSignal, pyqtProperty, pyqtSlot
-else:
+elif qt_ver == 6:
     from PyQt6.QtCore import pyqtSignal, pyqtProperty, pyqtSlot
+else:
+    raise Exception(f"unexpected {qt_ver=}")
 
 from electrum_blk.i18n import _
 from electrum_blk.bip32 import BIP32Node
@@ -124,7 +128,9 @@ class TrustedcoinPluginQObject(PluginQObject):
         t.start()
 
     @pyqtSlot(str)
-    def createKeystore(self, email):
+    def createKeystore(self):
+        email = 'dummy@electrum.org'
+
         self.remoteKeyState = ''
         self._otpSecret = ''
         self.otpSecretChanged.emit()

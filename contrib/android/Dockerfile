@@ -165,7 +165,7 @@ RUN chown --recursive ${USER} ${WORK_DIR} ${ANDROID_SDK_HOME}
 RUN chown ${USER} /opt
 USER ${USER}
 
-# venv, VIRTUAL_ENV is used by buildozer to indicate a venv environemnt
+# venv, VIRTUAL_ENV is used by buildozer to indicate a venv environment
 ENV VIRTUAL_ENV=/opt/venv
 RUN python3 -m venv ${VIRTUAL_ENV}
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
@@ -195,9 +195,8 @@ RUN cd /opt \
     && git remote add sombernight https://github.com/SomberNight/python-for-android \
     && git remote add accumulator https://github.com/accumulator/python-for-android \
     && git fetch --all \
-    # commit: from branch accumulator/qt6-wip (note: careful with force-pushing! see #8162) \
-    #
-    && git checkout "eb4a3522373e0b4e2749b8a8bc965ff51355ea35^{commit}" \
+    # commit: from branch sombernight/electrum_20231216 (note: careful with force-pushing! see #8162) \
+    && git checkout "01c6068791f44074e189e1a5d945cf50b02f4dcc^{commit}" \
     && /opt/venv/bin/python3 -m pip install --no-build-isolation --no-dependencies -e .
 
 # build env vars
