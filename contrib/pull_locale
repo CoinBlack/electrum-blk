@@ -4,7 +4,7 @@ import subprocess
 import importlib.util
 
 project_root = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-locale_path = os.path.join(project_root, "electrum", "locale")
+locale_path = os.path.join(project_root, "electrum_blk", "locale")
 
 # download latest .po files from crowdin
 locale_update = os.path.join(project_root, "contrib", "deterministic-build", "electrum-blk-locale", "update.py")
@@ -18,4 +18,3 @@ lu_module.pull_locale(locale_path)
 
 # Convert .po to .mo
 subprocess.check_output([f"{project_root}/contrib/build_locale.sh", locale_path, locale_path])
-
