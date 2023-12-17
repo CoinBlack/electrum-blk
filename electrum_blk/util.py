@@ -204,6 +204,14 @@ class UserFacingException(Exception):
 class InvoiceError(UserFacingException): pass
 
 
+class NetworkOfflineException(UserFacingException):
+    """Can be raised if we are running in offline mode (--offline flag)
+    and the user requests an operation that requires the network.
+    """
+    def __str__(self):
+        return _("You are offline.")
+
+
 # Throw this exception to unwind the stack like when an error occurs.
 # However unlike other exceptions the user won't be informed.
 class UserCancelled(Exception):
@@ -1221,7 +1229,7 @@ def make_aiohttp_session(proxy: Optional[dict], headers=None, timeout=None):
             port=int(proxy['port']),
             username=proxy.get('user', None),
             password=proxy.get('password', None),
-            rdns=True,
+            rdns=True,  # needed to prevent DNS leaks over proxy
             ssl=ssl_context,
         )
     else:
@@ -1451,9 +1459,7 @@ def detect_tor_socks_proxy() -> Optional[Tuple[str, int]]:
 
 def is_tor_socks_port(host: str, port: int) -> bool:
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(1.0)
-            s.connect((host, port))
+        with socket.create_connection((host, port), timeout=10) as s:
             # mimic "tor-resolve 0.0.0.0".
             # see https://github.com/spesmilo/electrum/issues/7317#issuecomment-1369281075
             # > this is a socks5 handshake, followed by a socks RESOLVE request as defined in
@@ -1660,6 +1666,7 @@ def list_enabled_bits(x: int) -> Sequence[int]:
 
 
 def resolve_dns_srv(host: str):
+    # FIXME this method is not using the network proxy. (although the proxy might not support UDP?)
     srv_records = dns.resolver.resolve(host, 'SRV')
     # priority: prefer lower
     # weight: tie breaker; prefer higher
@@ -1838,6 +1845,8 @@ class NetworkRetryManager(Generic[_NetAddrType]):
 
 
 class MySocksProxy(aiorpcx.SOCKSProxy):
+    # note: proxy will not leak DNS as create_connection()
+    # sets (local DNS) resolve=False by default
 
     async def open_connection(self, host=None, port=None, **kwargs):
         loop = asyncio.get_running_loop()

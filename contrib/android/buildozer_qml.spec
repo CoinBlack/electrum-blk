@@ -22,8 +22,9 @@ source.exclude_exts = spec
 source.exclude_dirs = bin, build, dist, contrib, env,
     electrum_blk/tests,
     electrum_blk/www,
+    electrum_blk/scripts,
+    electrum_blk/utils,
     electrum_blk/gui/qt,
-    electrum_blk/gui/kivy,
     electrum_blk/plugins/payserver,
     packages/qdarkstyle,
     packages/qtpy,
@@ -138,7 +139,7 @@ android.add_jars = .buildozer/android/platform/*/build/libs_collections/Electrum
 
 # (list) List of Java files to add to the android project (can be java or a
 # directory containing the files)
-android.add_src = electrum/gui/qml/java_classes/
+android.add_src = electrum_blk/gui/qml/java_classes/
 
 android.gradle_dependencies =
     com.android.support:support-compat:28.0.0,
@@ -156,7 +157,7 @@ android.add_activities = org.electrum.qr.SimpleScannerActivity
 # 3) A directory, here 'legal_resources' must contain one or more directories,
 # each of a resource kind:  drawable, xml, etc...
 # android.add_resources = legal_resources
-android.add_resources = electrum/gui/qml/android_res/layout:layout
+android.add_resources = electrum_blk/gui/qml/android_res/layout:layout
 
 # (str) python-for-android branch to use, if not master, useful to try
 # not yet merged features.
@@ -201,6 +202,12 @@ android.whitelist = lib-dynload/_csv.so
 
 # (bool) enables Android auto backup feature (Android API >=23)
 android.allow_backup = False
+
+# (str) The format used to package the app for release mode (aab or apk or aar).
+android.release_artifact = apk
+
+# (str) The format used to package the app for debug mode (apk or aar).
+android.debug_artifact = apk
 
 #
 # Python for android (p4a) specific

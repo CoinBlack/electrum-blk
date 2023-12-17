@@ -207,7 +207,7 @@ class ReceiveTab(QWidget, MessageBoxMixin, Logger):
     def update_view_button(self):
         i = self.config.GUI_QT_RECEIVE_TABS_INDEX
         if i == 0:
-            icon, text = read_QIcon("link.png"), _('Bitcoin URI')
+            icon, text = read_QIcon("link.png"), _('Blackcoin URI')
         elif i == 1:
             icon, text = read_QIcon("bitcoin.png"), _('Address')
         elif i == 2:
@@ -224,14 +224,14 @@ class ReceiveTab(QWidget, MessageBoxMixin, Logger):
 
     def on_tab_changed(self):
         text, data, help_text, title = self.get_tab_data()
-        self.window.do_copy(data, title=title)
+        self.window.do_copy(text, title=title)
         self.update_receive_qr_window()
 
     def do_copy(self, e):
         if e.button() != Qt.LeftButton:
             return
         text, data, help_text, title = self.get_tab_data()
-        self.window.do_copy(data, title=title)
+        self.window.do_copy(text, title=title)
 
     def toggle_receive_qr(self):
         b = not self.config.GUI_QT_RECEIVE_TAB_QR_VISIBLE
@@ -283,7 +283,7 @@ class ReceiveTab(QWidget, MessageBoxMixin, Logger):
     def get_tab_data(self):
         i = self.config.GUI_QT_RECEIVE_TABS_INDEX
         if i == 0:
-            out = self.URI, self.URI, self.URI_help, _('Bitcoin URI')
+            out = self.URI, self.URI, self.URI_help, _('Blackcoin URI')
         elif i == 1:
             out = self.addr, self.addr, self.address_help, _('Address')
         elif i == 2:
