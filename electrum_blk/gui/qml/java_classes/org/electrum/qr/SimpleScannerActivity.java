@@ -1,4 +1,4 @@
-package org.electrum.qr;
+package org.electrum-blk.qr;
 
 import android.app.Activity;
 import android.os.Bundle;
@@ -25,13 +25,13 @@ import me.dm7.barcodescanner.zxing.ZXingScannerView;
 import com.google.zxing.Result;
 import com.google.zxing.BarcodeFormat;
 
-import org.electrum.electrum.res.R; // package set in build.gradle
+import org.electrum-blk.electrum.res.R; // package set in build.gradle
 
 public class SimpleScannerActivity extends Activity implements ZXingScannerView.ResultHandler {
     private static final int MY_PERMISSIONS_CAMERA = 1002;
 
     private ZXingScannerView mScannerView = null;
-    final String TAG = "org.electrum.SimpleScannerActivity";
+    final String TAG = "org.electrum-blk.SimpleScannerActivity";
 
     private boolean mAlreadyRequestedPermissions = false;
 

@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 
-import org.electrum 1.0
+import org.electrum-blk 1.0
 
 import ".."
 import "../controls"
