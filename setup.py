@@ -64,7 +64,7 @@ setup(
               + [('electrum_blk.'+pkg) for pkg in
                  find_packages('electrum_blk', exclude=["tests"])]),
     package_dir={
-        'electrum_blk': 'electrum_blk'
+        'electrum-blk': 'electrum_blk'
     },
     # Note: MANIFEST.in lists what gets included in the tar.gz, and the
     # package_data kwarg lists what gets put in site-packages when pip installing the tar.gz.

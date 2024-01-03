@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 
-import org.electrum-blk 1.0
+import org.electrum 1.0
 
 WizardComponent {
     valid: wallet_name.text.length > 0 && !Daemon.availableWallets.wallet_name_exists(wallet_name.text)

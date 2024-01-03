@@ -130,7 +130,7 @@ task:
   install_script:
     - pip install flake8 flake8-bugbear
   flake8_script:
-    - flake8 . --count --select="$ELECTRUM_LINTERS" --ignore="$ELECTRUM_LINTERS_IGNORE" --show-source --statistics --exclude "*_pb2.py,electrum/_vendor/"
+    - flake8 . --count --select="$ELECTRUM_LINTERS" --ignore="$ELECTRUM_LINTERS_IGNORE" --show-source --statistics --exclude "*_pb2.py,electrum_blk/_vendor/"
   env:
     ELECTRUM_IMAGE: python:3.8
     ELECTRUM_REQUIREMENTS: contrib/requirements/requirements.txt

@@ -3,7 +3,7 @@ import QtQuick.Layouts 1.0
 import QtQuick.Controls 2.14
 import QtQuick.Controls.Material 2.0
 
-import org.electrum-blk 1.0
+import org.electrum 1.0
 
 //import "controls"
 

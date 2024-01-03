@@ -5,7 +5,7 @@ import QtQuick.Controls.Material
 import QtQml.Models
 import QtQml
 
-import org.electrum-blk 1.0
+import org.electrum 1.0
 
 import "controls"
 

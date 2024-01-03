@@ -1,13 +1,13 @@
 [app]
 
 # (str) Title of your application
-title = Electrum-BLK
+title = Electrum
 
 # (str) Package name
-package.name = Electrum-BLK
+package.name = Electrum
 
 # (str) Package domain (needed for android/ios packaging)
-package.domain = org.electrum-blk
+package.domain = org.electrum
 
 # (str) Source code where the main.py live
 source.dir = .
@@ -134,7 +134,7 @@ android.accept_sdk_license = True
 #android.add_jars = foo.jar,bar.jar,path/to/more/*.jar
 #android.add_jars = lib/android/zbar.jar
 
-android.add_jars = .buildozer/android/platform/*/build/libs_collections/Electrum-BLK/jar/*.jar
+android.add_jars = .buildozer/android/platform/*/build/libs_collections/Electrum/jar/*.jar
 
 
 # (list) List of Java files to add to the android project (can be java or a
@@ -145,7 +145,7 @@ android.gradle_dependencies =
     com.android.support:support-compat:28.0.0,
     me.dm7.barcodescanner:zxing:1.9.8
 
-android.add_activities = org.electrum-blk.qr.SimpleScannerActivity
+android.add_activities = org.electrum.qr.SimpleScannerActivity
 
 # (list) Put these files or directories in the apk res directory.
 # The option may be used in three ways, the value may contain one or zero ':'

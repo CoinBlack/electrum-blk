@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Controls.Material
 
-import org.electrum-blk 1.0
+import org.electrum 1.0
 
 ItemDelegate {
     id: root

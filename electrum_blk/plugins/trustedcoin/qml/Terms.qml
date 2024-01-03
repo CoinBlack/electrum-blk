@@ -2,7 +2,7 @@ import QtQuick 2.6
 import QtQuick.Layouts 1.0
 import QtQuick.Controls 2.1
 
-import org.electrum-blk 1.0
+import org.electrum 1.0
 
 import "../../../gui/qml/components/wizard"
 import "../../../gui/qml/components/controls"

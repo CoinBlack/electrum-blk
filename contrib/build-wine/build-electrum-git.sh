@@ -15,7 +15,7 @@ pushd $WINEPREFIX/drive_c/electrum-blk
 VERSION=$(git describe --tags --dirty --always)
 info "Last commit: $VERSION"
 
-# Load electrum-locale for this release
+# Load electrum-blk-locale for this release
 git submodule update --init
 
 LOCALE="$WINEPREFIX/drive_c/electrum-blk/electrum_blk/locale/"
