@@ -3,7 +3,7 @@ import threading
 from abc import abstractmethod
 from typing import TYPE_CHECKING
 
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot, QSize
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot, QSize, QMetaObject
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import (QDialog, QPushButton, QWidget, QLabel, QVBoxLayout, QScrollArea,
                              QHBoxLayout, QLayout)
@@ -46,8 +46,10 @@ class QEAbstractWizard(QDialog, MessageBoxMixin):
 
         self.back_button = QPushButton(_("Back"), self)
         self.back_button.clicked.connect(self.on_back_button_clicked)
+        self.back_button.setEnabled(False)
         self.next_button = QPushButton(_("Next"), self)
         self.next_button.clicked.connect(self.on_next_button_clicked)
+        self.next_button.setEnabled(False)
         self.next_button.setDefault(True)
         self.requestPrev.connect(self.on_back_button_clicked)
         self.requestNext.connect(self.on_next_button_clicked)
@@ -65,6 +67,10 @@ class QEAbstractWizard(QDialog, MessageBoxMixin):
 
         error_layout = QVBoxLayout()
         error_layout.addStretch(1)
+        error_icon = QLabel()
+        error_icon.setPixmap(QPixmap(icon_path('warning.png')).scaledToWidth(48, mode=Qt.SmoothTransformation))
+        error_icon.setAlignment(Qt.AlignCenter)
+        error_layout.addWidget(error_icon)
         self.error_msg = WWLabel()
         self.error_msg.setAlignment(Qt.AlignCenter)
         error_layout.addWidget(self.error_msg)
@@ -106,25 +112,26 @@ class QEAbstractWizard(QDialog, MessageBoxMixin):
         self.show()
         self.raise_()
 
-        QTimer.singleShot(40, self.strt)
-
-        # TODO: re-test if needed on macOS
-        # self.refresh_gui()  # Need for QT on MacOSX.  Lame.
-
-    # def refresh_gui(self):
-    #     # For some reason, to refresh the GUI this needs to be called twice
-    #     self.app.processEvents()
-    #     self.app.processEvents()
+        QMetaObject.invokeMethod(self, 'strt', Qt.QueuedConnection)  # call strt after subclass constructor(s)
 
     def sizeHint(self) -> QSize:
         return QSize(600, 400)
 
+    @pyqtSlot()
     def strt(self):
         if self.start_viewstate is not None:
             viewstate = self._current = self.start_viewstate
         else:
             viewstate = self.start_wizard()
         self.load_next_component(viewstate.view, viewstate.wizard_data, viewstate.params)
+        # TODO: re-test if needed on macOS
+        self.refresh_gui()  # Need for QT on MacOSX.  Lame.
+        self.next_button.setFocus() # setDefault() is not enough
+
+    def refresh_gui(self):
+        # For some reason, to refresh the GUI this needs to be called twice
+        self.app.processEvents()
+        self.app.processEvents()
 
     def load_next_component(self, view, wdata=None, params=None):
         if wdata is None:
@@ -140,12 +147,14 @@ class QEAbstractWizard(QDialog, MessageBoxMixin):
             raise e
         page.wizard_data = copy.deepcopy(wdata)
         page.params = params
-        page.updated.connect(self.on_page_updated)
+        page.on_ready()  # call before component emits any signals
+
         self._logger.debug(f'load_next_component: {page=!r}')
+
+        page.updated.connect(self.on_page_updated)
 
         # add to stack and update wizard
         self.main_widget.setCurrentIndex(self.main_widget.addWidget(page))
-        page.on_ready()
         page.apply()
         self.update()
 

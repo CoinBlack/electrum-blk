@@ -220,7 +220,7 @@ class AddressSynchronizer(Logger, EventListener):
             self.synchronizer.add(address)
         self.up_to_date_changed()
 
-    def get_conflicting_transactions(self, tx_hash, tx: Transaction, include_self=False):
+    def get_conflicting_transactions(self, tx: Transaction, *, include_self: bool = False) -> Set[str]:
         """Returns a set of transaction hashes from the wallet history that are
         directly conflicting with tx, i.e. they have common outpoints being
         spent with tx.
@@ -242,12 +242,13 @@ class AddressSynchronizer(Logger, EventListener):
                 # annoying assert that has revealed several bugs over time:
                 assert self.db.get_transaction(spending_tx_hash), "spending tx not in wallet db"
                 conflicting_txns |= {spending_tx_hash}
-            if tx_hash in conflicting_txns:
-                # this tx is already in history, so it conflicts with itself
-                if len(conflicting_txns) > 1:
-                    raise Exception('Found conflicting transactions already in wallet history.')
-                if not include_self:
-                    conflicting_txns -= {tx_hash}
+            if tx_hash := tx.txid():
+                if tx_hash in conflicting_txns:
+                    # this tx is already in history, so it conflicts with itself
+                    if len(conflicting_txns) > 1:
+                        raise Exception('Found conflicting transactions already in wallet history.')
+                    if not include_self:
+                        conflicting_txns -= {tx_hash}
             return conflicting_txns
 
     def get_transaction(self, txid: str) -> Optional[Transaction]:
@@ -297,7 +298,7 @@ class AddressSynchronizer(Logger, EventListener):
             # When this method exits, there must NOT be any conflict, so
             # either keep this txn and remove all conflicting (along with dependencies)
             #     or drop this txn
-            conflicting_txns = self.get_conflicting_transactions(tx_hash, tx)
+            conflicting_txns = self.get_conflicting_transactions(tx)
             if conflicting_txns:
                 existing_mempool_txn = any(
                     self.get_tx_height(tx_hash2).height in (TX_HEIGHT_UNCONFIRMED, TX_HEIGHT_UNCONF_PARENT)
@@ -863,6 +864,7 @@ class AddressSynchronizer(Logger, EventListener):
                     excluded_coins: Set[str] = None) -> Tuple[int, int, int]:
         """Return the balance of a set of addresses:
         confirmed and matured, unconfirmed, unmatured
+        Note: intended for display-purposes. would need extreme care for "has enough funds" checks (see #8835)
         """
         if excluded_addresses is None:
             excluded_addresses = set()

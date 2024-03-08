@@ -6,7 +6,7 @@ import threading
 from typing import TYPE_CHECKING, Optional
 
 from PyQt5.QtCore import Qt, QTimer, QRect, pyqtSignal
-from PyQt5.QtGui import QPen, QPainter, QPalette
+from PyQt5.QtGui import QPen, QPainter, QPalette, QPixmap
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QWidget,
                              QFileDialog, QSlider, QGridLayout, QDialog, QApplication)
 
@@ -30,7 +30,7 @@ from electrum_blk.gui.qt.password_dialog import PasswordLayout, PW_NEW, MSG_ENTE
 from electrum_blk.gui.qt.seed_dialog import SeedLayout, MSG_PASSPHRASE_WARN_ISSUE4566, KeysLayout
 from electrum_blk.gui.qt.util import (PasswordLineEdit, char_width_in_lineedit, WWLabel, InfoButton, font_height,
                                   ChoiceWidget, MessageBoxMixin, WindowModalDialog, ChoicesLayout, CancelButton,
-                                  Buttons, OkButton)
+                                  Buttons, OkButton, icon_path)
 
 if TYPE_CHECKING:
     from electrum_blk.simple_config import SimpleConfig
@@ -423,7 +423,7 @@ class WCWalletType(WalletWizardComponent):
         self._valid = True
 
     def apply(self):
-        self.wizard_data['wallet_type'] = self.choice_w.selected_item[0]
+        self.wizard_data['wallet_type'] = self.choice_w.selected_key
 
 
 class WCKeystoreType(WalletWizardComponent):
@@ -443,7 +443,7 @@ class WCKeystoreType(WalletWizardComponent):
         self._valid = True
 
     def apply(self):
-        self.wizard_data['keystore_type'] = self.choice_w.selected_item[0]
+        self.wizard_data['keystore_type'] = self.choice_w.selected_key
 
 
 class WCCreateSeed(WalletWizardComponent):
@@ -612,6 +612,8 @@ class WCHaveSeed(WalletWizardComponent, Logger):
 
         self.next_button = Hack()
 
+        self.can_passphrase = True
+
     def on_ready(self):
         options = ['ext'] if self.wizard_data['wallet_type'] == '2fa' else ['ext', 'bip39', 'slip39']
         self.slayout = SeedLayout(
@@ -640,7 +642,7 @@ class WCHaveSeed(WalletWizardComponent, Logger):
         seed = self.slayout.get_seed()
         seed_variant = self.slayout.seed_type
         wallet_type = self.wizard_data['wallet_type']
-        seed_valid, seed_type, validation_message = self.wizard.validate_seed(seed, seed_variant, wallet_type)  #
+        seed_valid, seed_type, validation_message, self.can_passphrase = self.wizard.validate_seed(seed, seed_variant, wallet_type)
 
         is_cosigner = self.wizard_data['wallet_type'] == 'multisig' and 'multisig_current_cosigner' in self.wizard_data
 
@@ -664,7 +666,7 @@ class WCHaveSeed(WalletWizardComponent, Logger):
             cosigner_data['seed_type'] = mnemonic.seed_type(self.slayout.get_seed())
         else:
             cosigner_data['seed_type'] = self.slayout.seed_type
-        cosigner_data['seed_extend'] = self.slayout.is_ext
+        cosigner_data['seed_extend'] = self.slayout.is_ext if self.can_passphrase else False
         cosigner_data['seed_extra_words'] = ''  # empty default
 
 
@@ -718,7 +720,7 @@ class WCScriptAndDerivation(WalletWizardComponent, Logger):
 
             passphrase = self.wizard_data['seed_extra_words'] if self.wizard_data['seed_extend'] else ''
             if self.wizard_data['seed_variant'] == 'bip39':
-                root_seed = bip39_to_seed(self.wizard_data['seed'], passphrase)
+                root_seed = bip39_to_seed(self.wizard_data['seed'], passphrase=passphrase)
             elif self.wizard_data['seed_variant'] == 'slip39':
                 root_seed = self.wizard_data['seed'].decrypt(passphrase)
 
@@ -773,7 +775,7 @@ class WCScriptAndDerivation(WalletWizardComponent, Logger):
 
     def apply(self):
         cosigner_data = self.wizard.current_cosigner(self.wizard_data)
-        cosigner_data['script_type'] = self.choice_w.selected_item[0]
+        cosigner_data['script_type'] = self.choice_w.selected_key
         cosigner_data['derivation_path'] = str(self.derivation_path_edit.text())
 
 
@@ -818,10 +820,10 @@ class WCCosignerKeystore(WalletWizardComponent):
         self.layout().addStretch(1)
 
     def apply(self):
-        self.wizard_data['cosigner_keystore_type'] = self.choice_w.selected_item[0]
+        self.wizard_data['cosigner_keystore_type'] = self.choice_w.selected_key
         self.wizard_data['multisig_current_cosigner'] = self.cosigner
         self.wizard_data['multisig_cosigner_data'][str(self.cosigner)] = {
-            'keystore_type': self.choice_w.selected_item[0]
+            'keystore_type': self.choice_w.selected_key
         }
 
 
@@ -1237,7 +1239,7 @@ class WCChooseHWDevice(WalletWizardComponent, Logger):
     def apply(self):
         if self.choice_w:
             cosigner_data = self.wizard.current_cosigner(self.wizard_data)
-            cosigner_data['hardware_device'] = self.choice_w.selected_item[0]
+            cosigner_data['hardware_device'] = self.choice_w.selected_key
 
 
 class WCWalletPasswordHardware(WalletWizardComponent):
@@ -1259,6 +1261,8 @@ class WCWalletPasswordHardware(WalletWizardComponent):
             device_id = _info.device.id_
             client = self.plugins.device_manager.client_by_id(device_id, scan_now=False)
             # client.handler = self.plugin.create_handler(self.wizard)
+            # FIXME client can be None if it was recently disconnected.
+            #       also, even if not None, this might raise (e.g. if it disconnected *just now*):
             self.wizard_data['password'] = client.get_password_for_storage_encryption()
 
 
@@ -1271,9 +1275,15 @@ class WCHWUnlock(WalletWizardComponent, Logger):
         self._busy = True
         self.password = None
 
+        ok_icon = QLabel()
+        ok_icon.setPixmap(QPixmap(icon_path('confirmed.png')).scaledToWidth(48, mode=Qt.SmoothTransformation))
+        ok_icon.setAlignment(Qt.AlignCenter)
         self.ok_l = WWLabel(_('Hardware successfully unlocked'))
         self.ok_l.setAlignment(Qt.AlignCenter)
+        self.layout().addStretch(1)
+        self.layout().addWidget(ok_icon)
         self.layout().addWidget(self.ok_l)
+        self.layout().addStretch(1)
 
     def on_ready(self):
         _name, _info = self.wizard_data['hardware_device']
@@ -1282,6 +1292,11 @@ class WCHWUnlock(WalletWizardComponent, Logger):
 
         device_id = _info.device.id_
         client = self.plugins.device_manager.client_by_id(device_id, scan_now=False)
+        if client is None:
+            self.error = _("Client for hardware device was unpaired.")
+            self.busy = False
+            self.validate()
+            return
         client.handler = self.plugin.create_handler(self.wizard)
 
         def unlock_task(client):
@@ -1289,7 +1304,7 @@ class WCHWUnlock(WalletWizardComponent, Logger):
                 self.password = client.get_password_for_storage_encryption()
             except Exception as e:
                 self.error = repr(e)  # TODO: handle user interaction exceptions (e.g. invalid pin) more gracefully
-                self.logger.error(repr(e))
+                self.logger.exception(repr(e))
             self.busy = False
             self.validate()
 
@@ -1339,9 +1354,15 @@ class WCHWXPub(WalletWizardComponent, Logger):
         self.label = None
         self.soft_device_id = None
 
+        ok_icon = QLabel()
+        ok_icon.setPixmap(QPixmap(icon_path('confirmed.png')).scaledToWidth(48, mode=Qt.SmoothTransformation))
+        ok_icon.setAlignment(Qt.AlignCenter)
         self.ok_l = WWLabel(_('Hardware keystore added to wallet'))
         self.ok_l.setAlignment(Qt.AlignCenter)
+        self.layout().addStretch(1)
+        self.layout().addWidget(ok_icon)
         self.layout().addWidget(self.ok_l)
+        self.layout().addStretch(1)
 
     def on_ready(self):
         cosigner_data = self.wizard.current_cosigner(self.wizard_data)
@@ -1351,6 +1372,11 @@ class WCHWXPub(WalletWizardComponent, Logger):
 
         device_id = _info.device.id_
         client = self.plugins.device_manager.client_by_id(device_id, scan_now=False)
+        if client is None:
+            self.error = _("Client for hardware device was unpaired.")
+            self.busy = False
+            self.validate()
+            return
         if not client.handler:
             client.handler = self.plugin.create_handler(self.wizard)
 
@@ -1368,7 +1394,7 @@ class WCHWXPub(WalletWizardComponent, Logger):
                 self.logger.error(repr(e))
             except Exception as e:
                 self.error = repr(e)  # TODO: handle user interaction exceptions (e.g. invalid pin) more gracefully
-                self.logger.error(repr(e))
+                self.logger.exception(repr(e))
             self.logger.debug(f'Done retrieve xpub: {self.xpub}')
             self.busy = False
             self.validate()
@@ -1416,6 +1442,15 @@ class WCHWUninitialized(WalletWizardComponent):
     def on_ready(self):
         cosigner_data = self.wizard.current_cosigner(self.wizard_data)
         _name, _info = cosigner_data['hardware_device']
+        w_icon = QLabel()
+        w_icon.setPixmap(QPixmap(icon_path('warning.png')).scaledToWidth(48, mode=Qt.SmoothTransformation))
+        w_icon.setAlignment(Qt.AlignCenter)
         label = WWLabel(_('This {} is not initialized. Use manufacturer tooling to initialize the device.').format(_info.model_name))
         label.setAlignment(Qt.AlignCenter)
+        self.layout().addStretch(1)
+        self.layout().addWidget(w_icon)
         self.layout().addWidget(label)
+        self.layout().addStretch(1)
+
+    def apply(self):
+        pass

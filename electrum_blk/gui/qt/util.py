@@ -176,7 +176,7 @@ class HelpButton(HelpMixin, QToolButton):
 
 class InfoButton(HelpMixin, QPushButton):
     def __init__(self, text: str):
-        QPushButton.__init__(self, 'Info')
+        QPushButton.__init__(self, _('Info'))
         HelpMixin.__init__(self, text, help_title=_('Info'))
         self.setFocusPolicy(Qt.NoFocus)
         self.setFixedWidth(6 * char_width_in_lineedit())
@@ -492,6 +492,7 @@ class ChoiceWidget(QWidget):
             if (i == 0 and selected is None) or c[0] == selected:
                 self.selected_index = i
                 self.selected_item = c
+                self.selected_key = c[0]
                 button.setChecked(True)
         group.buttonClicked.connect(self.on_selected)
 
@@ -517,12 +518,12 @@ class ResizableStackedWidget(QWidget):
         self.widgets = []
         self.current_index = -1
 
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
         if not self.count() or not self.currentWidget():
             return super().sizeHint()
         return self.currentWidget().sizeHint()
 
-    def addWidget(self, widget):
+    def addWidget(self, widget: QWidget) -> int:
         self.widgets.append(widget)
         self.layout().addWidget(widget)
         if len(self.widgets) == 1:  # first widget?
@@ -530,7 +531,7 @@ class ResizableStackedWidget(QWidget):
         self.showCurrentWidget()
         return len(self.widgets) - 1
 
-    def removeWidget(self, widget):
+    def removeWidget(self, widget: QWidget):
         i = self.widgets.index(widget)
         self.widgets.remove(widget)
         self.layout().removeWidget(widget)
@@ -539,12 +540,15 @@ class ResizableStackedWidget(QWidget):
             if self.current_index == self.count() - 1:
                 self.showCurrentWidget()
 
-    def setCurrentIndex(self, index):
+    def setCurrentIndex(self, index: int):
         assert isinstance(index, int)
+        assert 0 <= index < len(self.widgets), f'invalid widget index {index}'
         self.current_index = index
         self.showCurrentWidget()
 
-    def currentWidget(self):
+    def currentWidget(self) -> Optional[QWidget]:
+        if self.current_index < 0:
+            return None
         return self.widgets[self.current_index]
 
     def showCurrentWidget(self):
@@ -557,7 +561,7 @@ class ResizableStackedWidget(QWidget):
             else:
                 k.hide()
 
-    def count(self):
+    def count(self) -> int:
         return len(self.widgets)
 
 
@@ -569,7 +573,9 @@ class VLine(QFrame):
         self.setLineWidth(1)
 
 
-def address_field(addresses):
+def address_field(addresses, *, btn_text: str = None):
+    if btn_text is None:
+        btn_text = _('Get wallet address')
     hbox = QHBoxLayout()
     address_e = QLineEdit()
     if addresses and len(addresses) > 0:
@@ -587,7 +593,7 @@ def address_field(addresses):
             # address not in the wallet (or to something that isn't an address)
             if addresses and len(addresses) > 0:
                 address_e.setText(addresses[0])
-    button = QPushButton(_('Address'))
+    button = QPushButton(btn_text)
     button.clicked.connect(func)
     hbox.addWidget(button)
     hbox.addWidget(address_e)
@@ -1262,8 +1268,10 @@ def char_width_in_lineedit() -> int:
     return max(9, char_width)
 
 
-def font_height() -> int:
-    return QFontMetrics(QLabel().font()).height()
+def font_height(widget: QWidget = None) -> int:
+    if widget is None:
+        widget = QLabel()
+    return QFontMetrics(widget.font()).height()
 
 
 def webopen(url: str):

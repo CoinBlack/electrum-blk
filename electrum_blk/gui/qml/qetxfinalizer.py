@@ -7,7 +7,7 @@ from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject
 from electrum_blk.logging import get_logger
 from electrum_blk.i18n import _
 from electrum_blk.transaction import PartialTxOutput, PartialTransaction, Transaction, TxOutpoint
-from electrum_blk.util import NotEnoughFunds, profiler
+from electrum_blk.util import NotEnoughFunds, profiler, quantize_feerate
 from electrum_blk.wallet import CannotBumpFee, CannotDoubleSpendTx, CannotCPFP, BumpFeeStrategy
 from electrum_blk.plugin import run_hook
 
@@ -253,7 +253,7 @@ class TxFeeSlider(FeeSlider):
             outputs.append({
                 'address': o.get_ui_address_str(),
                 'value': o.value,
-                'short_id': str(TxOutpoint(bytes.fromhex(tx.txid()), idx).short_name()),
+                'short_id': str(TxOutpoint(bytes.fromhex(tx.txid()), idx).short_name()) if tx.txid() else '',
                 'is_mine': self._wallet.wallet.is_mine(o.get_ui_address_str()),
                 'is_change': self._wallet.wallet.is_change(o.get_ui_address_str()),
                 'is_billing': self._wallet.wallet.is_billing_address(o.get_ui_address_str())
@@ -543,7 +543,7 @@ class QETxRbfFeeBumper(TxFeeSlider, TxMonMixin):
         self._orig_tx = self._wallet.wallet.db.get_transaction(self._txid)
         assert self._orig_tx
 
-        strategies, def_strat_idx = self._wallet.wallet.get_bumpfee_strategies_for_tx(tx=self._orig_tx, txid=self._txid)
+        strategies, def_strat_idx = self._wallet.wallet.get_bumpfee_strategies_for_tx(tx=self._orig_tx)
         self._bump_methods_available = [{'value': strat.name, 'text': strat.text()} for strat in strategies]
         self.bumpMethodsAvailableChanged.emit()
         self.bumpMethod = strategies[def_strat_idx].name
@@ -581,7 +581,6 @@ class QETxRbfFeeBumper(TxFeeSlider, TxMonMixin):
         try:
             self._tx = self._wallet.wallet.bump_fee(
                 tx=self._orig_tx,
-                txid=self._txid,
                 new_fee_rate=new_fee_rate,
                 strategy=BumpFeeStrategy[self._bump_method],
             )
@@ -720,7 +719,6 @@ class QETxCpfpFeeBumper(TxFeeSlider, TxMonMixin):
 
         self._input_amount = QEAmount()
         self._output_amount = QEAmount()
-        self._fee_for_child = QEAmount()
         self._total_fee = QEAmount()
         self._total_fee_rate = 0
         self._total_size = 0
@@ -754,17 +752,6 @@ class QETxCpfpFeeBumper(TxFeeSlider, TxMonMixin):
         if self._total_fee_rate != totalfeerate:
             self._total_fee_rate = totalfeerate
             self.totalFeeRateChanged.emit()
-
-    feeForChildChanged = pyqtSignal()
-    @pyqtProperty(QEAmount, notify=feeForChildChanged)
-    def feeForChild(self):
-        return self._fee_for_child
-
-    @feeForChild.setter
-    def feeForChild(self, feeforchild):
-        if self._fee_for_child != feeforchild:
-            self._fee_for_child.copyFrom(feeforchild)
-            self.feeForChildChanged.emit()
 
     inputAmountChanged = pyqtSignal()
     @pyqtProperty(QEAmount, notify=inputAmountChanged)
@@ -851,12 +838,12 @@ class QETxCpfpFeeBumper(TxFeeSlider, TxMonMixin):
         comb_fee = fee + self._parent_fee
         comb_feerate = comb_fee / self._total_size
 
-        self._fee_for_child.satsInt = fee
+        self._fee.satsInt = fee
         self._output_amount.satsInt = self._max_fee - fee
         self.outputAmountChanged.emit()
 
         self._total_fee.satsInt = fee + self._parent_fee
-        self._total_fee_rate = f'{comb_feerate:.1f}'
+        self._total_fee_rate = str(quantize_feerate(comb_feerate))
 
         try:
             self._new_tx = self._wallet.wallet.cpfp(self._parent_tx, fee)
@@ -864,6 +851,9 @@ class QETxCpfpFeeBumper(TxFeeSlider, TxMonMixin):
             self._logger.error(str(e))
             self.warning = str(e)
             return
+
+        child_feerate = fee / self._new_tx.estimated_size()
+        self.feeRate = str(quantize_feerate(child_feerate))
 
         self.update_inputs_from_tx(self._new_tx)
         self.update_outputs_from_tx(self._new_tx)

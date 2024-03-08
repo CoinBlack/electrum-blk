@@ -56,7 +56,7 @@ from electrum_blk.plugin import run_hook, BasePlugin
 from electrum_blk.i18n import _
 from electrum_blk.util import (format_time, UserCancelled, profiler, bfh, InvalidPassword,
                            UserFacingException, get_new_wallet_name, send_exception_to_crash_reporter,
-                           AddTransactionException, os_chmod)
+                           AddTransactionException, os_chmod, UI_UNIT_NAME_TXSIZE_VBYTES)
 from electrum_blk.bip21 import BITCOIN_BIP21_URI_SCHEME
 from electrum_blk.payment_identifier import PaymentIdentifier
 from electrum_blk.invoices import PR_PAID, Invoice
@@ -910,7 +910,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         """
         return self.fx.format_amount_and_units(amount_sat) if self.fx else ''
 
-    def format_fee_rate(self, fee_rate):
+    def format_fee_rate(self, fee_rate) -> str:
+        """fee_rate is in sat/kvByte."""
         return self.config.format_fee_rate(fee_rate)
 
     def get_decimal_point(self):
@@ -2356,12 +2357,13 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         d.setMinimumSize(600, 300)
         vbox = QVBoxLayout(d)
         hbox_top = QHBoxLayout()
-        hbox_top.addWidget(QLabel(_("Enter private keys:")))
+        hbox_top.addWidget(QLabel(_("Enter private keys to sweep coins from:")))
         hbox_top.addWidget(InfoButton(WIF_HELP_TEXT), alignment=Qt.AlignRight)
         vbox.addLayout(hbox_top)
         keys_e = ScanQRTextEdit(allow_multi=True, config=self.config)
         keys_e.setTabChangesFocus(True)
         vbox.addWidget(keys_e)
+        vbox.addWidget(QLabel(_("Send to address") + ":"))
 
         addresses = self.wallet.get_unused_addresses()
         if not addresses:
@@ -2556,7 +2558,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         vbox.addWidget(WWLabel(msg2))
         grid = QGridLayout()
         grid.addWidget(QLabel(_('Total size') + ':'), 0, 0)
-        grid.addWidget(QLabel('%d bytes'% total_size), 0, 1)
+        grid.addWidget(QLabel(f"{total_size} {UI_UNIT_NAME_TXSIZE_VBYTES}"), 0, 1)
         max_fee = new_tx.output_value()
         grid.addWidget(QLabel(_('Input amount') + ':'), 1, 0)
         grid.addWidget(QLabel(self.format_amount(max_fee) + ' ' + self.base_unit()), 1, 1)
@@ -2623,21 +2625,19 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         self.show_transaction(new_tx)
 
     def bump_fee_dialog(self, tx: Transaction):
-        txid = tx.txid()
         if not isinstance(tx, PartialTransaction):
             tx = PartialTransaction.from_tx(tx)
         if not tx.add_info_from_wallet_and_network(wallet=self.wallet, show_error=self.show_error):
             return
-        d = BumpFeeDialog(main_window=self, tx=tx, txid=txid)
+        d = BumpFeeDialog(main_window=self, tx=tx)
         d.run()
 
     def dscancel_dialog(self, tx: Transaction):
-        txid = tx.txid()
         if not isinstance(tx, PartialTransaction):
             tx = PartialTransaction.from_tx(tx)
         if not tx.add_info_from_wallet_and_network(wallet=self.wallet, show_error=self.show_error):
             return
-        d = DSCancelDialog(main_window=self, tx=tx, txid=txid)
+        d = DSCancelDialog(main_window=self, tx=tx)
         d.run()
 
     def save_transaction_into_wallet(self, tx: Transaction):
@@ -2687,3 +2687,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
             msg += _("Lightning funds were not received.")
             self.show_error_signal.emit(msg)
 
+    def set_payment_identifier(self, pi: str):
+        # delegate to send_tab
+        self.send_tab.set_payment_identifier(pi)

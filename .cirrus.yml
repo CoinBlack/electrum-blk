@@ -18,6 +18,8 @@ task:
            ELECTRUM_PYTHON_VERSION: 3.10
        - env:
            ELECTRUM_PYTHON_VERSION: 3.11
+       - env:
+           ELECTRUM_PYTHON_VERSION: 3.12
        - name: "unittests: Tox Python 3 debug mode"
          env:
            ELECTRUM_PYTHON_VERSION: 3.11
@@ -34,6 +36,8 @@ task:
   install_script:
     - apt-get update
     - apt-get -y install libsecp256k1-dev
+    # qml test reqs:
+    - apt-get -y install libgl1 libegl1 libxkbcommon0 libdbus-1-3
     - pip install -r $ELECTRUM_REQUIREMENTS_CI
   tox_script:
     - export PYTHONASYNCIODEBUG
@@ -106,12 +110,12 @@ task:
     - tar -xaf $BITCOIND_PATH || (rm -f /tmp/bitcoind/* && curl --output $BITCOIND_PATH $BITCOIND_URL && tar -xaf $BITCOIND_PATH)
     - cp -a bitcoin-$BITCOIND_VERSION/* /usr/
   bitcoind_service_background_script:
-    - electrum_blk/tests/regtest/run_bitcoind.sh
+    - tests/regtest/run_bitcoind.sh
   electrumx_service_background_script:
-    - electrum_blk/tests/regtest/run_electrumx.sh
+    - tests/regtest/run_electrumx.sh
   regtest_script:
     - sleep 10s
-    - python3 -m unittest electrum_blk/tests/regtest.py
+    - python3 -m unittest tests/regtest.py
   env:
     ELECTRUM_REQUIREMENTS: contrib/requirements/requirements.txt
     # ElectrumX exits with an error without this:
@@ -128,7 +132,7 @@ task:
     folder: ~/.cache/pip
     fingerprint_script: echo Flake8 && echo $ELECTRUM_IMAGE && cat $ELECTRUM_REQUIREMENTS
   install_script:
-    - pip install flake8 flake8-bugbear
+    - pip install "flake8==7.0.0" "flake8-bugbear==24.1.16"
   flake8_script:
     - flake8 . --count --select="$ELECTRUM_LINTERS" --ignore="$ELECTRUM_LINTERS_IGNORE" --show-source --statistics --exclude "*_pb2.py,electrum_blk/_vendor/"
   env:
@@ -142,15 +146,23 @@ task:
         # - https://pycodestyle.pycqa.org/en/latest/intro.html#error-codes
         # - https://github.com/PyCQA/flake8-bugbear/tree/8c0e7eb04217494d48d0ab093bf5b31db0921989#list-of-warnings
         ELECTRUM_LINTERS: E9,E101,E129,E273,E274,E703,E71,E722,F63,F7,F82,W191,W29,B
-        ELECTRUM_LINTERS_IGNORE: B007,B009,B010,B019
+        ELECTRUM_LINTERS_IGNORE: B007,B009,B010,B019,B036
     - name: "linter: Flake8 Non-Mandatory"
       env:
         ELECTRUM_LINTERS: E,F,W,C90,B
         ELECTRUM_LINTERS_IGNORE: ""
       allow_failures: true
 
+
+# Cron jobs configured in https://cirrus-ci.com/settings/...
+# - job "nightly" on branch "master" at "0 30 2 * * ?"  (every day at 02:30Z)
 task:
   name: "build: Windows"
+  matrix:
+    - trigger_type: manual
+      only_if: $CIRRUS_CRON == ""
+    - trigger_type: automatic
+      only_if: $CIRRUS_CRON == "nightly"
   container:
     dockerfile: contrib/build-wine/Dockerfile
     cpu: 1
@@ -182,6 +194,11 @@ task:
 
 task:
   name: "build: Android (QML $APK_ARCH)"
+  matrix:
+    - trigger_type: manual
+      only_if: $CIRRUS_CRON == ""
+    - trigger_type: automatic
+      only_if: $CIRRUS_CRON == "nightly"
   timeout_in: 90m
   container:
     dockerfile: contrib/android/Dockerfile
@@ -242,6 +259,11 @@ task:
 
 task:
   name: "build: AppImage"
+  matrix:
+    - trigger_type: manual
+      only_if: $CIRRUS_CRON == ""
+    - trigger_type: automatic
+      only_if: $CIRRUS_CRON == "nightly"
   container:
     dockerfile: contrib/build-linux/appimage/Dockerfile
     cpu: 2

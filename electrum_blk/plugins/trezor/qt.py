@@ -18,8 +18,7 @@ from electrum_blk.plugins.hw_wallet.plugin import only_hook_if_libraries_availab
 
 from electrum_blk.gui.qt.util import (WindowModalDialog, WWLabel, Buttons, CancelButton,
                                   OkButton, CloseButton, PasswordLineEdit, getOpenFileName, ChoiceWidget)
-from electrum_blk.gui.qt.wizard.wallet import WCScriptAndDerivation, WCHWUnlock, WCHWXPub
-from electrum_blk.gui.qt.wizard.wizard import WizardComponent
+from electrum_blk.gui.qt.wizard.wallet import WCScriptAndDerivation, WCHWUnlock, WCHWXPub, WalletWizardComponent
 
 from .trezor import (TrezorPlugin, TIM_NEW, TIM_RECOVER, TrezorInitSettings,
                      PASSPHRASE_ON_DEVICE, Capability, BackupType, RecoveryDeviceType)
@@ -425,8 +424,15 @@ class InitSettingsLayout(QVBoxLayout):
         if method == TIM_NEW:
             self.cb_no_backup = QCheckBox(_('Enable seedless mode'))
             self.cb_no_backup.setChecked(False)
-            if (model == '1' and fw_version >= (1, 7, 1)
-                    or model == 'T' and fw_version >= (2, 0, 9)):
+            supports_no_backup = False
+            if model == '1':
+                if fw_version >= (1, 7, 1):
+                    supports_no_backup = True
+            else:
+                if fw_version >= (2, 0, 9):
+                    supports_no_backup = True
+            if supports_no_backup:
+                self.cb_no_backup.setEnabled(True)
                 self.cb_no_backup.setToolTip(SEEDLESS_MODE_WARNING)
             else:
                 self.cb_no_backup.setEnabled(False)
@@ -800,7 +806,8 @@ class WCTrezorXPub(WCHWXPub):
         WCHWXPub.__init__(self, parent, wizard)
 
     def get_xpub_from_client(self, client, derivation, xtype):
-        _name, _info = self.wizard_data['hardware_device']
+        current_cosigner = self.wizard.current_cosigner(self.wizard_data)
+        _name, _info = current_cosigner['hardware_device']
         if xtype not in self.plugin.SUPPORTED_XTYPES:
             raise ScriptTypeNotSupported(_('This type of script is not supported with {}').format(_info.model_name))
         if not client.is_uptodate():
@@ -811,18 +818,25 @@ class WCTrezorXPub(WCHWXPub):
         return client.get_xpub(derivation, xtype, True)
 
 
-class WCTrezorInitMethod(WizardComponent, Logger):
+class WCTrezorInitMethod(WalletWizardComponent, Logger):
     def __init__(self, parent, wizard):
-        WizardComponent.__init__(self, parent, wizard, title=_('HW Setup'))
+        WalletWizardComponent.__init__(self, parent, wizard, title=_('Trezor Setup'))
         Logger.__init__(self)
         self.plugins = wizard.plugins
         self.plugin = None
 
     def on_ready(self):
-        _name, _info = self.wizard_data['hardware_device']
+        current_cosigner = self.wizard.current_cosigner(self.wizard_data)
+        _name, _info = current_cosigner['hardware_device']
         self.plugin = self.plugins.get_plugin(_info.plugin_name)
         device_id = _info.device.id_
         client = self.plugins.device_manager.client_by_id(device_id, scan_now=False)
+        if client.features.bootloader_mode:
+            msg = (_("Looks like your device is in bootloader mode. Try reconnecting it.\n"
+                     "If you haven't installed a firmware on it yet, you can download it from {}")
+                   .format(self.plugin.firmware_URL))
+            self.error = msg
+            return
         if not client.is_uptodate():
             msg = (_('Outdated {} firmware for device labelled {}. Please '
                      'download the updated firmware from {}')
@@ -843,18 +857,22 @@ class WCTrezorInitMethod(WizardComponent, Logger):
         self._valid = True
 
     def apply(self):
-        self.wizard_data['trezor_init'] = self.choice_w.selected_item[0]
+        if not self.valid:
+            return
+        current_cosigner = self.wizard.current_cosigner(self.wizard_data)
+        current_cosigner['trezor_init'] = self.choice_w.selected_key
 
 
-class WCTrezorInitParams(WizardComponent):
+class WCTrezorInitParams(WalletWizardComponent):
     def __init__(self, parent, wizard):
-        WizardComponent.__init__(self, parent, wizard, title=_('Set-up trezor'))
+        WalletWizardComponent.__init__(self, parent, wizard, title=_('Trezor Setup'))
         self.plugins = wizard.plugins
         self._busy = True
 
     def on_ready(self):
-        _name, _info = self.wizard_data['hardware_device']
-        self.settings_layout = InitSettingsLayout(self.plugins.device_manager, self.wizard_data['trezor_init'], _info.device.id_)
+        current_cosigner = self.wizard.current_cosigner(self.wizard_data)
+        _name, _info = current_cosigner['hardware_device']
+        self.settings_layout = InitSettingsLayout(self.plugins.device_manager, current_cosigner['trezor_init'], _info.device.id_)
         self.layout().addLayout(self.settings_layout)
         self.layout().addStretch(1)
 
@@ -862,12 +880,13 @@ class WCTrezorInitParams(WizardComponent):
         self.busy = False
 
     def apply(self):
-        self.wizard_data['trezor_settings'] = self.settings_layout.get_settings()
+        current_cosigner = self.wizard.current_cosigner(self.wizard_data)
+        current_cosigner['trezor_settings'] = self.settings_layout.get_settings()
 
 
-class WCTrezorInit(WizardComponent, Logger):
+class WCTrezorInit(WalletWizardComponent, Logger):
     def __init__(self, parent, wizard):
-        WizardComponent.__init__(self, parent, wizard, title=_('Set-up trezor'))
+        WalletWizardComponent.__init__(self, parent, wizard, title=_('Trezor Setup'))
         Logger.__init__(self)
         self.plugins = wizard.plugins
         self.plugin = self.plugins.get_plugin('trezor')
@@ -877,9 +896,10 @@ class WCTrezorInit(WizardComponent, Logger):
         self._busy = True
 
     def on_ready(self):
-        settings = self.wizard_data['trezor_settings']
-        method = self.wizard_data['trezor_init']
-        _name, _info = self.wizard_data['hardware_device']
+        current_cosigner = self.wizard.current_cosigner(self.wizard_data)
+        settings = current_cosigner['trezor_settings']
+        method = current_cosigner['trezor_init']
+        _name, _info = current_cosigner['hardware_device']
         device_id = _info.device.id_
         client = self.plugins.device_manager.client_by_id(device_id, scan_now=False)
         client.handler = self.plugin.create_handler(self.wizard)
@@ -893,6 +913,7 @@ class WCTrezorInit(WizardComponent, Logger):
             except Exception as e:
                 self.valid = False
                 self.error = repr(e)
+                self.logger.exception(repr(e))
             finally:
                 self.busy = False
 

@@ -3,7 +3,7 @@
 # file LICENCE or http://www.opensource.org/licenses/mit-license.php
 
 from decimal import Decimal
-from typing import Optional, TYPE_CHECKING, Sequence, List, Callable
+from typing import Optional, TYPE_CHECKING, Sequence, List, Callable, Union
 from PyQt5.QtCore import pyqtSignal, QPoint, QSize, Qt
 from PyQt5.QtWidgets import (QLabel, QVBoxLayout, QGridLayout, QHBoxLayout,
                              QWidget, QToolTip, QPushButton, QApplication)
@@ -17,14 +17,13 @@ from electrum_blk.util import NotEnoughFunds, NoDynamicFeeEstimates, parse_max_s
 from electrum_blk.invoices import PR_PAID, Invoice, PR_BROADCASTING, PR_BROADCAST
 from electrum_blk.transaction import Transaction, PartialTxInput, PartialTxOutput
 from electrum_blk.network import TxBroadcastError, BestEffortRequestFailed
-from electrum_blk.payment_identifier import PaymentIdentifierState, PaymentIdentifierType, PaymentIdentifier, \
-    invoice_from_payment_identifier, payment_identifier_from_invoice
+from electrum_blk.payment_identifier import (PaymentIdentifierType, PaymentIdentifier, invoice_from_payment_identifier,
+                                         payment_identifier_from_invoice)
 
 from .amountedit import AmountEdit, BTCAmountEdit, SizedFreezableLineEdit
 from .paytoedit import InvalidPaymentIdentifier
-from .util import (WaitingDialog, HelpLabel, MessageBoxMixin, EnterButton,
-                   char_width_in_lineedit, get_iconname_camera, get_iconname_qrcode,
-                   read_QIcon, ColorScheme, icon_path)
+from .util import (WaitingDialog, HelpLabel, MessageBoxMixin, EnterButton, char_width_in_lineedit,
+                   get_iconname_camera, read_QIcon, ColorScheme, icon_path)
 from .confirm_tx_dialog import ConfirmTxDialog
 from .invoice_list import InvoiceList
 
@@ -132,6 +131,7 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
         self.paste_button.setIcon(read_QIcon('copy.png'))
         self.paste_button.setToolTip(_('Paste invoice from clipboard'))
         self.paste_button.setMaximumWidth(35)
+        self.paste_button.setFocusPolicy(Qt.NoFocus)
         grid.addWidget(self.paste_button, 0, 5)
 
         self.spinner = QMovie(icon_path('spinner.gif'))
@@ -200,6 +200,8 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
         self.notify_merchant_done_signal.connect(self.on_notify_merchant_done)
         self.payto_e.paymentIdentifierChanged.connect(self._handle_payment_identifier)
 
+        self.setTabOrder(self.send_button, self.invoice_list)
+
     def showSpinner(self, b):
         self.spinner_l.setVisible(b)
         if b:
@@ -216,7 +218,8 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
         pi_error = pi.is_error() if pi.is_valid() else False
         is_spk_script = pi.type == PaymentIdentifierType.SPK and not pi.spk_is_address
         valid_amount = is_spk_script or bool(self.amount_e.get_amount())
-        self.send_button.setEnabled(pi.is_valid() and not pi_error and valid_amount)
+        ready_to_finalize = not pi.need_resolve()
+        self.send_button.setEnabled(pi.is_valid() and not pi_error and valid_amount and ready_to_finalize)
 
     def do_paste(self):
         self.logger.debug('do_paste')
@@ -393,7 +396,8 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
         if validated is not None:
             w.setStyleSheet(ColorScheme.GREEN.as_stylesheet(True) if validated else ColorScheme.RED.as_stylesheet(True))
 
-    def lock_fields(self, *,
+    def lock_fields(
+            self, *,
             lock_recipient: Optional[bool] = None,
             lock_amount: Optional[bool] = None,
             lock_max: Optional[bool] = None,
@@ -417,7 +421,7 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
 
         if pi.is_multiline():
             self.lock_fields(lock_recipient=False, lock_amount=True, lock_max=True, lock_description=False)
-            self.set_field_validated(self.payto_e, validated=pi.is_valid()) # TODO: validated used differently here than openalias
+            self.set_field_validated(self.payto_e, validated=pi.is_valid())  # TODO: validated used differently here than openalias
             self.save_button.setEnabled(pi.is_valid())
             self.send_button.setEnabled(pi.is_valid())
             self.payto_e.setToolTip(pi.get_error() if not pi.is_valid() else '')
@@ -453,13 +457,13 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
             for w in [self.comment_e, self.comment_label]:
                 w.setVisible(bool(fields.comment))
             if fields.comment:
-                self.comment_e.setToolTip(_('Max comment length: %d characters') % fields.comment)
+                self.comment_e.setToolTip(_('Max comment length: {} characters').format(fields.comment))
             self.set_field_validated(self.payto_e, validated=fields.validated)
 
             # LNURLp amount range
             if fields.amount_range:
                 amin, amax = fields.amount_range
-                self.amount_e.setToolTip(_('Amount must be between %d and %d sat.') % (amin, amax))
+                self.amount_e.setToolTip(_('Amount must be between {} and {} sat.').format(amin, amax))
             else:
                 self.amount_e.setToolTip('')
 
@@ -596,7 +600,7 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
         else:
             self.pay_onchain_dialog(invoice.outputs, invoice=invoice)
 
-    def read_amount(self) -> List[PartialTxOutput]:
+    def read_amount(self) -> Union[int, str]:
         amount = '!' if self.max_button.isChecked() else self.get_amount()
         return amount
 
@@ -821,7 +825,7 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
         total = 0
         for output in outputs:
             if parse_max_spend(output.value):
-                self.max_button.setChecked(True) # TODO: remove and let spend_max set this?
+                self.max_button.setChecked(True)  # TODO: remove and let spend_max set this?
                 self.spend_max()
                 return
             else:

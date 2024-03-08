@@ -24,7 +24,8 @@ from .logging import get_logger, Logger
 FEE_ETA_TARGETS = [25, 10, 5, 2]
 FEE_DEPTH_TARGETS = [10_000_000, 5_000_000, 2_000_000, 1_000_000,
                      800_000, 600_000, 400_000, 250_000, 100_000]
-FEE_LN_ETA_TARGET = 2  # note: make sure the network is asking for estimates for this target
+FEE_LN_ETA_TARGET = 2       # note: make sure the network is asking for estimates for this target
+FEE_LN_LOW_ETA_TARGET = 25  # note: make sure the network is asking for estimates for this target
 
 # satoshi per kbyte
 FEERATE_MAX_DYNAMIC = 1000000
@@ -75,12 +76,14 @@ class ConfigVar(property):
         *,
         default: Union[Any, Callable[['SimpleConfig'], Any]],  # typically a literal, but can also be a callable
         type_=None,
+        convert_getter: Callable[[Any], Any] = None,
         short_desc: Callable[[], str] = None,
         long_desc: Callable[[], str] = None,
     ):
         self._key = key
         self._default = default
         self._type = type_
+        self._convert_getter = convert_getter
         # note: the descriptions are callables instead of str literals, to delay evaluating the _() translations
         #       until after the language is set.
         assert short_desc is None or callable(short_desc)
@@ -95,6 +98,10 @@ class ConfigVar(property):
         with config.lock:
             if config.is_set(self._key):
                 value = config.get(self._key)
+                # run converter
+                if self._convert_getter is not None:
+                    value = self._convert_getter(value)
+                # type-check
                 if self._type is not None:
                     assert value is not None, f"got None for key={self._key!r}"
                     try:
@@ -475,12 +482,6 @@ class SimpleConfig(Logger):
     def get_fallback_wallet_path(self):
         return os.path.join(self.get_datadir_wallet_path(), "default_wallet")
 
-    def remove_from_recently_open(self, filename):
-        recent = self.RECENTLY_OPEN_WALLET_FILES or []
-        if filename in recent:
-            recent.remove(filename)
-            self.RECENTLY_OPEN_WALLET_FILES = recent
-
     def set_session_timeout(self, seconds):
         self.logger.info(f"session timeout -> {seconds} seconds")
         self.HWD_SESSION_TIMEOUT = seconds
@@ -602,7 +603,7 @@ class SimpleConfig(Logger):
     def get_depth_mb_str(self, depth: int) -> str:
         # e.g. 500_000 -> "0.50 MB"
         depth_mb = "{:.2f}".format(depth / 1_000_000)  # maybe .rstrip("0") ?
-        return f"{depth_mb} MB"
+        return f"{depth_mb} {util.UI_UNIT_NAME_MEMPOOL_MB}"
 
     def depth_tooltip(self, depth: Optional[int]) -> str:
         """Returns text tooltip for given mempool depth (in vbytes)."""
@@ -649,7 +650,7 @@ class SimpleConfig(Logger):
             fee_per_byte = None
         else:
             fee_per_byte = fee_per_kb/1000
-            rate_str = format_fee_satoshis(fee_per_byte) + ' sat/byte'
+            rate_str = format_fee_satoshis(fee_per_byte) + f" {util.UI_UNIT_NAME_FEERATE_SAT_PER_VBYTE}"
 
         if dyn:
             if mempool:
@@ -885,8 +886,9 @@ class SimpleConfig(Logger):
     def format_amount_and_units(self, *args, **kwargs) -> str:
         return self.format_amount(*args, **kwargs) + ' ' + self.get_base_unit()
 
-    def format_fee_rate(self, fee_rate):
-        return format_fee_satoshis(fee_rate/1000, num_zeros=self.num_zeros) + ' sat/byte'
+    def format_fee_rate(self, fee_rate) -> str:
+        """fee_rate is in sat/kvByte."""
+        return format_fee_satoshis(fee_rate/1000, num_zeros=self.num_zeros) + f" {util.UI_UNIT_NAME_FEERATE_SAT_PER_VBYTE}"
 
     def get_base_unit(self):
         return decimal_point_to_base_unit_name(self.decimal_point)
@@ -941,7 +943,7 @@ class SimpleConfig(Logger):
     # config variables ----->
     NETWORK_AUTO_CONNECT = ConfigVar('auto_connect', default=True, type_=bool)
     NETWORK_ONESERVER = ConfigVar('oneserver', default=False, type_=bool)
-    NETWORK_PROXY = ConfigVar('proxy', default=None, type_=str)
+    NETWORK_PROXY = ConfigVar('proxy', default=None, type_=str, convert_getter=lambda v: "none" if v is None else v)
     NETWORK_PROXY_USER = ConfigVar('proxy_user', default=None, type_=str)
     NETWORK_PROXY_PASSWORD = ConfigVar('proxy_password', default=None, type_=str)
     NETWORK_SERVER = ConfigVar('server', default=None, type_=str)
@@ -951,6 +953,7 @@ class SimpleConfig(Logger):
     NETWORK_SERVERFINGERPRINT = ConfigVar('serverfingerprint', default=None, type_=str)
     NETWORK_MAX_INCOMING_MSG_SIZE = ConfigVar('network_max_incoming_msg_size', default=1_000_000, type_=int)  # in bytes
     NETWORK_TIMEOUT = ConfigVar('network_timeout', default=None, type_=int)
+    NETWORK_BOOKMARKED_SERVERS = ConfigVar('network_bookmarked_servers', default=None)
 
     WALLET_BATCH_RBF = ConfigVar(
         'batch_rbf', default=False, type_=bool,
@@ -1093,6 +1096,14 @@ This will result in longer routes; it might increase your fees and decrease the 
             'Download parent transactions from the network.\n'
             'Allows filling in missing fee and input details.'),
     )
+    GUI_QT_TX_DIALOG_EXPORT_STRIP_SENSITIVE_METADATA = ConfigVar(
+        'gui_qt_tx_dialog_export_strip_sensitive_metadata', default=False, type_=bool,
+        short_desc=lambda: _('For CoinJoin; strip privates'),
+    )
+    GUI_QT_TX_DIALOG_EXPORT_INCLUDE_GLOBAL_XPUBS = ConfigVar(
+        'gui_qt_tx_dialog_export_include_global_xpubs', default=False, type_=bool,
+        short_desc=lambda: _('For hardware device; include xpubs'),
+    )
     GUI_QT_RECEIVE_TABS_INDEX = ConfigVar('receive_tabs_index', default=0, type_=int)
     GUI_QT_RECEIVE_TAB_QR_VISIBLE = ConfigVar('receive_qr_visible', default=False, type_=bool)
     GUI_QT_TX_EDITOR_SHOW_IO = ConfigVar(
@@ -1185,8 +1196,9 @@ This will result in longer routes; it might increase your fees and decrease the 
     WIZARD_DONT_CREATE_SEGWIT = ConfigVar('nosegwit', default=False, type_=bool)
     CONFIG_FORGET_CHANGES = ConfigVar('forget_config', default=False, type_=bool)
 
-    # submarine swap server
+    # connect to remote submarine swap server
     SWAPSERVER_URL = ConfigVar('swapserver_url', default=_default_swapserver_url, type_=str)
+    # run submarine swap server locally
     SWAPSERVER_PORT = ConfigVar('swapserver_port', default=5455, type_=int)
     TEST_SWAPSERVER_REFUND = ConfigVar('test_swapserver_refund', default=False, type_=bool)
 

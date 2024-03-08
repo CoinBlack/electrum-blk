@@ -25,7 +25,7 @@
 import threading
 import copy
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 import jsonpatch
 
 from . import util
@@ -159,6 +159,9 @@ class StoredDict(dict):
         # convert lists
         if isinstance(v, list):
             v = StoredList(v, self.db, self.path + [key])
+        # reject sets. they do not work well with jsonpatch
+        if isinstance(v, set):
+            raise Exception(f"Do not store sets inside jsondb. path={self.path!r}")
         # set item
         dict.__setitem__(self, key, v)
         if self.db and patch:
@@ -210,7 +213,14 @@ class StoredList(list):
 
 class JsonDB(Logger):
 
-    def __init__(self, s: str, storage=None, encoder=None, upgrader=None):
+    def __init__(
+        self,
+        s: str,
+        *,
+        storage: Optional['WalletStorage'] = None,
+        encoder=None,
+        upgrader=None,
+    ):
         Logger.__init__(self)
         self.lock = threading.RLock()
         self.storage = storage
@@ -228,8 +238,7 @@ class JsonDB(Logger):
         if self.storage and self.storage.file_exists():
             self.write_and_force_consolidation()
 
-    def load_data(self, s:str) -> dict:
-        """ overloaded in wallet_db """
+    def load_data(self, s: str) -> dict:
         if s == '':
             return {}
         try:

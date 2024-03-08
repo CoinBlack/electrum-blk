@@ -72,6 +72,7 @@ WizardComponent {
             Layout.alignment: Qt.AlignHCenter
             focus: true
             inputMethodHints: Qt.ImhSensitiveData | Qt.ImhDigitsOnly
+            validator: IntValidator {bottom: 0; top: 999999;}
             font.family: FixedFont
             font.pixelSize: constants.fontSizeLarge
             onTextChanged: {
@@ -113,7 +114,7 @@ WizardComponent {
 
     Component.onCompleted: {
         plugin = AppController.plugin('trustedcoin')
-        plugin.createKeystore(wizard_data['2fa_email'])
+        plugin.createKeystore()
         otp_auth.forceActiveFocus()
     }
 

@@ -14,7 +14,6 @@ from typing import (Optional, Sequence, Tuple, List, Set, Dict, TYPE_CHECKING,
                     NamedTuple, Union, Mapping, Any, Iterable, AsyncGenerator, DefaultDict, Callable, Awaitable)
 import threading
 import socket
-import aiohttp
 import json
 from datetime import datetime, timezone
 from functools import partial, cached_property
@@ -22,7 +21,9 @@ from collections import defaultdict
 import concurrent
 from concurrent import futures
 import urllib.parse
+import itertools
 
+import aiohttp
 import dns.resolver
 import dns.exception
 from aiorpcx import run_in_thread, NetAddress, ignore_after
@@ -1048,7 +1049,7 @@ class LNWallet(LNWorker):
         current_height = self.wallet.adb.get_local_height()
         out = {}
         # add funding events
-        for chan in self.channels.values():
+        for chan in itertools.chain(self.channels.values(), self.channel_backups.values()):  # type: AbstractChannel
             item = chan.get_funding_height()
             if item is None:
                 continue
@@ -1459,7 +1460,7 @@ class LNWallet(LNWorker):
     async def pay_invoice(
             self, invoice: str, *,
             amount_msat: int = None,
-            attempts: int = None,  # used only in unit tests (and for swaps?!)
+            attempts: int = None,  # used only in unit tests
             full_path: LNPaymentPath = None,
             channels: Optional[Sequence[Channel]] = None,
     ) -> Tuple[bool, List[HtlcLog]]:
@@ -1487,6 +1488,12 @@ class LNWallet(LNWorker):
             f"pay_invoice starting session for RHASH={payment_hash.hex()}. "
             f"using_trampoline={self.uses_trampoline()}. "
             f"invoice_features={invoice_features.get_names()}")
+        if not self.uses_trampoline():
+            self.logger.info(
+                f"gossip_db status. sync progress: {self.network.lngossip.get_sync_progress_estimate()}. "
+                f"num_nodes={self.channel_db.num_nodes}, "
+                f"num_channels={self.channel_db.num_channels}, "
+                f"num_policies={self.channel_db.num_policies}.")
         self.set_invoice_status(key, PR_INFLIGHT)
         budget = PaymentFeeBudget.default(invoice_amount_msat=amount_to_pay)
         success = False
@@ -1875,13 +1882,20 @@ class LNWallet(LNWorker):
                 if (amount_msat / final_total_msat > self.MPP_SPLIT_PART_FRACTION
                         and amount_msat > self.MPP_SPLIT_PART_MINAMT_MSAT):
                     exclude_single_part_payments = True
-        split_configurations = suggest_splits(
-            amount_msat,
-            channels_with_funds,
-            exclude_single_part_payments=exclude_single_part_payments,
-            exclude_multinode_payments=exclude_multinode_payments,
-            exclude_single_channel_splits=exclude_single_channel_splits
-        )
+
+        def get_splits():
+            return suggest_splits(
+                amount_msat,
+                channels_with_funds,
+                exclude_single_part_payments=exclude_single_part_payments,
+                exclude_multinode_payments=exclude_multinode_payments,
+                exclude_single_channel_splits=exclude_single_channel_splits
+            )
+
+        split_configurations = get_splits()
+        if not split_configurations and exclude_single_part_payments:
+            exclude_single_part_payments = False
+            split_configurations = get_splits()
         self.logger.info(f'suggest_split {amount_msat} returned {len(split_configurations)} configurations')
         return split_configurations
 
@@ -1939,37 +1953,29 @@ class LNWallet(LNWorker):
                     # for each trampoline forwarder, construct mpp trampoline
                     for trampoline_node_id, trampoline_parts in per_trampoline_channel_amounts.items():
                         per_trampoline_amount = sum([x[1] for x in trampoline_parts])
-                        if trampoline_node_id == paysession.invoice_pubkey:
-                            trampoline_route = None
-                            trampoline_onion = None
-                            per_trampoline_secret = paysession.payment_secret
-                            per_trampoline_amount_with_fees = amount_msat
-                            per_trampoline_cltv_delta = paysession.min_final_cltv_delta
-                            per_trampoline_fees = 0
-                        else:
-                            trampoline_route, trampoline_onion, per_trampoline_amount_with_fees, per_trampoline_cltv_delta = create_trampoline_route_and_onion(
-                                amount_msat=per_trampoline_amount,
-                                total_msat=paysession.amount_to_pay,
-                                min_final_cltv_delta=paysession.min_final_cltv_delta,
-                                my_pubkey=self.node_keypair.pubkey,
-                                invoice_pubkey=paysession.invoice_pubkey,
-                                invoice_features=paysession.invoice_features,
-                                node_id=trampoline_node_id,
-                                r_tags=paysession.r_tags,
-                                payment_hash=paysession.payment_hash,
-                                payment_secret=paysession.payment_secret,
-                                local_height=local_height,
-                                trampoline_fee_level=paysession.trampoline_fee_level,
-                                use_two_trampolines=paysession.use_two_trampolines,
-                                failed_routes=paysession.failed_trampoline_routes,
-                                budget=budget._replace(fee_msat=budget.fee_msat // len(per_trampoline_channel_amounts)),
-                            )
-                            # node_features is only used to determine is_tlv
-                            per_trampoline_secret = os.urandom(32)
-                            per_trampoline_fees = per_trampoline_amount_with_fees - per_trampoline_amount
-                            self.logger.info(f'created route with trampoline fee level={paysession.trampoline_fee_level}')
-                            self.logger.info(f'trampoline hops: {[hop.end_node.hex() for hop in trampoline_route]}')
-                            self.logger.info(f'per trampoline fees: {per_trampoline_fees}')
+                        trampoline_route, trampoline_onion, per_trampoline_amount_with_fees, per_trampoline_cltv_delta = create_trampoline_route_and_onion(
+                            amount_msat=per_trampoline_amount,
+                            total_msat=paysession.amount_to_pay,
+                            min_final_cltv_delta=paysession.min_final_cltv_delta,
+                            my_pubkey=self.node_keypair.pubkey,
+                            invoice_pubkey=paysession.invoice_pubkey,
+                            invoice_features=paysession.invoice_features,
+                            node_id=trampoline_node_id,
+                            r_tags=paysession.r_tags,
+                            payment_hash=paysession.payment_hash,
+                            payment_secret=paysession.payment_secret,
+                            local_height=local_height,
+                            trampoline_fee_level=paysession.trampoline_fee_level,
+                            use_two_trampolines=paysession.use_two_trampolines,
+                            failed_routes=paysession.failed_trampoline_routes,
+                            budget=budget._replace(fee_msat=budget.fee_msat // len(per_trampoline_channel_amounts)),
+                        )
+                        # node_features is only used to determine is_tlv
+                        per_trampoline_secret = os.urandom(32)
+                        per_trampoline_fees = per_trampoline_amount_with_fees - per_trampoline_amount
+                        self.logger.info(f'created route with trampoline fee level={paysession.trampoline_fee_level}')
+                        self.logger.info(f'trampoline hops: {[hop.end_node.hex() for hop in trampoline_route]}')
+                        self.logger.info(f'per trampoline fees: {per_trampoline_fees}')
                         for chan_id, part_amount_msat in trampoline_parts:
                             chan = self.channels[chan_id]
                             margin = chan.available_to_spend(LOCAL, strict=True) - part_amount_msat
@@ -2882,9 +2888,8 @@ class LNWallet(LNWorker):
                 if self._can_retry_addr(peer, urgent=True):
                     await self._add_peer(peer.host, peer.port, peer.pubkey)
             for chan in self.channels.values():
-                if chan.is_closed():
-                    continue
                 # reestablish
+                # note: we delegate filtering out uninteresting chans to this:
                 if not chan.should_try_to_reestablish_peer():
                     continue
                 peer = self._peers.get(chan.node_id, None)
@@ -2893,15 +2898,28 @@ class LNWallet(LNWorker):
                 else:
                     await self.taskgroup.spawn(self.reestablish_peer_for_given_channel(chan))
 
-    def current_feerate_per_kw(self):
+    def current_target_feerate_per_kw(self) -> int:
         from .simple_config import FEE_LN_ETA_TARGET, FEERATE_FALLBACK_STATIC_FEE
         from .simple_config import FEERATE_PER_KW_MIN_RELAY_LIGHTNING
         if constants.net is constants.BitcoinRegtest:
-            return self.network.config.FEE_EST_STATIC_FEERATE // 4
-        feerate_per_kvbyte = self.network.config.eta_target_to_fee(FEE_LN_ETA_TARGET)
-        if feerate_per_kvbyte is None:
-            feerate_per_kvbyte = FEERATE_FALLBACK_STATIC_FEE
+            feerate_per_kvbyte = self.network.config.FEE_EST_STATIC_FEERATE
+        else:
+            feerate_per_kvbyte = self.network.config.eta_target_to_fee(FEE_LN_ETA_TARGET)
+            if feerate_per_kvbyte is None:
+                feerate_per_kvbyte = FEERATE_FALLBACK_STATIC_FEE
         return max(FEERATE_PER_KW_MIN_RELAY_LIGHTNING, feerate_per_kvbyte // 4)
+
+    def current_low_feerate_per_kw(self) -> int:
+        from .simple_config import FEE_LN_LOW_ETA_TARGET
+        from .simple_config import FEERATE_PER_KW_MIN_RELAY_LIGHTNING
+        if constants.net is constants.BitcoinRegtest:
+            feerate_per_kvbyte = 0
+        else:
+            feerate_per_kvbyte = self.network.config.eta_target_to_fee(FEE_LN_LOW_ETA_TARGET) or 0
+        low_feerate_per_kw = max(FEERATE_PER_KW_MIN_RELAY_LIGHTNING, feerate_per_kvbyte // 4)
+        # make sure this is never higher than the target feerate:
+        low_feerate_per_kw = min(low_feerate_per_kw, self.current_target_feerate_per_kw())
+        return low_feerate_per_kw
 
     def create_channel_backup(self, channel_id: bytes):
         chan = self._channels[channel_id]
@@ -2938,10 +2956,9 @@ class LNWallet(LNWorker):
         if channel_id in self.channels:
             chan = self.channels[channel_id]
             peer = self._peers.get(chan.node_id)
-            if not peer:
-                raise Exception('Peer not found')
             chan.should_request_force_close = True
-            peer.close_and_cleanup()
+            if peer:
+                peer.close_and_cleanup()  # to force a reconnect
         elif connect_str:
             peer = await self.add_peer(connect_str)
             await peer.request_force_close(channel_id)

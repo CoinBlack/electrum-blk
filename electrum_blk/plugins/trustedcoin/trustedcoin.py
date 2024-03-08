@@ -537,7 +537,7 @@ class TrustedCoinPlugin(BasePlugin):
 
     def make_seed(self, seed_type):
         if not is_any_2fa_seed_type(seed_type):
-            raise Exception(f'unexpected seed type: {seed_type}')
+            raise Exception(f'unexpected seed type: {seed_type!r}')
         return Mnemonic('english').make_seed(seed_type=seed_type)
 
     @hook
@@ -548,7 +548,7 @@ class TrustedCoinPlugin(BasePlugin):
     def get_xkeys(self, seed, t, passphrase, derivation):
         assert is_any_2fa_seed_type(t)
         xtype = 'standard' if t == '2fa' else 'p2wsh'
-        bip32_seed = Mnemonic.mnemonic_to_seed(seed, passphrase)
+        bip32_seed = Mnemonic.mnemonic_to_seed(seed, passphrase=passphrase)
         rootnode = BIP32Node.from_rootseed(bip32_seed, xtype=xtype)
         child_node = rootnode.subkey_at_private_derivation(derivation)
         return child_node.to_xprv(), child_node.to_xpub()
@@ -557,7 +557,7 @@ class TrustedCoinPlugin(BasePlugin):
     def xkeys_from_seed(self, seed, passphrase):
         t = seed_type(seed)
         if not is_any_2fa_seed_type(t):
-            raise Exception(f'unexpected seed type: {t}')
+            raise Exception(f'unexpected seed type: {t!r}')
         words = seed.split()
         n = len(words)
         if t == '2fa':
@@ -565,8 +565,8 @@ class TrustedCoinPlugin(BasePlugin):
                 # note: pre-2.7 2fa seeds were typically 24-25 words, however they
                 # could probabilistically be arbitrarily shorter due to a bug. (see #3611)
                 # the probability of it being < 20 words is about 2^(-(256+12-19*11)) = 2^(-59)
-                if passphrase != '':
-                    raise Exception('old 2fa seed cannot have passphrase')
+                if passphrase:
+                    raise Exception("old '2fa'-type electrum seed cannot have passphrase")
                 xprv1, xpub1 = self.get_xkeys(' '.join(words[0:12]), t, '', "m/")
                 xprv2, xpub2 = self.get_xkeys(' '.join(words[12:]), t, '', "m/")
             elif n == 12:  # new scheme
@@ -578,7 +578,7 @@ class TrustedCoinPlugin(BasePlugin):
             xprv1, xpub1 = self.get_xkeys(seed, t, passphrase, "m/0'/")
             xprv2, xpub2 = self.get_xkeys(seed, t, passphrase, "m/1'/")
         else:
-            raise Exception(f'unexpected seed type: {t}')
+            raise Exception(f'unexpected seed type: {t!r}')
         return xprv1, xpub1, xprv2, xpub2
 
     @hook
@@ -630,10 +630,6 @@ class TrustedCoinPlugin(BasePlugin):
 
     # combined create_keystore and create_remote_key pre
     def create_keys(self, wizard_data):
-        # wizard = self._app.daemon.newWalletWizard
-        # wizard = self._wizard
-        # wizard_data = wizard._current.wizard_data
-
         if 'seed' not in wizard_data:
             # online continuation
             xprv1, xpub1, xprv2, xpub2 = (wizard_data['xprv1'], wizard_data['xpub1'], None, wizard_data['xpub2'])

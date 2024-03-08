@@ -1,11 +1,10 @@
 from functools import partial
 from typing import TYPE_CHECKING
 
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QPushButton, QLabel, QVBoxLayout, QWidget, QGridLayout
 
-from electrum_blk.gui.qt.util import (WindowModalDialog, CloseButton, Buttons, getOpenFileName,
-                                  getSaveFileName)
+from electrum_blk.gui.qt.util import WindowModalDialog, CloseButton, getOpenFileName, getSaveFileName
 from electrum_blk.gui.qt.main_window import ElectrumWindow
 
 from electrum_blk.i18n import _
@@ -45,9 +44,10 @@ class Plugin(ColdcardPlugin, QtPluginBase):
 
     @only_hook_if_libraries_available
     @hook
-    def wallet_info_buttons(self, main_window, dialog):
+    def wallet_info_buttons(self, main_window: 'ElectrumWindow', dialog):
         # user is about to see the "Wallet Information" dialog
         # - add a button if multisig wallet, and a Coldcard is a cosigner.
+        assert isinstance(main_window, ElectrumWindow), f"{type(main_window)}"
         wallet = main_window.wallet
 
         if type(wallet) is not Multisig_Wallet:

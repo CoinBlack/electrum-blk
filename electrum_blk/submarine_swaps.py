@@ -261,7 +261,7 @@ class SwapManager(Logger):
             self.lnworker.unregister_hold_invoice(swap.payment_hash)
             payment_secret = self.lnworker.get_payment_secret(swap.payment_hash)
             payment_key = swap.payment_hash + payment_secret
-            e = OnionRoutingFailure(code=OnionFailureCode.UNKNOWN_NEXT_PEER, data=b'')
+            e = OnionRoutingFailure(code=OnionFailureCode.INCORRECT_OR_UNKNOWN_PAYMENT_DETAILS, data=b'')
             self.lnworker.save_forwarding_failure(payment_key.hex(), failure_message=e)
         self.lnwatcher.remove_callback(swap.lockup_address)
         if swap.funding_txid is None:
@@ -835,13 +835,13 @@ class SwapManager(Logger):
             lightning_amount_sat=lightning_amount_sat)
         # initiate fee payment.
         if fee_invoice:
-            asyncio.ensure_future(self.lnworker.pay_invoice(fee_invoice, attempts=10))
+            asyncio.ensure_future(self.lnworker.pay_invoice(fee_invoice))
         # we return if we detect funding
         async def wait_for_funding(swap):
             while swap.funding_txid is None:
                 await asyncio.sleep(1)
         # initiate main payment
-        tasks = [asyncio.create_task(self.lnworker.pay_invoice(invoice, attempts=10, channels=channels)), asyncio.create_task(wait_for_funding(swap))]
+        tasks = [asyncio.create_task(self.lnworker.pay_invoice(invoice, channels=channels)), asyncio.create_task(wait_for_funding(swap))]
         await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         return swap.funding_txid
 

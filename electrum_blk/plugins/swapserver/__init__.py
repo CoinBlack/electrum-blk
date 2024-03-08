@@ -7,7 +7,7 @@ Submarine swap server for an Electrum daemon.
 Example setup:
 
   electrum-blk -o setconfig use_swapserver True
-  electrum-blk -o setconfig swapserver_address localhost:5455
+  electrum-blk -o setconfig swapserver_port 5455
   electrum-blk daemon -v
 
 """

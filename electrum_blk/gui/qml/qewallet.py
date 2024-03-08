@@ -196,10 +196,12 @@ class QEWallet(AuthMixin, QObject, QtEventListener):
 
     @qt_event_listener
     def on_event_removed_transaction(self, wallet, tx):
+        # NOTE: this event only triggers once, only for the first deleted tx, when for imported wallets an address
+        # is deleted along with multiple associated txs
         if wallet == self.wallet:
             self._logger.info(f'removed transaction {tx.txid()}')
             self.addressCoinModel.setDirty()
-            self.historyModel.initModel(True)  # setDirty()?
+            self.historyModel.setDirty()
             self.balanceChanged.emit()
 
     @qt_event_listener
@@ -336,7 +338,9 @@ class QEWallet(AuthMixin, QObject, QtEventListener):
     billingInfoChanged = pyqtSignal()
     @pyqtProperty('QVariantMap', notify=billingInfoChanged)
     def billingInfo(self):
-        return {} if self.wallet.wallet_type != '2fa' else self.wallet.billing_info
+        if self.wallet.wallet_type != '2fa':
+            return {}
+        return self.wallet.billing_info if self.wallet.billing_info is not None else {}
 
     @pyqtProperty(bool, notify=dataChanged)
     def canHaveLightning(self):

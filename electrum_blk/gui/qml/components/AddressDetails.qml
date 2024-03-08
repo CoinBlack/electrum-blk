@@ -194,7 +194,9 @@ Pane {
                     Layout.columnSpan: 2
                     Layout.topMargin: constants.paddingSmall
                     visible: addressdetails.pubkeys.length
-                    text: qsTr('Public keys')
+                    text: addressdetails.pubkeys.length > 1
+                        ? qsTr('Public keys')
+                        : qsTr('Public key')
                     color: Material.accentColor
                 }
 
@@ -315,9 +317,11 @@ Pane {
                         yesno: true
                     })
                     confirmdialog.accepted.connect(function () {
-                        addressdetails.deleteAddress()
-                        addressDeleted()
-                        app.stack.pop()
+                        var success = addressdetails.deleteAddress()
+                        if (success) {
+                            addressDeleted()
+                            app.stack.pop()
+                        }
                     })
                     confirmdialog.open()
                 }
@@ -334,6 +338,12 @@ Pane {
         onLabelChanged: addressDetailsChanged()
         onAuthRequired: (method, authMessage) => {
             app.handleAuthRequired(addressdetails, method, authMessage)
+        }
+        onAddressDeleteFailed: (message) => {
+            var dialog = app.messageDialog.createObject(root, {
+                text: message
+            })
+            dialog.open()
         }
     }
 }
