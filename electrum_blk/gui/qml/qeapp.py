@@ -419,10 +419,10 @@ class ElectrumQmlApplication(QGuiApplication):
             'pyqt_version': PYQT_VERSION_STR
         })
         self.context.setContextProperty('UI_UNIT_NAME', {
-            "FEERATE_SAT_PER_VBYTE": electrum.util.UI_UNIT_NAME_FEERATE_SAT_PER_VBYTE,
-            "FEERATE_SAT_PER_VB":    electrum.util.UI_UNIT_NAME_FEERATE_SAT_PER_VB,
-            "TXSIZE_VBYTES":         electrum.util.UI_UNIT_NAME_TXSIZE_VBYTES,
-            "MEMPOOL_MB":            electrum.util.UI_UNIT_NAME_MEMPOOL_MB,
+            "FEERATE_SAT_PER_VBYTE": electrum_blk.util.UI_UNIT_NAME_FEERATE_SAT_PER_VBYTE,
+            "FEERATE_SAT_PER_VB":    electrum_blk.util.UI_UNIT_NAME_FEERATE_SAT_PER_VB,
+            "TXSIZE_VBYTES":         electrum_blk.util.UI_UNIT_NAME_TXSIZE_VBYTES,
+            "MEMPOOL_MB":            electrum_blk.util.UI_UNIT_NAME_MEMPOOL_MB,
         })
 
         self.plugins.load_plugin('trustedcoin')
