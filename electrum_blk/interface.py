@@ -135,7 +135,6 @@ class NotificationSession(RPCSession):
         super(NotificationSession, self).__init__(*args, **kwargs)
         self.subscriptions = defaultdict(list)
         self.cache = {}
-        self.default_timeout = NetworkTimeout.Generic.NORMAL
         self._msg_counter = itertools.count(start=1)
         self.interface = interface
         self.cost_hard_limit = 0  # disable aiorpcx resource limits
@@ -170,8 +169,12 @@ class NotificationSession(RPCSession):
                 super().send_request(*args, **kwargs),
                 timeout)
         except (TaskTimeout, asyncio.TimeoutError) as e:
+            self.maybe_log(f"--> request timed out: {args} (id: {msg_id})")
             raise RequestTimedOut(f'request timed out: {args} (id: {msg_id})') from e
         except CodeMessageError as e:
+            self.maybe_log(f"--> {repr(e)} (id: {msg_id})")
+            raise
+        except BaseException as e:  # cancellations, etc. are useful for debugging
             self.maybe_log(f"--> {repr(e)} (id: {msg_id})")
             raise
         else:
@@ -179,7 +182,9 @@ class NotificationSession(RPCSession):
             return response
 
     def set_default_timeout(self, timeout):
+        assert hasattr(self, "sent_request_timeout")  # in base class
         self.sent_request_timeout = timeout
+        assert hasattr(self, "max_send_delay")        # in base class
         self.max_send_delay = timeout
 
     async def subscribe(self, method: str, params: List, queue: asyncio.Queue):

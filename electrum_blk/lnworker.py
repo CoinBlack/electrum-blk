@@ -2131,9 +2131,10 @@ class LNWallet(LNWorker):
             payment_hash: bytes,
             amount_msat: Optional[int],
             message: str,
-            expiry: int,
+            expiry: int,  # expiration of invoice (in seconds, relative)
             fallback_address: Optional[str],
             channels: Optional[Sequence[Channel]] = None,
+            min_final_cltv_expiry_delta: Optional[int] = None,
     ) -> Tuple[LnAddr, str]:
         assert isinstance(payment_hash, bytes), f"expected bytes, but got {type(payment_hash)}"
 
@@ -2154,12 +2155,14 @@ class LNWallet(LNWorker):
         amount_btc = amount_msat/Decimal(COIN*1000) if amount_msat else None
         if expiry == 0:
             expiry = LN_EXPIRY_NEVER
+        if min_final_cltv_expiry_delta is None:
+            min_final_cltv_expiry_delta = MIN_FINAL_CLTV_DELTA_FOR_INVOICE
         lnaddr = LnAddr(
             paymenthash=payment_hash,
             amount=amount_btc,
             tags=[
                 ('d', message),
-                ('c', MIN_FINAL_CLTV_DELTA_FOR_INVOICE),
+                ('c', min_final_cltv_expiry_delta),
                 ('x', expiry),
                 ('9', invoice_features),
                 ('f', fallback_address),
@@ -2251,11 +2254,20 @@ class LNWallet(LNWorker):
             htlc: UpdateAddHtlc,
             expected_msat: int,
     ) -> RecvMPPResolution:
+        """Returns the status of the incoming htlc set the given *htlc* belongs to.
+
+        ACCEPTED simply means the mpp set is complete, and we can proceed with further
+        checks before fulfilling (or failing) the htlcs.
+        In particular, note that hold-invoice-htlcs typically remain in the ACCEPTED state
+        for quite some time -- not in the "WAITING" state (which would refer to the mpp set
+        not yet being complete!).
+        """
         payment_hash = htlc.payment_hash
         payment_key = payment_hash + payment_secret
         self.update_mpp_with_received_htlc(
             payment_key=payment_key, scid=short_channel_id, htlc=htlc, expected_msat=expected_msat)
         mpp_resolution = self.received_mpp_htlcs[payment_key].resolution
+        # if still waiting, calc resolution now:
         if mpp_resolution == RecvMPPResolution.WAITING:
             bundle = self.get_payment_bundle(payment_key)
             if bundle:
@@ -2272,7 +2284,7 @@ class LNWallet(LNWorker):
                 mpp_resolution = RecvMPPResolution.ACCEPTED
             elif time.time() - first_timestamp > self.MPP_EXPIRY:
                 mpp_resolution = RecvMPPResolution.EXPIRED
-
+            # save resolution, if any.
             if mpp_resolution != RecvMPPResolution.WAITING:
                 for pkey in payment_keys:
                     if pkey in self.received_mpp_htlcs:

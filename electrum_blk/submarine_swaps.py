@@ -1,7 +1,7 @@
 import asyncio
 import json
 import os
-from typing import TYPE_CHECKING, Optional, Dict, Union, Sequence, Tuple
+from typing import TYPE_CHECKING, Optional, Dict, Union, Sequence, Tuple, Iterable
 from decimal import Decimal
 import math
 import time
@@ -50,9 +50,11 @@ LOCKUP_FEE_SIZE = 153 # assuming 1 output, 2 outputs
 MIN_LOCKTIME_DELTA = 60
 LOCKTIME_DELTA_REFUND = 70
 MAX_LOCKTIME_DELTA = 100
+MIN_FINAL_CLTV_DELTA_FOR_CLIENT = 3 * 144  # note: put in invoice, but is not enforced by receiver in lnpeer.py
 assert MIN_LOCKTIME_DELTA <= LOCKTIME_DELTA_REFUND <= MAX_LOCKTIME_DELTA
 assert MAX_LOCKTIME_DELTA < lnutil.MIN_FINAL_CLTV_DELTA_ACCEPTED
 assert MAX_LOCKTIME_DELTA < lnutil.MIN_FINAL_CLTV_DELTA_FOR_INVOICE
+assert MAX_LOCKTIME_DELTA < MIN_FINAL_CLTV_DELTA_FOR_CLIENT
 
 
 # The script of the reverse swaps has one extra check in it to verify
@@ -292,6 +294,7 @@ class SwapManager(Logger):
 
         if txin:
             # the swap is funded
+            # note: swap.funding_txid can change due to RBF, it will get updated here:
             swap.funding_txid = txin.prevout.txid.hex()
             swap._funding_prevout = txin.prevout
             self._add_or_reindex_swap(swap)  # to update _swaps_by_funding_outpoint
@@ -443,7 +446,8 @@ class SwapManager(Logger):
             our_privkey: bytes,
             prepay: bool,
             channels: Optional[Sequence['Channel']] = None,
-    ) -> Tuple[SwapData, str, str]:
+            min_final_cltv_expiry_delta: Optional[int] = None,
+    ) -> Tuple[SwapData, str, Optional[str]]:
         """creates a hold invoice"""
         if prepay:
             prepay_amount_sat = self.get_claim_fee() * 2
@@ -458,6 +462,7 @@ class SwapManager(Logger):
             expiry=300,
             fallback_address=None,
             channels=channels,
+            min_final_cltv_expiry_delta=min_final_cltv_expiry_delta,
         )
         # add payment info to lnworker
         self.lnworker.add_payment_info_for_hold_invoice(payment_hash, invoice_amount_sat)
@@ -471,6 +476,7 @@ class SwapManager(Logger):
                 expiry=300,
                 fallback_address=None,
                 channels=channels,
+                min_final_cltv_expiry_delta=min_final_cltv_expiry_delta,
             )
             self.lnworker.bundle_payments([payment_hash, prepay_hash])
             self.prepayments[prepay_hash] = payment_hash
@@ -666,6 +672,13 @@ class SwapManager(Logger):
             our_privkey=refund_privkey,
             prepay=False,
             channels=channels,
+            # When the client is doing a normal swap, we create a ln-invoice with larger than usual final_cltv_delta.
+            # If the user goes offline after broadcasting the funding tx (but before it is mined and
+            # the server claims it), they need to come back online before the held ln-htlc expires (see #8940).
+            # If the held ln-htlc expires, and the funding tx got confirmed, the server will have claimed the onchain
+            # funds, and the ln-htlc will be timed out onchain (and channel force-closed). i.e. the user loses the swap
+            # amount. Increasing the final_cltv_delta the user puts in the invoice extends this critical window.
+            min_final_cltv_expiry_delta=MIN_FINAL_CLTV_DELTA_FOR_CLIENT,
         )
         return swap, invoice
 
@@ -759,6 +772,10 @@ class SwapManager(Logger):
         - User generates preimage, RHASH. Sends RHASH to server.
         - Server creates an LN invoice for RHASH.
         - User pays LN invoice - except server needs to hold the HTLC as preimage is unknown.
+            - if the server requested a fee prepayment (using 'minerFeeInvoice'),
+              the server will have the preimage for that. The user will send HTLCs for both the main RHASH,
+              and for the fee prepayment. Once both MPP sets arrive at the server, the server will fulfill
+              the HTLCs for the fee prepayment (before creating the on-chain output).
         - Server creates on-chain output locked to RHASH.
         - User spends on-chain output, revealing preimage.
         - Server fulfills HTLC using preimage.
@@ -1000,13 +1017,19 @@ class SwapManager(Logger):
                                 f"recv_amount={recv_amount} -> send_amount={send_amount} -> inverted_recv_amount={inverted_recv_amount}")
         return send_amount
 
-    def get_swap_by_funding_tx(self, tx: Transaction) -> Optional[SwapData]:
-        if len(tx.outputs()) != 1:
-            return False
-        prevout = TxOutpoint(txid=bytes.fromhex(tx.txid()), out_idx=0)
-        return self._swaps_by_funding_outpoint.get(prevout)
+    def get_swaps_by_funding_tx(self, tx: Transaction) -> Iterable[SwapData]:
+        swaps = []
+        for txout_idx, _txo in enumerate(tx.outputs()):
+            prevout = TxOutpoint(txid=bytes.fromhex(tx.txid()), out_idx=txout_idx)
+            if swap := self._swaps_by_funding_outpoint.get(prevout):
+                swaps.append(swap)
+        return swaps
 
     def get_swap_by_claim_tx(self, tx: Transaction) -> Optional[SwapData]:
+        # note: we don't batch claim txs atm (batch_rbf cannot combine them
+        #       as the inputs do not belong to the wallet)
+        if not (len(tx.inputs()) == 1 and len(tx.outputs()) == 1):
+            return None
         txin = tx.inputs()[0]
         return self.get_swap_by_claim_txin(txin)
 
