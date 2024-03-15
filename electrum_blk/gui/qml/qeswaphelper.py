@@ -12,7 +12,7 @@ from electrum_blk.logging import get_logger
 from electrum_blk.transaction import PartialTxOutput, PartialTransaction
 from electrum_blk.util import NotEnoughFunds, NoDynamicFeeEstimates, profiler, get_asyncio_loop
 
-from electrum.gui import messages
+from electrum_blk.gui import messages
 
 from .auth import AuthMixin, auth_protect
 from .qetypes import QEAmount
