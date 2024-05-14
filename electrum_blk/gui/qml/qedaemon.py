@@ -12,7 +12,7 @@ from electrum_blk.util import WalletFileException, standardize_path, InvalidPass
 from electrum_blk.plugin import run_hook
 from electrum_blk.lnchannel import ChannelState
 from electrum_blk.bitcoin import is_address
-from electrum_blk.ecc import verify_message_with_address
+from electrum_blk.ecc import verify_usermessage_with_address
 from electrum_blk.storage import StorageReadWriteError
 
 from .auth import AuthMixin, auth_protect
@@ -372,7 +372,7 @@ class QEDaemon(AuthMixin, QObject):
         try:
             # This can throw on invalid base64
             sig = base64.b64decode(str(signature.strip()))
-            verified = verify_message_with_address(address, sig, message)
+            verified = verify_usermessage_with_address(address, sig, message)
         except Exception as e:
             verified = False
         return verified

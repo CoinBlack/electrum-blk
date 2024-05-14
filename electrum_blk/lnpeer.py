@@ -19,7 +19,7 @@ from aiorpcx import ignore_after
 from .crypto import sha256, sha256d
 from . import bitcoin, util
 from . import ecc
-from .ecc import sig_string_from_r_and_s, der_sig_from_sig_string
+from .ecc import ecdsa_sig64_from_r_and_s, ecdsa_der_sig_from_ecdsa_sig64, ECPubkey
 from . import constants
 from .util import (bfh, log_exceptions, ignore_exceptions, chunks, OldTaskGroup,
                    UnrelatedTransactionException, error_text_bytes_to_safe_str)
@@ -424,9 +424,9 @@ class Peer(Logger):
         h = chan.get_channel_announcement_hash()
         node_signature = payload["node_signature"]
         bitcoin_signature = payload["bitcoin_signature"]
-        if not ecc.verify_signature(chan.config[REMOTE].multisig_key.pubkey, bitcoin_signature, h):
+        if not ECPubkey(chan.config[REMOTE].multisig_key.pubkey).ecdsa_verify(bitcoin_signature, h):
             raise Exception("bitcoin_sig invalid in announcement_signatures")
-        if not ecc.verify_signature(self.pubkey, node_signature, h):
+        if not ECPubkey(self.pubkey).ecdsa_verify(node_signature, h):
             raise Exception("node_sig invalid in announcement_signatures")
         chan.config[REMOTE].announcement_node_sig = node_signature
         chan.config[REMOTE].announcement_bitcoin_sig = bitcoin_signature
@@ -992,7 +992,7 @@ class Peer(Logger):
         # The receiving node MAY fail the channel if:
         # option_channel_type was negotiated but the message doesn't include a channel_type
         if self.is_channel_type() and channel_type is None:
-            raise Exception("sender has advertized option_channel_type, but hasn't sent the channel type")
+            raise Exception("sender has advertised option_channel_type, but hasn't sent the channel type")
         # MUST fail the channel if it supports channel_type,
         # channel_type was set, and the type is not suitable.
         elif self.is_channel_type() and channel_type is not None:
@@ -1453,7 +1453,7 @@ class Peer(Logger):
             addrlen=len(addresses),
             addresses=addresses)
         h = sha256d(raw_msg[64+2:])
-        signature = ecc.ECPrivkey(self.privkey).sign(h, sig_string_from_r_and_s)
+        signature = ecc.ECPrivkey(self.privkey).ecdsa_sign(h, sigencode=ecdsa_sig64_from_r_and_s)
         message_type, payload = decode_msg(raw_msg)
         payload['signature'] = signature
         raw_msg = encode_msg(message_type, **payload)
@@ -1503,7 +1503,7 @@ class Peer(Logger):
         forwarding_enabled = self.network.config.EXPERIMENTAL_LN_FORWARD_PAYMENTS
         if forwarding_enabled and chan.short_channel_id:
             # send channel_update of outgoing edge to peer,
-            # so that channel can be used to to receive payments
+            # so that channel can be used to receive payments
             self.logger.info(f"sending channel update for outgoing edge ({chan.get_id_for_log()})")
             chan_upd = chan.get_outgoing_gossip_channel_update()
             self.transport.send_bytes(chan_upd)
@@ -1516,8 +1516,8 @@ class Peer(Logger):
         if not is_reply and chan.config[REMOTE].announcement_node_sig:
             return
         h = chan.get_channel_announcement_hash()
-        bitcoin_signature = ecc.ECPrivkey(chan.config[LOCAL].multisig_key.privkey).sign(h, sig_string_from_r_and_s)
-        node_signature = ecc.ECPrivkey(self.privkey).sign(h, sig_string_from_r_and_s)
+        bitcoin_signature = ecc.ECPrivkey(chan.config[LOCAL].multisig_key.privkey).ecdsa_sign(h, sigencode=ecdsa_sig64_from_r_and_s)
+        node_signature = ecc.ECPrivkey(self.privkey).ecdsa_sign(h, sigencode=ecdsa_sig64_from_r_and_s)
         self.send_message(
             "announcement_signatures",
             channel_id=chan.channel_id,
@@ -2325,7 +2325,7 @@ class Peer(Logger):
             raise Exception(f"received shutdown in unexpected {chan.peer_state=!r}")
         their_scriptpubkey = payload['scriptpubkey']
         their_upfront_scriptpubkey = chan.config[REMOTE].upfront_shutdown_script
-        # BOLT-02 check if they use the upfront shutdown script they advertized
+        # BOLT-02 check if they use the upfront shutdown script they advertised
         if self.is_upfront_shutdown_script() and their_upfront_scriptpubkey:
             if not (their_scriptpubkey == their_upfront_scriptpubkey):
                 await self.send_warning(
@@ -2368,7 +2368,7 @@ class Peer(Logger):
         if chan.config[LOCAL].upfront_shutdown_script:
             scriptpubkey = chan.config[LOCAL].upfront_shutdown_script
         else:
-            scriptpubkey = bfh(bitcoin.address_to_script(chan.sweep_address))
+            scriptpubkey = bitcoin.address_to_script(chan.sweep_address)
         assert scriptpubkey
         # wait until no more pending updates (bolt2)
         chan.set_can_send_ctx_updates(False)
@@ -2421,7 +2421,7 @@ class Peer(Logger):
         if chan.config[LOCAL].upfront_shutdown_script:
             our_scriptpubkey = chan.config[LOCAL].upfront_shutdown_script
         else:
-            our_scriptpubkey = bfh(bitcoin.address_to_script(chan.sweep_address))
+            our_scriptpubkey = bitcoin.address_to_script(chan.sweep_address)
         assert our_scriptpubkey
         # estimate fee of closing tx
         dummy_sig, dummy_tx = chan.make_closing_tx(our_scriptpubkey, their_scriptpubkey, fee_sat=0)
@@ -2446,11 +2446,11 @@ class Peer(Logger):
                 closing_signed_tlvs=closing_signed_tlvs,
             )
 
-        def verify_signature(tx, sig):
+        def verify_signature(tx: 'PartialTransaction', sig) -> bool:
             their_pubkey = chan.config[REMOTE].multisig_key.pubkey
-            preimage_hex = tx.serialize_preimage(0)
-            pre_hash = sha256d(bfh(preimage_hex))
-            return ecc.verify_signature(their_pubkey, sig, pre_hash)
+            pre_hash = tx.serialize_preimage(0)
+            msg_hash = sha256d(pre_hash)
+            return ECPubkey(their_pubkey).ecdsa_verify(sig, msg_hash)
 
         async def receive_closing_signed():
             nonlocal our_sig, closing_tx
@@ -2476,7 +2476,7 @@ class Peer(Logger):
                     raise Exception('failed to verify their signature')
             # at this point we know how the closing tx looks like
             # check that their output is above their scriptpubkey's network dust limit
-            to_remote_set = closing_tx.get_output_idxs_from_scriptpubkey(their_scriptpubkey.hex())
+            to_remote_set = closing_tx.get_output_idxs_from_scriptpubkey(their_scriptpubkey)
             if not drop_remote and to_remote_set:
                 to_remote_idx = to_remote_set.pop()
                 to_remote_amount = closing_tx.outputs()[to_remote_idx].value
@@ -2570,12 +2570,12 @@ class Peer(Logger):
         # add signatures
         closing_tx.add_signature_to_txin(
             txin_idx=0,
-            signing_pubkey=chan.config[LOCAL].multisig_key.pubkey.hex(),
-            sig=(der_sig_from_sig_string(our_sig) + Sighash.to_sigbytes(Sighash.ALL)).hex())
+            signing_pubkey=chan.config[LOCAL].multisig_key.pubkey,
+            sig=ecdsa_der_sig_from_ecdsa_sig64(our_sig) + Sighash.to_sigbytes(Sighash.ALL))
         closing_tx.add_signature_to_txin(
             txin_idx=0,
-            signing_pubkey=chan.config[REMOTE].multisig_key.pubkey.hex(),
-            sig=(der_sig_from_sig_string(their_sig) + Sighash.to_sigbytes(Sighash.ALL)).hex())
+            signing_pubkey=chan.config[REMOTE].multisig_key.pubkey,
+            sig=ecdsa_der_sig_from_ecdsa_sig64(their_sig) + Sighash.to_sigbytes(Sighash.ALL))
         # save local transaction and set state
         try:
             self.lnworker.wallet.adb.add_transaction(closing_tx)

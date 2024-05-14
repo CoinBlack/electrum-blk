@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Copyright 2013 Soren Stoutner <soren@stoutner.com> -->
+
+<!--
+  Copyright 2023-2024 Soren Stoutner <soren@debian.org>.
+
+  This file can be validated using `appstreamcli validate org.electrum.electrum.metainfo.xml`.
+
+  Distributed under the MIT software license, see the accompanying file LICENCE or http://www.opensource.org/licenses/mit-license.php.
+-->
+
 <component type="desktop-application">
   <id>org.electrum-blk.electrum_blk</id>
 
@@ -11,10 +19,15 @@
 
   <description>
     <p>
-      Electrum-BLK is a lightweight Blackcoin wallet focused is speed, with low resource usage and simplifying Blackcoin.
-      Startup times are instant because it operates in conjunction with high-performance servers that handle the most complicated parts of the Blackcoin system.
+      Electrum-BLK is a lightweight Blackcoin wallet focused on speed, with low resource usage and simplifying Blackcoin.
+      Startup times are instant because it operates in conjunction with high-performance servers that handle the most complicated parts of the Bitcoin system.
     </p>
   </description>
+
+  <url type="homepage">https://blackcoin.org/</url>
+  <developer id="org.electrum-blk">
+      <name>The Electrum-BLK developers</name>
+  </developer>
 
   <launchable type="desktop-id">electrum-blk.desktop</launchable>
 

@@ -26,6 +26,7 @@
 import os
 import json
 import sys
+from typing import Sequence, Tuple, Mapping, Type
 
 from .util import inv_dict, all_subclasses
 from . import bitcoin
@@ -59,6 +60,14 @@ class AbstractNet:
     BLOCK_HEIGHT_FIRST_LIGHTNING_CHANNELS: int = 0
     BIP44_COIN_TYPE: int
     LN_REALM_BYTE: int
+    DEFAULT_PORTS: Mapping[str, str]
+    DEFAULT_SERVERS: Mapping[str, Mapping[str, str]]
+    CHECKPOINTS: Sequence[Tuple[str, int]]
+    LN_DNS_SEEDS: Sequence[str]
+    XPRV_HEADERS: Mapping[str, int]
+    XPRV_HEADERS_INV: Mapping[int, str]
+    XPUB_HEADERS: Mapping[str, int]
+    XPUB_HEADERS_INV: Mapping[int, str]
 
     @classmethod
     def max_checkpoint(cls) -> int:
@@ -67,7 +76,7 @@ class AbstractNet:
 
     @classmethod
     def rev_genesis_bytes(cls) -> bytes:
-        return bytes.fromhex(bitcoin.rev_hex(cls.GENESIS))
+        return bytes.fromhex(cls.GENESIS)[::-1]
 
 
 # Blackcoin
@@ -208,7 +217,7 @@ class BitcoinSignet(BitcoinTestnet):
 NETS_LIST = tuple(all_subclasses(AbstractNet))
 
 # don't import net directly, import the module instead (so that net is singleton)
-net = BitcoinMainnet
+net = BitcoinMainnet  # type: Type[AbstractNet]
 
 def set_signet():
     global net
