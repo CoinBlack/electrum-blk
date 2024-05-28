@@ -127,7 +127,8 @@ def _x_and_y_from_pubkey_bytes(pubkey: bytes) -> Tuple[int, int]:
     ret = _libsecp256k1.secp256k1_ec_pubkey_parse(
         _libsecp256k1.ctx, pubkey_ptr, pubkey, len(pubkey))
     if 1 != ret:
-        raise InvalidECPointException('public key could not be parsed or is invalid')
+        raise InvalidECPointException(
+            f'public key could not be parsed or is invalid: {pubkey.hex()!r}')
 
     pubkey_serialized = create_string_buffer(65)
     pubkey_size = c_size_t(65)
@@ -242,13 +243,13 @@ class ECPubkey(object):
 
     def _to_libsecp256k1_pubkey_ptr(self):
         """pointer to `secp256k1_pubkey` C struct"""
-        pubkey = create_string_buffer(64)
-        public_pair_bytes = self.get_public_key_bytes(compressed=False)
+        pubkey_ptr = create_string_buffer(64)
+        pk_bytes = self.get_public_key_bytes(compressed=False)
         ret = _libsecp256k1.secp256k1_ec_pubkey_parse(
-            _libsecp256k1.ctx, pubkey, public_pair_bytes, len(public_pair_bytes))
+            _libsecp256k1.ctx, pubkey_ptr, pk_bytes, len(pk_bytes))
         if 1 != ret:
-            raise Exception('public key could not be parsed or is invalid')
-        return pubkey
+            raise Exception(f'public key could not be parsed or is invalid: {pk_bytes.hex()!r}')
+        return pubkey_ptr
 
     def _to_libsecp256k1_xonly_pubkey_ptr(self):
         """pointer to `secp256k1_xonly_pubkey` C struct"""
@@ -256,13 +257,13 @@ class ECPubkey(object):
             raise LibModuleMissing(
                 'libsecp256k1 library found but it was built '
                 'without required modules (--enable-module-schnorrsig --enable-module-extrakeys)')
-        pubkey = create_string_buffer(64)
+        pubkey_ptr = create_string_buffer(64)
         pk_bytes = self.get_public_key_bytes(compressed=True)[1:]
         ret = _libsecp256k1.secp256k1_xonly_pubkey_parse(
-            _libsecp256k1.ctx, pubkey, pk_bytes)
+            _libsecp256k1.ctx, pubkey_ptr, pk_bytes)
         if 1 != ret:
-            raise Exception('public key could not be parsed or is invalid')
-        return pubkey
+            raise Exception(f'public key could not be parsed or is invalid: {pk_bytes.hex()!r}')
+        return pubkey_ptr
 
     @classmethod
     def _from_libsecp256k1_pubkey_ptr(cls, pubkey) -> 'ECPubkey':
@@ -341,7 +342,13 @@ class ECPubkey(object):
         # check message
         return self.ecdsa_verify(sig65[1:], msg32)
 
-    def ecdsa_verify(self, sig64: bytes, msg32: bytes) -> bool:
+    def ecdsa_verify(
+        self,
+        sig64: bytes,
+        msg32: bytes,
+        *,
+        enforce_low_s: bool = True,  # policy/standardness rule
+    ) -> bool:
         assert_bytes(sig64)
         if len(sig64) != 64:
             return False
@@ -352,7 +359,8 @@ class ECPubkey(object):
         ret = _libsecp256k1.secp256k1_ecdsa_signature_parse_compact(_libsecp256k1.ctx, sig, sig64)
         if 1 != ret:
             return False
-        ret = _libsecp256k1.secp256k1_ecdsa_signature_normalize(_libsecp256k1.ctx, sig, sig)
+        if not enforce_low_s:
+            ret = _libsecp256k1.secp256k1_ecdsa_signature_normalize(_libsecp256k1.ctx, sig, sig)
 
         pubkey = self._to_libsecp256k1_pubkey_ptr()
         if 1 != _libsecp256k1.secp256k1_ecdsa_verify(_libsecp256k1.ctx, sig, msg32, pubkey):
@@ -438,7 +446,8 @@ def verify_usermessage_with_address(address: str, sig65: bytes, message: bytes, 
     else:
         return False
     # check message
-    return public_key.ecdsa_verify(sig65[1:], h)
+    # note: `$ bitcoin-cli verifymessage` does NOT enforce the low-S rule for ecdsa sigs
+    return public_key.ecdsa_verify(sig65[1:], h, enforce_low_s=False)
 
 
 def is_secret_within_curve_range(secret: Union[int, bytes]) -> bool:
@@ -565,6 +574,8 @@ class ECPrivkey(ECPubkey):
         return sig64
 
     def ecdsa_sign_recoverable(self, msg32: bytes, *, is_compressed: bool) -> bytes:
+        assert len(msg32) == 32, len(msg32)
+
         def bruteforce_recid(sig64: bytes):
             for recid in range(4):
                 sig65 = construct_ecdsa_sig65(sig64, recid, is_compressed=is_compressed)

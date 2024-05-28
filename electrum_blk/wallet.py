@@ -1392,6 +1392,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
                         'value': Satoshis(0),
                         'children': [],
                         'timestamp': 0,
+                        'date': timestamp_to_datetime(0),
                         'fee_sat': 0,
                     }
                     transactions[key] = parent
@@ -1406,6 +1407,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
                     parent['lightning'] = False
                     parent['txid'] = tx_item['txid']
                     parent['timestamp'] = tx_item['timestamp']
+                    parent['date'] = timestamp_to_datetime(tx_item['timestamp'])
                     parent['height'] = tx_item['height']
                     parent['confirmations'] = tx_item['confirmations']
                 parent['children'].append(tx_item)
