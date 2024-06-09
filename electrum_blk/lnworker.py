@@ -333,14 +333,24 @@ class LNWorker(Logger, EventListener, NetworkRetryManager[LNPeerAddr]):
         transport = LNTransport(self.node_keypair.privkey, peer_addr,
                                 proxy=self.network.proxy)
         peer = await self._add_peer_from_transport(node_id=node_id, transport=transport)
+        assert peer
         return peer
 
-    async def _add_peer_from_transport(self, *, node_id: bytes, transport: LNTransportBase) -> Peer:
-        peer = Peer(self, node_id, transport)
+    async def _add_peer_from_transport(self, *, node_id: bytes, transport: LNTransportBase) -> Optional[Peer]:
         with self.lock:
             existing_peer = self._peers.get(node_id)
             if existing_peer:
-                existing_peer.close_and_cleanup()
+                # Two instances of the same wallet are attempting to connect simultaneously.
+                # If we let the new connection replace the existing one, the two instances might
+                # both keep trying to reconnect, resulting in neither being usable.
+                if existing_peer.is_initialized():
+                    # give priority to the existing connection
+                    return
+                else:
+                    # Use the new connection. (e.g. old peer might be an outgoing connection
+                    # for an outdated host/port that will never connect)
+                    existing_peer.close_and_cleanup()
+            peer = Peer(self, node_id, transport)
             assert node_id not in self._peers
             self._peers[node_id] = peer
         await self.taskgroup.spawn(peer.main_loop())
@@ -1390,7 +1400,7 @@ class LNWallet(LNWorker):
         return tx
 
     def suggest_funding_amount(self, amount_to_pay, coins):
-        """ wether we can pay amount_sat after opening a new channel"""
+        """ whether we can pay amount_sat after opening a new channel"""
         num_sats_can_send = int(self.num_sats_can_send())
         lightning_needed = amount_to_pay - num_sats_can_send
         assert lightning_needed > 0
@@ -2355,10 +2365,10 @@ class LNWallet(LNWorker):
         is_htlc_key = ':' in payment_key_hex
         if not is_htlc_key:
             payment_key = bytes.fromhex(payment_key_hex)
-            mpp_status = self.received_mpp_htlcs[payment_key]
-            if mpp_status.resolution == RecvMPPResolution.WAITING:
-                # reconstructing the MPP after restart
-                self.logger.info(f'cannot cleanup mpp, still waiting')
+            mpp_status = self.received_mpp_htlcs.get(payment_key)
+            if not mpp_status or mpp_status.resolution == RecvMPPResolution.WAITING:
+                # After restart, self.received_mpp_htlcs needs to be reconstructed
+                self.logger.info(f'maybe_cleanup_forwarding: mpp_status not ready')
                 return
             htlc_key = (short_channel_id, htlc)
             mpp_status.htlc_set.remove(htlc_key)  # side-effecting htlc_set

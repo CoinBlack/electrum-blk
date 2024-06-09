@@ -22,7 +22,7 @@ from . import ecc
 from .ecc import ecdsa_sig64_from_r_and_s, ecdsa_der_sig_from_ecdsa_sig64, ECPubkey
 from . import constants
 from .util import (bfh, log_exceptions, ignore_exceptions, chunks, OldTaskGroup,
-                   UnrelatedTransactionException, error_text_bytes_to_safe_str)
+                   UnrelatedTransactionException, error_text_bytes_to_safe_str, AsyncHangDetector)
 from . import transaction
 from .bitcoin import make_op_return, DummyAddress
 from .transaction import PartialTxOutput, match_script_against_template, Sighash
@@ -240,7 +240,11 @@ class Peer(Logger):
             # note: the message handler might be async or non-async. In either case, by default,
             #       we wait for it to complete before we return, i.e. before the next message is processed.
             if asyncio.iscoroutinefunction(f):
-                await f(*args)
+                async with AsyncHangDetector(
+                    message=f"message handler still running for {message_type.upper()}",
+                    logger=self.logger,
+                ):
+                    await f(*args)
             else:
                 f(*args)
 
@@ -1259,11 +1263,12 @@ class Peer(Logger):
         else:
             # all good
             fut.set_result((we_must_resend_revoke_and_ack, their_next_local_ctn))
-        # Block processing of further incoming messages until we finished our part of chan-reest.
-        # This is needed for the replaying of our local unacked updates to be sane (if the peer
-        # also replays some messages we must not react to them until we finished replaying our own).
-        # (it would be sufficient to only block messages related to this channel, but this is easier)
-        await self._chan_reest_finished[chan.channel_id].wait()
+            # Block processing of further incoming messages until we finished our part of chan-reest.
+            # This is needed for the replaying of our local unacked updates to be sane (if the peer
+            # also replays some messages we must not react to them until we finished replaying our own).
+            # (it would be sufficient to only block messages related to this channel, but this is easier)
+            await self._chan_reest_finished[chan.channel_id].wait()
+            # Note: if the above event is never set, we won't detect if the connection was closed by remote...
 
     def _send_channel_reestablish(self, chan: Channel):
         assert self.is_initialized()
@@ -2726,6 +2731,15 @@ class Peer(Logger):
                         except OnionRoutingFailure as e:
                             assert len(self.lnworker.active_forwardings[payment_key]) == 0
                             self.lnworker.save_forwarding_failure(payment_key, failure_message=e)
+                        # TODO what about other errors? e.g. TxBroadcastError for a swap.
+                        #        - malicious electrum server could fake TxBroadcastError
+                        #      Could we "catch-all Exception" and fail back the htlcs with e.g. TEMPORARY_NODE_FAILURE?
+                        #        - we don't want to fail the inc-HTLC for a syntax error that happens in the callback
+                        #      If we don't call save_forwarding_failure(), the inc-HTLC gets stuck until expiry
+                        #      and then the inc-channel will get force-closed.
+                        #      => forwarding_callback() could have an API with two exceptions types:
+                        #        - type1, such as OnionRoutingFailure, that signals we need to fail back the inc-HTLC
+                        #        - type2, such as TxBroadcastError, that signals we want to retry the callback
                     # add to list
                     assert len(self.lnworker.active_forwardings.get(payment_key, [])) == 0
                     self.lnworker.active_forwardings[payment_key] = []
