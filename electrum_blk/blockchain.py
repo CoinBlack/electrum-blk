@@ -86,15 +86,16 @@ def hash_header(header: dict) -> str:
     if header.get('version') > 6:
         return hash_raw_header(serialize_header(header))
     else:
-        return pow_hash_header(header)
+        return pow_hash_header(serialize_header(header))
 
 
 def hash_raw_header(header: bytes) -> str:
     assert isinstance(header, bytes)
     return hash_encode(sha256d(header))
 
-def pow_hash_header(header):
-    return hash_encode(getPoWHash(bfh(serialize_header(header))))
+def pow_hash_header(header: bytes) -> str:
+    assert isinstance(header, bytes)
+    return hash_encode(getPoWHash(header))
 
 
 # key: blockhash hex at forkpoint
@@ -643,7 +644,7 @@ class Blockchain(Logger):
         if check_height and self.height() != height - 1:
             return False
         if height == 0:
-            return pow_hash_header(header) == constants.net.GENESIS
+            return hash_header(header) == constants.net.GENESIS
         try:
             prev_hash = self.get_hash(height - 1)
         except Exception:
