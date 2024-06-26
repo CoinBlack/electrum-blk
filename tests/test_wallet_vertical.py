@@ -17,7 +17,7 @@ from electrum_blk.wallet import (sweep, Multisig_Wallet, Standard_Wallet, Import
                              TxSighashRiskLevel)
 from electrum_blk.util import bfh, NotEnoughFunds, UnrelatedTransactionException, UserFacingException
 from electrum_blk.transaction import Transaction, PartialTxOutput, tx_from_any, Sighash
-from electrum_blk.mnemonic import seed_type
+from electrum_blk.mnemonic import calc_seed_type
 from electrum_blk.network import Network
 
 from electrum_blk.plugins.trustedcoin import trustedcoin
@@ -33,6 +33,7 @@ assert UNICODE_HORROR == '₿ 😀 😈     う けたま わる w͢͢͝h͡o͢͡
 class WalletIntegrityHelper:
 
     gap_limit = 1  # make tests run faster
+    # TODO also use short gap limit for change addrs, for performance
 
     @classmethod
     def check_seeded_keystore_sanity(cls, test_obj, ks):
@@ -90,7 +91,7 @@ class TestWalletKeystoreAddressIntegrityForMainnet(ElectrumTestCase):
     @mock.patch.object(wallet.Abstract_Wallet, 'save_db')
     async def test_electrum_seed_standard(self, mock_save_db):
         seed_words = 'cycle rocket west magnet parrot shuffle foot correct salt library feed song'
-        self.assertEqual(seed_type(seed_words), 'standard')
+        self.assertEqual(calc_seed_type(seed_words), 'standard')
 
         ks = keystore.from_seed(seed_words, passphrase='', for_multisig=False)
 
@@ -109,7 +110,7 @@ class TestWalletKeystoreAddressIntegrityForMainnet(ElectrumTestCase):
     @mock.patch.object(wallet.Abstract_Wallet, 'save_db')
     async def test_electrum_seed_segwit(self, mock_save_db):
         seed_words = 'bitter grass shiver impose acquire brush forget axis eager alone wine silver'
-        self.assertEqual(seed_type(seed_words), 'segwit')
+        self.assertEqual(calc_seed_type(seed_words), 'segwit')
 
         ks = keystore.from_seed(seed_words, passphrase='', for_multisig=False)
 
@@ -131,7 +132,7 @@ class TestWalletKeystoreAddressIntegrityForMainnet(ElectrumTestCase):
     @mock.patch.object(wallet.Abstract_Wallet, 'save_db')
     async def test_electrum_seed_segwit_passphrase(self, mock_save_db):
         seed_words = 'bitter grass shiver impose acquire brush forget axis eager alone wine silver'
-        self.assertEqual(seed_type(seed_words), 'segwit')
+        self.assertEqual(calc_seed_type(seed_words), 'segwit')
 
         ks = keystore.from_seed(seed_words, passphrase=UNICODE_HORROR, for_multisig=False)
 
@@ -153,7 +154,7 @@ class TestWalletKeystoreAddressIntegrityForMainnet(ElectrumTestCase):
     @mock.patch.object(wallet.Abstract_Wallet, 'save_db')
     async def test_electrum_seed_old(self, mock_save_db):
         seed_words = 'powerful random nobody notice nothing important anyway look away hidden message over'
-        self.assertEqual(seed_type(seed_words), 'old')
+        self.assertEqual(calc_seed_type(seed_words), 'old')
 
         ks = keystore.from_seed(seed_words, passphrase='', for_multisig=False)
 
@@ -169,10 +170,11 @@ class TestWalletKeystoreAddressIntegrityForMainnet(ElectrumTestCase):
         self.assertEqual(w.get_change_addresses()[0], '1KRW8pH6HFHZh889VDq6fEKvmrsmApwNfe')
 
     @mock.patch.object(wallet.Abstract_Wallet, 'save_db')
-    async def test_electrum_seed_2fa_legacy_pre27(self, mock_save_db):
-        # pre-version-2.7 2fa seed
+    async def test_electrum_seed_2fa_legacy_pre27_25words(self, mock_save_db):
+        # pre-version-2.7 2fa seed, containing 25 words
         seed_words = 'bind clever room kidney crucial sausage spy edit canvas soul liquid ribbon slam open alpha suffer gate relax voice carpet law hill woman tonight abstract'
-        self.assertEqual(seed_type(seed_words), '2fa')
+        assert len(seed_words.split()) == 25
+        self.assertEqual(calc_seed_type(seed_words), '2fa')
 
         xprv1, xpub1, xprv2, xpub2 = trustedcoin.TrustedCoinPlugin.xkeys_from_seed(seed_words, '')
 
@@ -204,10 +206,46 @@ class TestWalletKeystoreAddressIntegrityForMainnet(ElectrumTestCase):
         self.assertEqual(w.get_change_addresses()[0], '3Ke6pKrmtSyyQaMob1ES4pk8siAAkRmst9')
 
     @mock.patch.object(wallet.Abstract_Wallet, 'save_db')
+    async def test_electrum_seed_2fa_legacy_pre27_24words(self, mock_save_db):
+        # pre-version-2.7 2fa seed, containing 24 words
+        seed_words = 'sibling leg cable timber patient foot occur plate travel finger chef scale radio citizen promote immune must chef fluid sea sphere common acid lab'
+        assert len(seed_words.split()) == 24
+        self.assertEqual(calc_seed_type(seed_words), '2fa')
+
+        xprv1, xpub1, xprv2, xpub2 = trustedcoin.TrustedCoinPlugin.xkeys_from_seed(seed_words, '')
+
+        ks1 = keystore.from_xprv(xprv1)
+        self.assertTrue(isinstance(ks1, keystore.BIP32_KeyStore))
+        self.assertEqual(ks1.xprv, 'xprv9s21ZrQH143K37iqjPnsBm27cRgrg6TiKNwhCYg7Uk46yLKB5s4N1Knzo7rTkYvjojh9Z6KkGTMi6CV5h4kEcWYLmHjcTW8kK5bnMVXvEvp')
+        self.assertEqual(ks1.xpub, 'xpub661MyMwAqRbcFboJqRKsYtxrATXM5ZBZgbsHzw5j35b5r8eKdQNcZ87UeR24LDSn2RxspwL9s7yM3KqtPFq5dwP5csmQ2Xb1dgaQztrNGyP')
+        self.assertEqual(ks1.xpub, xpub1)
+
+        ks2 = keystore.from_xprv(xprv2)
+        self.assertTrue(isinstance(ks2, keystore.BIP32_KeyStore))
+        self.assertEqual(ks2.xprv, 'xprv9s21ZrQH143K2qJ6sVTs5bXnrw7CPEpYTkefvW6Xj9fMuskny5t3TaLMAvZtSkYwT68asJdrEaay8q4ntmXvYCuQL3ULdEziFCB9KyZhuDX')
+        self.assertEqual(ks2.xpub, 'xpub661MyMwAqRbcFKNZyWzsSjUXQxwgnhYPpyaGitW9HVCLng5wWdCJ1Neq2DLV3717ED1RG3aTGLJVVBt5CJEXmCzMLBjqXtK4MEvRXiYSvnJ')
+        self.assertEqual(ks2.xpub, xpub2)
+
+        long_user_id, short_id = trustedcoin.get_user_id(
+            {'x1': {'xpub': xpub1},
+             'x2': {'xpub': xpub2}})
+        xtype = bip32.xpub_type(xpub1)
+        xpub3 = trustedcoin.make_xpub(trustedcoin.get_signing_xpub(xtype), long_user_id)
+        ks3 = keystore.from_xpub(xpub3)
+        WalletIntegrityHelper.check_xpub_keystore_sanity(self, ks3)
+        self.assertTrue(isinstance(ks3, keystore.BIP32_KeyStore))
+
+        w = WalletIntegrityHelper.create_multisig_wallet([ks1, ks2, ks3], '2of3', config=self.config)
+        self.assertEqual(w.txin_type, 'p2sh')
+
+        self.assertEqual(w.get_receiving_addresses()[0], '39XK9VBGiK4bqNJYrajfKE8C1ky4gYA5Zy')
+        self.assertEqual(w.get_change_addresses()[0], '3PKtHrjiKdsZ73ULZ4Sf1vDBnrUoAEtLDe')
+
+    @mock.patch.object(wallet.Abstract_Wallet, 'save_db')
     async def test_electrum_seed_2fa_legacy_post27(self, mock_save_db):
         # post-version-2.7 2fa seed
         seed_words = 'kiss live scene rude gate step hip quarter bunker oxygen motor glove'
-        self.assertEqual(seed_type(seed_words), '2fa')
+        self.assertEqual(calc_seed_type(seed_words), '2fa')
 
         xprv1, xpub1, xprv2, xpub2 = trustedcoin.TrustedCoinPlugin.xkeys_from_seed(seed_words, '')
 
@@ -241,7 +279,7 @@ class TestWalletKeystoreAddressIntegrityForMainnet(ElectrumTestCase):
     @mock.patch.object(wallet.Abstract_Wallet, 'save_db')
     async def test_electrum_seed_2fa_segwit(self, mock_save_db):
         seed_words = 'universe topic remind silver february ranch shine worth innocent cattle enhance wise'
-        self.assertEqual(seed_type(seed_words), '2fa_segwit')
+        self.assertEqual(calc_seed_type(seed_words), '2fa_segwit')
 
         xprv1, xpub1, xprv2, xpub2 = trustedcoin.TrustedCoinPlugin.xkeys_from_seed(seed_words, '')
 
@@ -352,7 +390,7 @@ class TestWalletKeystoreAddressIntegrityForMainnet(ElectrumTestCase):
     @mock.patch.object(wallet.Abstract_Wallet, 'save_db')
     async def test_electrum_multisig_seed_standard(self, mock_save_db):
         seed_words = 'blast uniform dragon fiscal ensure vast young utility dinosaur abandon rookie sure'
-        self.assertEqual(seed_type(seed_words), 'standard')
+        self.assertEqual(calc_seed_type(seed_words), 'standard')
 
         ks1 = keystore.from_seed(seed_words, passphrase='', for_multisig=True)
         WalletIntegrityHelper.check_seeded_keystore_sanity(self, ks1)
@@ -374,7 +412,7 @@ class TestWalletKeystoreAddressIntegrityForMainnet(ElectrumTestCase):
     @mock.patch.object(wallet.Abstract_Wallet, 'save_db')
     async def test_electrum_multisig_seed_segwit(self, mock_save_db):
         seed_words = 'snow nest raise royal more walk demise rotate smooth spirit canyon gun'
-        self.assertEqual(seed_type(seed_words), 'segwit')
+        self.assertEqual(calc_seed_type(seed_words), 'segwit')
 
         ks1 = keystore.from_seed(seed_words, passphrase='', for_multisig=True)
         WalletIntegrityHelper.check_seeded_keystore_sanity(self, ks1)

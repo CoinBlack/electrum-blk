@@ -4,7 +4,7 @@ from ctypes import (
 )
 import io
 
-from electrum_blk import ecc
+from electrum_blk import ecc, bitcoin
 from electrum_blk.ecc import ECPubkey, ECPrivkey
 from electrum_blk.ecc_fast import _libsecp256k1
 from electrum_blk import crypto
@@ -115,7 +115,7 @@ class TestSchnorr(ElectrumTestCase):
         )
         for tag, msg in data:
             self.assertEqual(bip340_tagged_hash__from_libsecp(tag, msg),
-                             ecc.bip340_tagged_hash(tag, msg))
+                             bitcoin.bip340_tagged_hash(tag, msg))
 
 
 class TestEcdsa(ElectrumTestCase):

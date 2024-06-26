@@ -13,7 +13,7 @@ from electrum_blk.storage import WalletStorage, StorageEncryptionVersion
 from electrum_blk.wallet_db import WalletDB
 from electrum_blk.bip32 import normalize_bip32_derivation, xpub_type
 from electrum_blk import keystore, mnemonic, bitcoin
-from electrum_blk.mnemonic import is_any_2fa_seed_type
+from electrum_blk.mnemonic import is_any_2fa_seed_type, can_seed_have_passphrase
 
 if TYPE_CHECKING:
     from electrum_blk.daemon import Daemon
@@ -489,11 +489,10 @@ class NewWalletWizard(AbstractWizard):
         can_passphrase = True
 
         if seed_variant == 'electrum':
-            seed_type = mnemonic.seed_type(seed)
+            seed_type = mnemonic.calc_seed_type(seed)
             if seed_type != '':
                 seed_valid = True
-            if seed_type in ['old', '2fa']:
-                can_passphrase = False
+                can_passphrase = can_seed_have_passphrase(seed)
         elif seed_variant == 'bip39':
             is_checksum, is_wordlist = keystore.bip39_is_checksum_valid(seed)
             validation_message = ('' if is_checksum else _('BIP39 checksum failed')) if is_wordlist else _('Unknown BIP39 wordlist')

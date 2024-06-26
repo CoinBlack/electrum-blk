@@ -11,8 +11,8 @@ from electrum_blk.logging import get_logger
 from electrum_blk.util import WalletFileException, standardize_path, InvalidPassword, send_exception_to_crash_reporter
 from electrum_blk.plugin import run_hook
 from electrum_blk.lnchannel import ChannelState
-from electrum_blk.bitcoin import is_address
-from electrum_blk.ecc import verify_usermessage_with_address
+from electrum.bitcoin import is_address
+from electrum_blk.bitcoin import verify_usermessage_with_address
 from electrum_blk.storage import StorageReadWriteError
 
 from .auth import AuthMixin, auth_protect
