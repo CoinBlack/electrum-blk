@@ -86,7 +86,7 @@ class QEQRScanner(QObject):
         self.found.emit()
         self.finished.emit()
         return
-        # from electrum import qrscanner
+        # from electrum_blk import qrscanner
         # from .qeapp import ElectrumQmlApplication
         # daemon = ElectrumQmlApplication._daemon
         # config = daemon.config  # type: SimpleConfig

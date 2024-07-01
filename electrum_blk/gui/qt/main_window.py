@@ -2048,7 +2048,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         self.thread.add(task, on_success=setText)
 
     def do_encrypt(self, message_e, pubkey_e, encrypted_e):
-        from electrum import crypto
+        from electrum_blk import crypto
         message = message_e.toPlainText()
         message = message.encode('utf-8')
         try:
