@@ -167,6 +167,7 @@ WizardComponent {
             InfoTextArea {
                 Layout.fillWidth: true
                 text: qsTr('You can override the suggested derivation path.') + ' ' +
+                    qsTr('If you are using a Coinomi restore seed, use m/44\'/10\'/0\' here.') + ' ' +
                     qsTr('If you are not sure what this is, leave this field unchanged.')
             }
 
