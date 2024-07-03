@@ -112,6 +112,8 @@ WizardComponent {
                 text: qsTr('legacy (p2pkh)')
                 visible: !isMultisig
             }
+            // Blackcoin: disable SegWit wallets for now
+            /*
             ElRadioButton {
                 Layout.fillWidth: true
                 ButtonGroup.group: scripttypegroup
@@ -127,6 +129,7 @@ WizardComponent {
                 text: qsTr('native segwit (p2wpkh)')
                 visible: !isMultisig
             }
+            */
 
             // multisig
             ElRadioButton {
@@ -138,6 +141,8 @@ WizardComponent {
                 enabled: !cosigner || wizard_data['script_type'] == 'p2sh'
                 checked: cosigner ? wizard_data['script_type'] == 'p2sh' : false
             }
+            // Blackcoin: disable SegWit wallets for now
+            /*
             ElRadioButton {
                 Layout.fillWidth: true
                 ButtonGroup.group: scripttypegroup
@@ -156,6 +161,7 @@ WizardComponent {
                 enabled: !cosigner || wizard_data['script_type'] == 'p2wsh'
                 checked: cosigner ? wizard_data['script_type'] == 'p2wsh' : isMultisig
             }
+            */
 
             InfoTextArea {
                 Layout.fillWidth: true
