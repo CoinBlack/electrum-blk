@@ -28,24 +28,13 @@ FEE_LN_ETA_TARGET = 2       # note: make sure the network is asking for estimate
 FEE_LN_LOW_ETA_TARGET = 25  # note: make sure the network is asking for estimates for this target
 
 # satoshi per kbyte
-FEERATE_MAX_DYNAMIC = 1000000
-FEERATE_WARNING_HIGH_FEE = 600000
-FEERATE_FALLBACK_STATIC_FEE = 100000
-FEERATE_DEFAULT_RELAY = 10000
-FEERATE_MAX_RELAY = 50000
-FEERATE_STATIC_VALUES = [50000, 70000, 100000, 150000, 200000, 300000, 435000, 500000]
-
-# Blackcoin ToDo: increase the values after 3.1 fork
-'''
+# Blackcoin requires higher values after 3.1 fork
 FEERATE_MAX_DYNAMIC = 1000000
 FEERATE_WARNING_HIGH_FEE = 1000000
 FEERATE_FALLBACK_STATIC_FEE = 100000
 FEERATE_DEFAULT_RELAY = 100000
 FEERATE_MAX_RELAY = 1000000
 FEERATE_STATIC_VALUES = [435000, 500000, 700000, 1000000]
-FEERATE_REGTEST_HARDCODED = 180000  # for eclair compat
-
-'''
 
 # The min feerate_per_kw that can be used in lightning so that
 # the resulting onchain tx pays the min relay fee.
