@@ -109,6 +109,7 @@ WizardComponent {
                 Layout.fillWidth: true
                 ButtonGroup.group: scripttypegroup
                 property string scripttype: 'p2pkh'
+                checked: !isMultisig
                 text: qsTr('legacy (p2pkh)')
                 visible: !isMultisig
             }
@@ -139,7 +140,7 @@ WizardComponent {
                 text: qsTr('legacy multisig (p2sh)')
                 visible: isMultisig
                 enabled: !cosigner || wizard_data['script_type'] == 'p2sh'
-                checked: cosigner ? wizard_data['script_type'] == 'p2sh' : false
+                checked: cosigner ? wizard_data['script_type'] == 'p2sh' : isMultisig
             }
             // Blackcoin: disable SegWit wallets for now
             /*
