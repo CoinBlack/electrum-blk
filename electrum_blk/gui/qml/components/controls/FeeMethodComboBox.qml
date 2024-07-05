@@ -12,8 +12,6 @@ ElComboBox {
     valueRole: 'value'
 
     model: [
-        /*{ text: qsTr('ETA'), value: 1 },
-        { text: qsTr('Mempool'), value: 2 },*/
         { text: qsTr('Static'), value: 0 }
     ]
     onCurrentValueChanged: {
@@ -21,6 +19,7 @@ ElComboBox {
             feeslider.method = currentValue
     }
     Component.onCompleted: {
-        currentIndex = indexOfValue(feeslider.method)
+        currentIndex = indexOfValue(0)
+        feeslider.method = 0
     }
 }
