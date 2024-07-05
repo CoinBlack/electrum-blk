@@ -3204,7 +3204,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         short_warning = None
         allow_send = True
         # Blackcoin: check minimum fee before/after fork
-        is_low_fee = feerate < self.relayfee() / 1000 if calendar.timegm(datetime.datetime.utcnow().utctimetuple()) < constants.net.FIRST_POSV3_1_BLOCK_TIME else fee < ((1 + tx_size // 1000) * MIN_TX_FEE_PER_KB) 
+        is_low_fee = feerate < self.relayfee() / 1000 if calendar.timegm(datetime.datetime.utcnow().utctimetuple()) < constants.net.FIRST_POSV3_1_BLOCK_TIME else fee < max((tx_size // 1000) * MIN_TX_FEE_PER_KB, MIN_TX_FEE)
         if is_low_fee:
             long_warning = ' '.join([
                 _("This transaction requires a higher fee, or it will not be propagated by your current server."),
