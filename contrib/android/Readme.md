@@ -1,6 +1,6 @@
 # Qml GUI
 
-The Qml GUI is used with Electrum on Android devices, since Electrum 4.4.
+The Qml GUI is used with Electrum-BLK on Android devices, since Electrum 4.4.
 To generate an APK file, follow these instructions.
 
 (note: older versions of Electrum for Android used the "kivy" GUI)
@@ -64,8 +64,8 @@ You probably need to clear the cache: `rm -rf .buildozer/android/platform/build-
 ### How do I deploy on connected phone for quick testing?
 Assuming `adb` is installed:
 ```
-$ adb -d install -r dist/Electrum-*-arm64-v8a-debug.apk
-$ adb shell monkey -p org.electrum.electrum 1
+$ adb -d install -r dist/ElectrumBLK-*-arm64-v8a-debug.apk
+$ adb shell monkey -p org.blackcoin.electrumblk 1
 ```
 
 
@@ -74,8 +74,8 @@ $ adb shell monkey -p org.electrum.electrum 1
 $ docker run -it --rm \
     -v $PWD:/home/user/wspace/electrum \
     -v $PWD/.buildozer/.gradle:/home/user/.gradle \
-    --workdir /home/user/wspace/electrum \
-    electrum-android-builder-img
+    --workdir /home/user/wspace/electrum-blk \
+    electrum-blk-android-builder-img
 ```
 
 
@@ -90,7 +90,7 @@ adb logcat | grep python
 ```
 Better `grep` but fragile because of `cut`:
 ```
-adb logcat | grep -F "`adb shell ps | grep org.electrum.electrum | cut -c14-19`"
+adb logcat | grep -F "`adb shell ps | grep org.blackcoin.electrumblk | cut -c14-19`"
 ```
 
 
@@ -100,7 +100,7 @@ Install requirements:
 python3 -m pip install ".[qml_gui]"
 ```
 
-Run electrum with the `-g` switch: `electrum -g qml`
+Run electrum-blk with the `-g` switch: `electrumblk -g qml`
 
 Notes:
 
@@ -135,16 +135,16 @@ of Android does not let you access the internal storage of an app without root.
 To pull a file:
 ```
 $ adb shell
-adb$ run-as org.electrum.electrum ls /data/data/org.electrum.electrum/files/data
+adb$ run-as org.blackcoin.electrumblk ls /data/data/org.blackcoin.electrumblk/files/data
 adb$ exit
-$ adb exec-out run-as org.electrum.electrum cat /data/data/org.electrum.electrum/files/data/wallets/my_wallet > my_wallet
+$ adb exec-out run-as org.blackcoin.electrumblk cat /data/data/org.blackcoin.electrumblk/files/data/wallets/my_wallet > my_wallet
 ```
 To push a file:
 ```
 $ adb push ~/wspace/tmp/my_wallet /data/local/tmp
 $ adb shell
 adb$ ls -la /data/local/tmp
-adb$ run-as org.electrum.testnet.electrum cp /data/local/tmp/my_wallet /data/data/org.electrum.testnet.electrum/files/data/testnet/wallets/
+adb$ run-as org.blackcoin.testnet.electrumblk cp /data/local/tmp/my_wallet /data/data/org.blackcoin.testnet.electrumblk/files/data/testnet/wallets/
 adb$ rm /data/local/tmp/my_wallet
 ```
 
@@ -153,11 +153,11 @@ Or use Android Studio: "Device File Explorer", which can download/upload data di
 ### How to investigate diff between binaries if reproducibility fails?
 ```
 cd dist/
-unzip Electrum-*.apk1 -d apk1
+unzip ElectrumBLK-*.apk1 -d apk1
 mkdir apk1/assets/private_mp3/
 tar -xzvf apk1/assets/private.tar --directory apk1/assets/private_mp3/
 
-unzip Electrum-*.apk2 -d apk2
+unzip ElectrumBLK-*.apk2 -d apk2
 mkdir apk2/assets/private_mp3/
 tar -xzvf apk2/assets/private.tar --directory apk2/assets/private_mp3/
 
@@ -186,5 +186,5 @@ However, it is possible to resign the apk manually with one's own key, using
 e.g. [`apksigner`](https://developer.android.com/studio/command-line/apksigner),
 mutating the apk in place, after which it should be possible to upgrade:
 ```
-apksigner sign --ks ~/wspace/electrum/contrib/android/android_debug.keystore Electrum-*-arm64-v8a-debug.apk
+apksigner sign --ks ~/wspace/electrum-blk/contrib/android/android_debug.keystore Electrum-*-arm64-v8a-debug.apk
 ```

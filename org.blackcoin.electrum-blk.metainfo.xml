@@ -3,13 +3,13 @@
 <!--
   Copyright 2023-2024 Soren Stoutner <soren@debian.org>.
 
-  This file can be validated using `appstreamcli validate org.electrum.electrum.metainfo.xml`.
+  This file can be validated using `appstreamcli validate org.blackcoin.electrum-blk.metainfo.xml`.
 
   Distributed under the MIT software license, see the accompanying file LICENCE or http://www.opensource.org/licenses/mit-license.php.
 -->
 
 <component type="desktop-application">
-  <id>org.electrum-blk.electrum_blk</id>
+  <id>org.blackcoin.electrum-blk</id>
 
   <name>Electrum-BLK</name>
   <summary>Blackcoin Wallet</summary>
@@ -25,7 +25,7 @@
   </description>
 
   <url type="homepage">https://blackcoin.org/</url>
-  <developer id="org.electrum-blk">
+  <developer id="org.blackcoin">
       <name>The Electrum-BLK developers</name>
   </developer>
 

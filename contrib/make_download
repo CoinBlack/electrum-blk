@@ -49,9 +49,9 @@ files = {
     "win": f"electrum-blk-{version_win}.exe",
     "win_setup": f"electrum-blk-{version_win}-setup.exe",
     "win_portable": f"electrum-blk-{version_win}-portable.exe",
-    "apk_arm64": f"Electrum-BLK-{APK_VERSION}-arm64-v8a-release.apk",
-    "apk_armeabi": f"Electrum-BLK-{APK_VERSION}-armeabi-v7a-release.apk",
-    "apk_x86_64": f"Electrum-BLK-{APK_VERSION}-x86_64-release.apk",
+    "apk_arm64": f"ElectrumBLK-{APK_VERSION}-arm64-v8a-release.apk",
+    "apk_armeabi": f"ElectrumBLK-{APK_VERSION}-armeabi-v7a-release.apk",
+    "apk_x86_64": f"ElectrumBLK-{APK_VERSION}-x86_64-release.apk",
 }
 
 # default signers
