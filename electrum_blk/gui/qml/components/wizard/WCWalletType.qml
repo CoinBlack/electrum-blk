@@ -6,13 +6,15 @@ import "../controls"
 
 WizardComponent {
     valid: wallettypegroup.checkedButton !== null
-
+    //Blackcoin TODO enable Segwit
     function apply() {
         wizard_data['wallet_type'] = wallettypegroup.checkedButton.wallettype
         if (wizard_data['wallet_type'] == 'standard')
-            wizard_data['seed_type'] = 'segwit'
+        //    wizard_data['seed_type'] = 'segwit'
+            wizard_data['seed_type'] = 'standard'
         else if (wizard_data['wallet_type'] == '2fa')
-            wizard_data['seed_type'] = '2fa_segwit'
+        //    wizard_data['seed_type'] = '2fa_segwit'
+            wizard_data['seed_type'] = '2fa'
         // TODO: multisig
     }
 
