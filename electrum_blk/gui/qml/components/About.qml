@@ -6,7 +6,7 @@ import QtQuick.Controls.Material
 Pane {
     objectName: 'About'
 
-    property string title: qsTr("About Electrum")
+    property string title: qsTr("About Electrum-BLK")
 
     Flickable {
         anchors.fill: parent
@@ -27,7 +27,7 @@ Pane {
                 Image {
                     id: electrum_logo
                     width: parent.width
-                    height: width
+                    height: width * 6/5
                     source: '../../icons/electrum_presplash.png'
                 }
             }
@@ -72,7 +72,7 @@ Pane {
                 Layout.alignment: Qt.AlignRight
             }
             Label {
-                text: qsTr('<a href="https://electrum.org">https://electrum.org</a>')
+                text: qsTr('<a href="https://blackcoin.org">https://blackcoin.org</a>')
                 textFormat: Text.RichText
                 onLinkActivated: Qt.openUrlExternally(link)
             }
@@ -81,7 +81,7 @@ Pane {
                 Layout.alignment: Qt.AlignRight
             }
             Label {
-                text: 'Thomas Voegtlin\nSomberNight\nSander van Grieken'
+                text: 'Thomas Voegtlin\nSomberNight\nSander van Grieken\nlateminer\BlackcoinDev'
             }
             Item {
                 width: 1
@@ -89,7 +89,7 @@ Pane {
                 Layout.columnSpan: 2
             }
             Label {
-                text: qsTr('Distributed by Electrum Technologies GmbH')
+                text: qsTr('Distributed by Blackcoin Team')
                 Layout.columnSpan: 2
                 Layout.alignment: Qt.AlignHCenter
             }
