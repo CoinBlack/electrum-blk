@@ -8,7 +8,7 @@ from electrum_blk.util import create_and_start_event_loop, log_exceptions
 from electrum_blk import constants
 
 # testnet?
-#constants.set_testnet()
+#constants.BitcoinTestnet.set_as_network()
 config = SimpleConfig({'testnet': False})
 
 loop, stopping_fut, loop_thread = create_and_start_event_loop()

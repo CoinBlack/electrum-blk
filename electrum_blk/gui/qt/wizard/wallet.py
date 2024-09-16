@@ -29,7 +29,7 @@ from electrum_blk.gui.qt.bip39_recovery_dialog import Bip39RecoveryDialog
 from electrum_blk.gui.qt.password_dialog import PasswordLayout, PW_NEW, MSG_ENTER_PASSWORD, PasswordLayoutForHW
 from electrum_blk.gui.qt.seed_dialog import SeedLayout, MSG_PASSPHRASE_WARN_ISSUE4566, KeysLayout
 from electrum_blk.gui.qt.util import (PasswordLineEdit, char_width_in_lineedit, WWLabel, InfoButton, font_height,
-                                  ChoiceWidget, MessageBoxMixin, WindowModalDialog, ChoicesLayout, CancelButton,
+                                  ChoiceWidget, MessageBoxMixin, WindowModalDialog, CancelButton,
                                   Buttons, OkButton, icon_path)
 
 if TYPE_CHECKING:
@@ -236,22 +236,6 @@ class QENewWalletWizard(NewWalletWizard, QEAbstractWizard, MessageBoxMixin):
 
         if on_finished:
             on_finished()
-
-    def query_choice(self, msg, choices, title=None, default_choice=None):
-        # Needed by QtHandler for hardware wallets
-        if title is None:
-            title = _('Question')
-        dialog = WindowModalDialog(self.top_level_window(), title=title)
-        dialog.setMinimumWidth(400)
-        clayout = ChoicesLayout(msg, choices, checked_index=default_choice)
-        vbox = QVBoxLayout(dialog)
-        vbox.addLayout(clayout.layout())
-        cancel_button = CancelButton(dialog)
-        vbox.addLayout(Buttons(cancel_button, OkButton(dialog)))
-        cancel_button.setFocus()
-        if not dialog.exec_():
-            return None
-        return clayout.selected_index()
 
 
 class WalletWizardComponent(WizardComponent, ABC):
