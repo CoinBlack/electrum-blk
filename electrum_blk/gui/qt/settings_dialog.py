@@ -186,6 +186,11 @@ class SettingsDialog(QDialog, QtEventListener):
         lnfee_hbox_w = QWidget()
         lnfee_hbox_w.setLayout(lnfee_hbox)
 
+        # Blackcoin: disable Lightning fees slider
+        lnfee_hlabel.setEnabled(False)
+        lnfee_vlabel.setEnabled(False)
+        lnfee_slider.setEnabled(False)
+
         alias_label = HelpLabel.from_configvar(self.config.cv.OPENALIAS_ID)
         alias = self.config.OPENALIAS_ID
         self.alias_e = QLineEdit(alias)
