@@ -1,8 +1,8 @@
 from functools import partial
 from typing import TYPE_CHECKING
 
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtWidgets import QInputDialog, QLineEdit
+from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtWidgets import QInputDialog, QLineEdit
 
 from electrum_blk.i18n import _
 from electrum_blk.plugin import hook
@@ -63,7 +63,7 @@ class Ledger_Handler(QtHandlerBase):
         self.auth_signal.connect(self.auth_dialog)
 
     def word_dialog(self, msg):
-        response = QInputDialog.getText(self.top_level_window(), "Ledger Wallet Authentication", msg, QLineEdit.Password)
+        response = QInputDialog.getText(self.top_level_window(), "Ledger Wallet Authentication", msg, QLineEdit.EchoMode.Password)
         if not response[1]:
             self.word = None
         else:
@@ -77,7 +77,7 @@ class Ledger_Handler(QtHandlerBase):
             self.message_dialog(repr(e))
             return
         dialog = LedgerAuthDialog(self, data, client=client)
-        dialog.exec_()
+        dialog.exec()
         self.word = dialog.pin
         self.done.set()
 

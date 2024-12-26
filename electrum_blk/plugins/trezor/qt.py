@@ -2,8 +2,8 @@ from functools import partial
 import threading
 from typing import TYPE_CHECKING
 
-from PyQt5.QtCore import Qt, QEventLoop, pyqtSignal
-from PyQt5.QtWidgets import (QVBoxLayout, QLabel, QGridLayout, QPushButton,
+from PyQt6.QtCore import Qt, QEventLoop, pyqtSignal
+from PyQt6.QtWidgets import (QVBoxLayout, QLabel, QGridLayout, QPushButton,
                              QHBoxLayout, QButtonGroup, QGroupBox, QDialog,
                              QLineEdit, QRadioButton, QCheckBox, QWidget,
                              QMessageBox, QSlider, QTabWidget)
@@ -14,6 +14,7 @@ from electrum_blk.plugin import hook
 from electrum_blk.keystore import ScriptTypeNotSupported
 
 from electrum_blk.plugins.hw_wallet.qt import QtHandlerBase, QtPluginBase
+from electrum_blk.plugins.hw_wallet.trezor_qt_pinmatrix import PinMatrixWidget
 from electrum_blk.plugins.hw_wallet.plugin import only_hook_if_libraries_available, OutdatedHwFirmwareException
 
 from electrum_blk.gui.qt.util import (WindowModalDialog, WWLabel, Buttons, CancelButton,
@@ -74,9 +75,9 @@ class MatrixDialog(WindowModalDialog):
         vbox.addLayout(grid)
 
         self.backspace_button = QPushButton("<=")
-        self.backspace_button.clicked.connect(partial(self.process_key, Qt.Key_Backspace))
+        self.backspace_button.clicked.connect(partial(self.process_key, Qt.Key.Key_Backspace))
         self.cancel_button = QPushButton(_("Cancel"))
-        self.cancel_button.clicked.connect(partial(self.process_key, Qt.Key_Escape))
+        self.cancel_button.clicked.connect(partial(self.process_key, Qt.Key.Key_Escape))
         buttons = Buttons(self.backspace_button, self.cancel_button)
         vbox.addSpacing(40)
         vbox.addLayout(buttons)
@@ -92,9 +93,9 @@ class MatrixDialog(WindowModalDialog):
 
     def process_key(self, key):
         self.data = None
-        if key == Qt.Key_Backspace:
+        if key == Qt.Key.Key_Backspace:
             self.data = '\010'
-        elif key == Qt.Key_Escape:
+        elif key == Qt.Key.Key_Escape:
             self.data = 'x'
         elif self.is_valid(key):
             self.char_buttons[key - ord('1')].setFocus()
@@ -110,7 +111,7 @@ class MatrixDialog(WindowModalDialog):
     def get_matrix(self, num):
         self.num = num
         self.refresh()
-        self.loop.exec_()
+        self.loop.exec()
 
 
 class QtHandler(QtHandlerBase):
@@ -161,7 +162,7 @@ class QtHandler(QtHandlerBase):
         vbox.addWidget(matrix)
         vbox.addLayout(Buttons(CancelButton(dialog), OkButton(dialog)))
         dialog.setLayout(vbox)
-        dialog.exec_()
+        dialog.exec()
         self.response = str(matrix.get_value())
         self.done.set()
 
@@ -232,7 +233,7 @@ class QtHandler(QtHandlerBase):
         OnDevice_button.clicked.connect(on_device_clicked)
         OnDevice_button.clicked.connect(d.accept)
 
-        d.exec_()
+        d.exec()
         self.done.set()
 
 
@@ -259,7 +260,7 @@ class QtPlugin(QtPluginBase):
             return device_id
         def show_dialog(device_id):
             if device_id:
-                SettingsDialog(window, self, keystore, device_id).exec_()
+                SettingsDialog(window, self, keystore, device_id).exec()
         keystore.thread.add(connect, on_success=show_dialog)
 
 
@@ -462,7 +463,6 @@ class Plugin(TrezorPlugin, QtPlugin):
 
     @classmethod
     def pin_matrix_widget_class(self):
-        from trezorlib.qt.pinmatrix import PinMatrixWidget
         return PinMatrixWidget
 
     @hook
@@ -619,7 +619,7 @@ class SettingsDialog(WindowModalDialog):
                 msg = _("Are you SURE you want to wipe the device?\n"
                         "Your wallet still has blackcoins in it!")
                 if not self.question(msg, title=title,
-                                     icon=QMessageBox.Critical):
+                                     icon=QMessageBox.Icon.Critical):
                     return
             invoke_client('wipe_device', unpair_after=True)
 
@@ -721,11 +721,11 @@ class SettingsDialog(WindowModalDialog):
         # Settings tab - Session Timeout
         timeout_label = QLabel(_("Session Timeout"))
         timeout_minutes = QLabel()
-        timeout_slider = QSlider(Qt.Horizontal)
+        timeout_slider = QSlider(Qt.Orientation.Horizontal)
         timeout_slider.setRange(1, 60)
         timeout_slider.setSingleStep(1)
         timeout_slider.setTickInterval(5)
-        timeout_slider.setTickPosition(QSlider.TicksBelow)
+        timeout_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
         timeout_slider.setTracking(True)
         timeout_msg = QLabel(
             _("Clear the session after the specified period "

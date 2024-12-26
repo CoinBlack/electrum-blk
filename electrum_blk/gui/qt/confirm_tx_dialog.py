@@ -27,10 +27,10 @@ from decimal import Decimal
 from functools import partial
 from typing import TYPE_CHECKING, Optional, Union, Callable
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QIcon
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QIcon
 
-from PyQt5.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QLabel, QGridLayout, QPushButton, QLineEdit, QToolButton, QMenu
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QLabel, QGridLayout, QPushButton, QLineEdit, QToolButton, QMenu
 
 from electrum_blk.i18n import _
 from electrum_blk.util import NotEnoughFunds, NoDynamicFeeEstimates
@@ -42,7 +42,7 @@ from electrum_blk.simple_config import SimpleConfig
 from electrum_blk.bitcoin import DummyAddress
 
 from .util import (WindowModalDialog, ColorScheme, HelpLabel, Buttons, CancelButton,
-                   BlockingWaitingDialog, PasswordLineEdit, WWLabel, read_QIcon)
+                   PasswordLineEdit, WWLabel, read_QIcon)
 
 from .fee_slider import FeeSlider, FeeComboBox
 
@@ -61,7 +61,7 @@ class TxEditor(WindowModalDialog):
     def __init__(self, *, title='',
                  window: 'ElectrumWindow',
                  make_tx,
-                 output_value: Union[int, str] = None,
+                 output_value: Union[int, str],
                  allow_preview=True):
 
         WindowModalDialog.__init__(self, window, title=title)
@@ -151,18 +151,18 @@ class TxEditor(WindowModalDialog):
     def create_fee_controls(self):
 
         self.fee_label = QLabel('')
-        self.fee_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.fee_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         self.size_label = TxSizeLabel()
-        self.size_label.setAlignment(Qt.AlignCenter)
+        self.size_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.size_label.setAmount(0)
         self.size_label.setStyleSheet(ColorScheme.DEFAULT.as_stylesheet())
 
         self.feerate_label = QLabel('')
-        self.feerate_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.feerate_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         self.fiat_fee_label = TxFiatLabel()
-        self.fiat_fee_label.setAlignment(Qt.AlignCenter)
+        self.fiat_fee_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.fiat_fee_label.setAmount(0)
         self.fiat_fee_label.setStyleSheet(ColorScheme.DEFAULT.as_stylesheet())
 
@@ -185,7 +185,7 @@ class TxEditor(WindowModalDialog):
         self.fee_target = QLabel('')
         self.fee_slider = FeeSlider(self, self.config, self.fee_slider_callback)
         self.fee_combo = FeeComboBox(self.fee_slider)
-        self.fee_combo.setFocusPolicy(Qt.NoFocus)
+        self.fee_combo.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         def feerounding_onclick():
             text = (self.feerounding_text() + '\n\n' +
@@ -418,8 +418,8 @@ class TxEditor(WindowModalDialog):
         self.pref_button = QToolButton()
         self.pref_button.setIcon(read_QIcon("preferences.png"))
         self.pref_button.setMenu(self.pref_menu)
-        self.pref_button.setPopupMode(QToolButton.InstantPopup)
-        self.pref_button.setFocusPolicy(Qt.NoFocus)
+        self.pref_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.pref_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         hbox = QHBoxLayout()
         hbox.addWidget(QLabel(text))
         hbox.addStretch()
@@ -505,7 +505,7 @@ class TxEditor(WindowModalDialog):
             w.setVisible(b)
 
     def run(self):
-        cancelled = not self.exec_()
+        cancelled = not self.exec()
         self.stop_editor_updates()
         self.deleteLater()  # see #3956
         return self.tx if not cancelled else None
@@ -533,7 +533,7 @@ class TxEditor(WindowModalDialog):
             if self.not_enough_funds:
                 self.io_widget.update(None)
             self.set_feerounding_visibility(False)
-            self.messages = []
+            self.messages = [_('Preparing transaction...')]
         else:
             self.messages = self.get_messages()
             self.update_fee_fields()
@@ -620,7 +620,7 @@ class ConfirmTxDialog(TxEditor):
             title=_("New Transaction"), # todo: adapt title for channel funding tx, swaps
             allow_preview=allow_preview)
 
-        BlockingWaitingDialog(window, _("Preparing transaction..."), self.update)
+        self.trigger_update()
 
     def _update_amount_label(self):
         tx = self.tx
@@ -682,7 +682,7 @@ class ConfirmTxDialog(TxEditor):
         msg = (_('The amount to be received by the recipient.') + ' '
                + _('Fees are paid by the sender.'))
         self.amount_label = QLabel('')
-        self.amount_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.amount_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         grid.addWidget(HelpLabel(_("Amount to be sent") + ": ", msg), 0, 0)
         grid.addWidget(self.amount_label, 0, 1)
@@ -703,7 +703,7 @@ class ConfirmTxDialog(TxEditor):
         self.extra_fee_label = QLabel(_("Additional fees") + ": ")
         self.extra_fee_label.setVisible(False)
         self.extra_fee_value = QLabel('')
-        self.extra_fee_value.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.extra_fee_value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.extra_fee_value.setVisible(False)
         grid.addWidget(self.extra_fee_label, 5, 0)
         grid.addWidget(self.extra_fee_value, 5, 1)

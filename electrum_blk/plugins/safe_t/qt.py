@@ -2,9 +2,9 @@ import threading
 from functools import partial
 from typing import TYPE_CHECKING
 
-from PyQt5.QtCore import Qt, pyqtSignal, QRegExp
-from PyQt5.QtGui import QRegExpValidator
-from PyQt5.QtWidgets import (QVBoxLayout, QLabel, QGridLayout, QPushButton,
+from PyQt6.QtCore import Qt, pyqtSignal, QRegularExpression
+from PyQt6.QtGui import QRegularExpressionValidator
+from PyQt6.QtWidgets import (QVBoxLayout, QLabel, QGridLayout, QPushButton,
                              QHBoxLayout, QButtonGroup, QGroupBox,
                              QTextEdit, QLineEdit, QRadioButton, QCheckBox, QWidget,
                              QMessageBox, QFileDialog, QSlider, QTabWidget)
@@ -15,8 +15,10 @@ from electrum_blk.i18n import _
 from electrum_blk.plugin import hook
 from electrum_blk.logging import Logger
 
-from ..hw_wallet.qt import QtHandlerBase, QtPluginBase
-from ..hw_wallet.plugin import only_hook_if_libraries_available
+from electrum_blk.plugins.hw_wallet.qt import QtHandlerBase, QtPluginBase
+from electrum_blk.plugins.hw_wallet.trezor_qt_pinmatrix import PinMatrixWidget
+from electrum_blk.plugins.hw_wallet.plugin import only_hook_if_libraries_available
+
 from .safe_t import SafeTPlugin, TIM_NEW, TIM_RECOVER, TIM_MNEMONIC, TIM_PRIVKEY
 
 from electrum_blk.gui.qt.wizard.wallet import WCScriptAndDerivation, WCHWUnlock, WCHWXPub, WalletWizardComponent
@@ -66,7 +68,7 @@ class QtHandler(QtHandlerBase):
         vbox.addWidget(matrix)
         vbox.addLayout(Buttons(CancelButton(dialog), OkButton(dialog)))
         dialog.setLayout(vbox)
-        dialog.exec_()
+        dialog.exec()
         self.response = str(matrix.get_value())
         self.done.set()
 
@@ -94,7 +96,7 @@ class QtPlugin(QtPluginBase):
             return device_id
         def show_dialog(device_id):
             if device_id:
-                SettingsDialog(window, self, keystore, device_id).exec_()
+                SettingsDialog(window, self, keystore, device_id).exec()
         keystore.thread.add(connect, on_success=show_dialog)
 
 
@@ -152,7 +154,7 @@ class SafeTInitLayout(QVBoxLayout):
             self.addWidget(QLabel(msg))
             self.addWidget(self.text_e)
             self.pin = QLineEdit()
-            self.pin.setValidator(QRegExpValidator(QRegExp('[1-9]{0,9}')))
+            self.pin.setValidator(QRegularExpressionValidator(QRegularExpression('[1-9]{0,9}')))
             self.pin.setMaximumWidth(100)
             hbox_pin = QHBoxLayout()
             hbox_pin.addWidget(QLabel(_("Enter your PIN (digits 1-9):")))
@@ -194,7 +196,6 @@ class Plugin(SafeTPlugin, QtPlugin):
 
     @classmethod
     def pin_matrix_widget_class(self):
-        from safetlib.qt.pinmatrix import PinMatrixWidget
         return PinMatrixWidget
 
     @hook
@@ -351,7 +352,7 @@ class SettingsDialog(WindowModalDialog):
                 msg = _("Are you SURE you want to wipe the device?\n"
                         "Your wallet still has blackcoins in it!")
                 if not self.question(msg, title=title,
-                                     icon=QMessageBox.Critical):
+                                     icon=QMessageBox.Icon.Critical):
                     return
             invoke_client('wipe_device', unpair_after=True)
 
@@ -453,11 +454,11 @@ class SettingsDialog(WindowModalDialog):
         # Settings tab - Session Timeout
         timeout_label = QLabel(_("Session Timeout"))
         timeout_minutes = QLabel()
-        timeout_slider = QSlider(Qt.Horizontal)
+        timeout_slider = QSlider(Qt.Orientation.Horizontal)
         timeout_slider.setRange(1, 60)
         timeout_slider.setSingleStep(1)
         timeout_slider.setTickInterval(5)
-        timeout_slider.setTickPosition(QSlider.TicksBelow)
+        timeout_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
         timeout_slider.setTracking(True)
         timeout_msg = QLabel(
             _("Clear the session after the specified period "

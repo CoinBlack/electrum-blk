@@ -4,8 +4,8 @@
 
 from typing import TYPE_CHECKING
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import (QCheckBox, QLabel, QVBoxLayout, QGridLayout, QWidget,
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (QCheckBox, QLabel, QVBoxLayout, QGridLayout, QWidget,
                              QPushButton, QHBoxLayout, QComboBox)
 
 from .amountedit import FeerateEdit
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from .main_window import ElectrumWindow
 
 
-from .confirm_tx_dialog import ConfirmTxDialog, TxEditor, TxSizeLabel, HelpLabel
+from .confirm_tx_dialog import TxEditor, TxSizeLabel, HelpLabel
 
 class _BaseRBFDialog(TxEditor):
 
@@ -40,11 +40,17 @@ class _BaseRBFDialog(TxEditor):
         self.old_tx_size = tx.estimated_size()
         self.old_fee_rate = old_fee_rate = self.old_fee / self.old_tx_size  # sat/vbyte
 
+        output_value = sum([txo.value for txo in tx.outputs() if not txo.is_mine])
+        if output_value == 0:
+            output_value = tx.output_value()
+
         TxEditor.__init__(
             self,
             window=main_window,
             title=title,
-            make_tx=self.rbf_func)
+            make_tx=self.rbf_func,
+            output_value=output_value,
+        )
 
         self.fee_e.setFrozen(True)  # disallow setting absolute fee for now, as wallet.bump_fee can only target feerate
         new_fee_rate = self.old_fee_rate + max(1, self.old_fee_rate // 20)
@@ -59,9 +65,9 @@ class _BaseRBFDialog(TxEditor):
         self.method_combo.addItems([strat.text() for strat in self._strategies])
         self.method_combo.setCurrentIndex(def_strat_idx)
         self.method_combo.currentIndexChanged.connect(self.trigger_update)
-        self.method_combo.setFocusPolicy(Qt.NoFocus)
+        self.method_combo.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         old_size_label = TxSizeLabel()
-        old_size_label.setAlignment(Qt.AlignCenter)
+        old_size_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         old_size_label.setAmount(self.old_tx_size)
         old_size_label.setStyleSheet(ColorScheme.DEFAULT.as_stylesheet())
         current_fee_hbox = QHBoxLayout()
@@ -85,7 +91,7 @@ class _BaseRBFDialog(TxEditor):
         return grid
 
     def run(self) -> None:
-        if not self.exec_():
+        if not self.exec():
             return
         if self.is_preview:
             self.main_window.show_transaction(self.tx)

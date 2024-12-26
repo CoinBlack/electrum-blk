@@ -24,7 +24,6 @@
 # SOFTWARE.
 
 from electrum_blk.i18n import _
-from electrum_blk.plugin import hook
 from .trustedcoin import TrustedCoinPlugin
 
 

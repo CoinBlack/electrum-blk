@@ -19,13 +19,30 @@ source.include_exts = py,png,jpg,qml,qmltypes,ttf,txt,gif,pem,mo,json,csv,so,svg
 source.exclude_exts = spec
 
 # (list) List of directory to exclude (let empty to not exclude anything)
-source.exclude_dirs = bin, build, dist, contrib, env,
+source.exclude_dirs =
+    bin,
+    build,
+    dist,
+    contrib,
+    env,
     tests,
+    fastlane,
     electrum_blk/www,
     electrum_blk/scripts,
     electrum_blk/utils,
     electrum_blk/gui/qt,
+    electrum_blk/plugins/audio_modem,
+    electrum_blk/plugins/bitbox02,
+    electrum_blk/plugins/coldcard,
+    electrum_blk/plugins/digitalbitbox,
+    electrum_blk/plugins/hw_wallet,
+    electrum_blk/plugins/jade,
+    electrum_blk/plugins/keepkey,
+    electrum_blk/plugins/ledger,
+    electrum_blk/plugins/trezor,
     electrum_blk/plugins/payserver,
+    electrum_blk/plugins/revealer,
+    electrum_blk/plugins/safe_t,
     packages/qdarkstyle,
     packages/qtpy,
     packages/bin,
@@ -40,7 +57,7 @@ source.exclude_patterns = Makefile,setup*,
     packages/frozenlist-*.dist-info/*
 
 # (str) Application versioning (method 1)
-version.regex = APK_VERSION = '(.*)'
+version.regex = ELECTRUM_VERSION = '(.*)'
 version.filename = %(source.dir)s/electrum_blk/version.py
 
 # (str) Application versioning (method 2)
@@ -89,7 +106,7 @@ android.permissions = INTERNET, CAMERA, WRITE_EXTERNAL_STORAGE
 android.api = 31
 
 # (int) Android targetSdkVersion
-android.target_sdk_version = 33
+android.target_sdk_version = 34
 
 # (int) Minimum API required. You will need to set the android.ndk_api to be as low as this value.
 android.minapi = 23

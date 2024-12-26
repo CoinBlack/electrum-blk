@@ -1,11 +1,11 @@
 import copy
 import threading
 from abc import abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot, QSize, QMetaObject
-from PyQt5.QtGui import QPixmap
-from PyQt5.QtWidgets import (QDialog, QPushButton, QWidget, QLabel, QVBoxLayout, QScrollArea,
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot, QSize, QMetaObject
+from PyQt6.QtGui import QPixmap
+from PyQt6.QtWidgets import (QDialog, QPushButton, QWidget, QLabel, QVBoxLayout, QScrollArea,
                              QHBoxLayout, QLayout)
 
 from electrum_blk.i18n import _
@@ -61,7 +61,7 @@ class QEAbstractWizard(QDialog, MessageBoxMixin):
         please_wait_layout = QVBoxLayout()
         please_wait_layout.addStretch(1)
         self.please_wait_l = QLabel(_("Please wait..."))
-        self.please_wait_l.setAlignment(Qt.AlignCenter)
+        self.please_wait_l.setAlignment(Qt.AlignmentFlag.AlignCenter)
         please_wait_layout.addWidget(self.please_wait_l)
         please_wait_layout.addStretch(1)
         self.please_wait = QWidget()
@@ -71,11 +71,11 @@ class QEAbstractWizard(QDialog, MessageBoxMixin):
         error_layout = QVBoxLayout()
         error_layout.addStretch(1)
         error_icon = QLabel()
-        error_icon.setPixmap(QPixmap(icon_path('warning.png')).scaledToWidth(48, mode=Qt.SmoothTransformation))
-        error_icon.setAlignment(Qt.AlignCenter)
+        error_icon.setPixmap(QPixmap(icon_path('warning.png')).scaledToWidth(48, mode=Qt.TransformationMode.SmoothTransformation))
+        error_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         error_layout.addWidget(error_icon)
         self.error_msg = WWLabel()
-        self.error_msg.setAlignment(Qt.AlignCenter)
+        self.error_msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
         error_layout.addWidget(self.error_msg)
         error_layout.addStretch(1)
         self.error = QWidget()
@@ -92,9 +92,9 @@ class QEAbstractWizard(QDialog, MessageBoxMixin):
         scroll_widget = QWidget()
         scroll_widget.setLayout(inner_vbox)
         scroll = QScrollArea()
-        scroll.setFocusPolicy(Qt.NoFocus)
+        scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         scroll.setWidget(scroll_widget)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setWidgetResizable(True)
         icon_vbox = QVBoxLayout()
         icon_vbox.addWidget(self.logo)
@@ -107,6 +107,8 @@ class QEAbstractWizard(QDialog, MessageBoxMixin):
         outer_vbox.addLayout(hbox)
         outer_vbox.addLayout(Buttons(self.back_button, self.next_button))
 
+        self.setTabOrder(self.back_button, self.next_button)
+
         self.icon_filename = None
         self.set_icon('electrum.png')
 
@@ -115,7 +117,7 @@ class QEAbstractWizard(QDialog, MessageBoxMixin):
         self.show()
         self.raise_()
 
-        QMetaObject.invokeMethod(self, 'strt', Qt.QueuedConnection)  # call strt after subclass constructor(s)
+        QMetaObject.invokeMethod(self, 'strt', Qt.ConnectionType.QueuedConnection)  # call strt after subclass constructor(s)
 
     def sizeHint(self) -> QSize:
         return QSize(600, 400)
@@ -127,6 +129,8 @@ class QEAbstractWizard(QDialog, MessageBoxMixin):
         else:
             viewstate = self.start_wizard()
         self.load_next_component(viewstate.view, viewstate.wizard_data, viewstate.params)
+        self.set_default_focus()
+
         # TODO: re-test if needed on macOS
         self.refresh_gui()  # Need for QT on MacOSX.  Lame.
 
@@ -143,6 +147,7 @@ class QEAbstractWizard(QDialog, MessageBoxMixin):
 
         comp = self.view_to_component(view)
         try:
+            self._logger.debug(f'load_next_component: {comp!r}')
             page = comp(self.main_widget, self)
         except Exception as e:
             self._logger.error(f'not a class: {comp!r}')
@@ -151,13 +156,11 @@ class QEAbstractWizard(QDialog, MessageBoxMixin):
         page.params = params
         page.on_ready()  # call before component emits any signals
 
-        self._logger.debug(f'load_next_component: {page=!r}')
-
         page.updated.connect(self.on_page_updated)
 
         # add to stack and update wizard
-        self.main_widget.setCurrentIndex(self.main_widget.addWidget(page))
         page.apply()
+        self.main_widget.setCurrentIndex(self.main_widget.addWidget(page))
         self.update()
 
     @pyqtSlot(object)
@@ -169,8 +172,16 @@ class QEAbstractWizard(QDialog, MessageBoxMixin):
     def set_icon(self, filename):
         prior_filename, self.icon_filename = self.icon_filename, filename
         self.logo.setPixmap(QPixmap(icon_path(filename))
-                            .scaledToWidth(60, mode=Qt.SmoothTransformation))
+                            .scaledToWidth(60, mode=Qt.TransformationMode.SmoothTransformation))
         return prior_filename
+
+    def set_default_focus(self):
+        page = self.main_widget.currentWidget()
+        control = page.initialFocus()
+        if control and control.isVisible() and control.isEnabled():
+            control.setFocus()
+        else:
+            self.next_button.setFocus()
 
     def can_go_back(self) -> bool:
         return len(self._stack) > 0
@@ -217,8 +228,13 @@ class QEAbstractWizard(QDialog, MessageBoxMixin):
             else:
                 self.prev()  # rollback the submit above
         else:
-            next = self.submit(wd)
-            self.load_next_component(next.view, next.wizard_data, next.params)
+            view = self.submit(wd)
+            try:
+                self.load_next_component(view.view, view.wizard_data, view.params)
+                self.set_default_focus()
+            except Exception as e:
+                self.prev()  # rollback the submit above
+                raise e
 
     def start_wizard(self) -> 'WizardViewState':
         self.start()
@@ -227,7 +243,7 @@ class QEAbstractWizard(QDialog, MessageBoxMixin):
     def view_to_component(self, view) -> QWidget:
         return self.navmap[view]['gui']
 
-    def submit(self, wizard_data) -> dict:
+    def submit(self, wizard_data) -> 'WizardViewState':
         wdata = wizard_data.copy()
         view = self.resolve_next(self._current.view, wdata)
         return view
@@ -305,3 +321,7 @@ class WizardComponent(AbstractQWidget):
             self.updated.emit(self)
         except RuntimeError:
             pass
+
+    def initialFocus(self) -> Optional[QWidget]:
+        """Override to specify a control that should receive initial focus"""
+        return None

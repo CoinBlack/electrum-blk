@@ -6,7 +6,7 @@ Secret backup plug-in for the electrum wallet.
 
 Copyright:
     2017 Tiago Romagnani Silveira
-    2023 Soren Stoutner <soren@debian.org>
+    2023-2024 Soren Stoutner <soren@debian.org>
 
 Distributed under the MIT software license, see the accompanying
 file LICENCE or http://www.opensource.org/licenses/mit-license.php
@@ -19,24 +19,30 @@ import traceback
 from decimal import Decimal
 from functools import partial
 import sys
+from typing import TYPE_CHECKING
 
 import qrcode
-from PyQt5.QtPrintSupport import QPrinter
-from PyQt5.QtCore import Qt, QRectF, QRect, QSizeF, QUrl, QPoint, QSize
-from PyQt5.QtGui import (QPixmap, QImage, QBitmap, QPainter, QFontDatabase, QPen, QFont,
-                         QColor, QDesktopServices, qRgba, QPainterPath)
-from PyQt5.QtWidgets import (QGridLayout, QVBoxLayout, QHBoxLayout, QLabel,
+from PyQt6.QtPrintSupport import QPrinter
+from PyQt6.QtCore import Qt, QRectF, QRect, QSizeF, QUrl, QPoint, QSize, QMarginsF
+from PyQt6.QtGui import (QPixmap, QImage, QBitmap, QPainter, QFontDatabase, QPen, QFont,
+                         QColor, QDesktopServices, qRgba, QPainterPath, QPageSize, QPageLayout)
+from PyQt6.QtWidgets import (QGridLayout, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QLineEdit)
 
 from electrum_blk.plugin import hook
 from electrum_blk.i18n import _
 from electrum_blk.util import make_dir, InvalidPassword, UserCancelled
-from electrum_blk.gui.qt.util import (read_QIcon, EnterButton, WWLabel, icon_path,
+from electrum_blk.gui.qt.util import (read_QIcon, EnterButton, WWLabel, icon_path, internal_plugin_icon_path,
                                   WindowModalDialog, Buttons, CloseButton, OkButton)
 from electrum_blk.gui.qt.qrtextedit import ScanQRTextEdit
 from electrum_blk.gui.qt.main_window import StatusBarButton
+from electrum_blk.gui.qt.util import read_QIcon_from_bytes, read_QPixmap_from_bytes
 
 from .revealer import RevealerPlugin
+
+
+if TYPE_CHECKING:
+    from electrum_blk.gui.qt import ElectrumGui
 
 
 class Plugin(RevealerPlugin):
@@ -63,11 +69,24 @@ class Plugin(RevealerPlugin):
         make_dir(self.base_dir)
 
         self.extension = False
+        self._init_qt_received = False
+        self.icon_bytes = self.read_file("revealer.png")
+
+    @hook
+    def init_qt(self, gui: 'ElectrumGui'):
+        if self._init_qt_received:  # only need/want the first signal
+            return
+        self._init_qt_received = True
+        # load custom fonts (note: here, and not in __init__, as it needs the QApplication to be created)
+        QFontDatabase.addApplicationFont(os.path.join(os.path.dirname(__file__), 'SourceSans3-Bold.otf'))
+        QFontDatabase.addApplicationFont(os.path.join(os.path.dirname(__file__), 'DejaVuSansMono-Bold.ttf'))
 
     @hook
     def create_status_bar(self, sb):
-        b = StatusBarButton(read_QIcon('revealer.png'), "Revealer "+_("Visual Cryptography Plugin"),
-                            partial(self.setup_dialog, sb), sb.height())
+        b = StatusBarButton(
+            read_QIcon_from_bytes(self.icon_bytes),
+            "Revealer "+_("Visual Cryptography Plugin"),
+            partial(self.setup_dialog, sb), sb.height())
         sb.addPermanentWidget(b)
 
     def requires_settings(self):
@@ -110,10 +129,10 @@ class Plugin(RevealerPlugin):
         logo_label = QLabel()
 
         # Set the logo label pixmap.
-        logo_label.setPixmap(QPixmap(icon_path('revealer.png')))
+        logo_label.setPixmap(read_QPixmap_from_bytes(self.icon_bytes))
 
         # Align the logo label to the top left.
-        logo_label.setAlignment(Qt.AlignLeft)
+        logo_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
         # Create a VBox layout for the main contents of the dialog.
         vbox_layout = QVBoxLayout()
@@ -128,8 +147,8 @@ class Plugin(RevealerPlugin):
         instructions_label = QLabel(_("Click the button above or type an existing revealer code in the box below."))
 
         # Allow users to select text in the labels.
-        create_or_load_noise_file_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        instructions_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        create_or_load_noise_file_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        instructions_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         # Create the buttons.
         create_button = QPushButton(_("Create a new Revealer noise file"))
@@ -172,7 +191,7 @@ class Plugin(RevealerPlugin):
 
         # Populate the VBox layout.
         vbox_layout.addWidget(create_or_load_noise_file_label)
-        vbox_layout.addWidget(create_button, alignment=Qt.AlignCenter)
+        vbox_layout.addWidget(create_button, alignment=Qt.AlignmentFlag.AlignCenter)
         vbox_layout.addWidget(instructions_label)
         vbox_layout.addWidget(self.noise_scan_qr_textedit)
         vbox_layout.addLayout(Buttons(self.next_button))
@@ -181,7 +200,7 @@ class Plugin(RevealerPlugin):
         hbox_layout.addStretch(1)
         vbox_layout.addStretch(1)
 
-        return bool(self.d.exec_())
+        return bool(self.d.exec())
 
     def get_noise(self):
         # Get the text from the scan QR text edit.
@@ -255,7 +274,7 @@ class Plugin(RevealerPlugin):
             textCursor = self.custom_secret_scan_qr_textedit.textCursor()
 
             # Move the cursor position to the end (setting the text above automatically moves the cursor to the beginning, which is undesirable)
-            textCursor.movePosition(textCursor.End)
+            textCursor.movePosition(textCursor.MoveOperation.End)
 
             # Set the text cursor with the corrected position.
             self.custom_secret_scan_qr_textedit.setTextCursor(textCursor)
@@ -293,10 +312,10 @@ class Plugin(RevealerPlugin):
         logo_label = QLabel()
 
         # Set the logo label pixmap.
-        logo_label.setPixmap(QPixmap(icon_path('revealer.png')))
+        logo_label.setPixmap(read_QPixmap_from_bytes(self.icon_bytes))
 
         # Align the logo label to the top left.
-        logo_label.setAlignment(Qt.AlignLeft)
+        logo_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
         # Create a VBox layout for the main contents of the dialog.
         vbox_layout = QVBoxLayout()
@@ -316,14 +335,13 @@ class Plugin(RevealerPlugin):
         one_time_pad_warning_label = QLabel("<b>" + _("Warning ") + "</b>: " + _("each Revealer is a one-time-pad, use it for a single secret."))
 
         # Allow users to select text in the labels.
-        ready_to_encrypt_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        instructions_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.custom_secret_character_count_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.custom_secret_maximum_characters_warning_label
-        one_time_pad_warning_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        ready_to_encrypt_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        instructions_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.custom_secret_character_count_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        one_time_pad_warning_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         # Align the custom secret character count label to the right.
-        self.custom_secret_character_count_label.setAlignment(Qt.AlignRight)
+        self.custom_secret_character_count_label.setAlignment(Qt.AlignmentFlag.AlignRight)
 
         # Initially hide the custom secret character count label.
         self.custom_secret_maximum_characters_warning_label.setVisible(False)
@@ -361,12 +379,12 @@ class Plugin(RevealerPlugin):
 
         # Populate the VBox layout.
         vbox_layout.addWidget(ready_to_encrypt_label)
-        vbox_layout.addWidget(encrypt_seed_button, alignment=Qt.AlignCenter)
+        vbox_layout.addWidget(encrypt_seed_button, alignment=Qt.AlignmentFlag.AlignCenter)
         vbox_layout.addWidget(instructions_label)
         vbox_layout.addWidget(self.custom_secret_scan_qr_textedit)
         vbox_layout.addWidget(self.custom_secret_character_count_label)
         vbox_layout.addWidget(self.custom_secret_maximum_characters_warning_label)
-        vbox_layout.addWidget(self.encrypt_custom_secret_button, alignment=Qt.AlignCenter)
+        vbox_layout.addWidget(self.encrypt_custom_secret_button, alignment=Qt.AlignmentFlag.AlignCenter)
         vbox_layout.addSpacing(40)
         vbox_layout.addWidget(one_time_pad_warning_label)
         vbox_layout.addLayout(Buttons(CloseButton(d)))
@@ -375,7 +393,7 @@ class Plugin(RevealerPlugin):
         hbox_layout.addStretch(1)
         vbox_layout.addStretch(1)
 
-        return bool(d.exec_())
+        return bool(d.exec())
 
     def update_wallet_name(self, name):
         self.wallet_name = str(name)
@@ -397,12 +415,11 @@ class Plugin(RevealerPlugin):
         else:
             txt = self.txt.upper()
 
-        img = QImage(self.SIZE[0], self.SIZE[1], QImage.Format_Mono)
-        bitmap = QBitmap.fromImage(img, Qt.MonoOnly)
-        bitmap.fill(Qt.white)
+        img = QImage(self.SIZE[0], self.SIZE[1], QImage.Format.Format_Mono)
+        bitmap = QBitmap.fromImage(img, Qt.ImageConversionFlag.MonoOnly)
+        bitmap.fill(Qt.GlobalColor.white)
         painter = QPainter()
         painter.begin(bitmap)
-        QFontDatabase.addApplicationFont(os.path.join(os.path.dirname(__file__), 'SourceSansPro-Bold.otf'))
         if len(txt) < 102 :
             fontsize = 15
             linespace = 15
@@ -416,8 +433,8 @@ class Plugin(RevealerPlugin):
             max_lines = 9
             max_words = int(max_letters/4)
 
-        font = QFont('Source Sans Pro', fontsize, QFont.Bold)
-        font.setLetterSpacing(QFont.PercentageSpacing, 100)
+        font = QFont('Source Sans 3', fontsize, QFont.Weight.Bold)
+        font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 100)
         font.setPixelSize(fontsize)
         painter.setFont(font)
         seed_array = txt.split(' ')
@@ -428,7 +445,7 @@ class Plugin(RevealerPlugin):
             while len(' '.join(map(str, temp_seed))) > max_letters:
                nwords = nwords - 1
                temp_seed = seed_array[:nwords]
-            painter.drawText(QRect(0, linespace*n, self.SIZE[0], self.SIZE[1]), Qt.AlignHCenter, ' '.join(map(str, temp_seed)))
+            painter.drawText(QRect(0, linespace*n, self.SIZE[0], self.SIZE[1]), Qt.AlignmentFlag.AlignHCenter, ' '.join(map(str, temp_seed)))
             del seed_array[:nwords]
 
         painter.end()
@@ -444,7 +461,7 @@ class Plugin(RevealerPlugin):
             self.versioned_seed = self.gen_random_versioned_seed()
         assert self.versioned_seed
         w, h = self.SIZE
-        rawnoise = QImage(w, h, QImage.Format_Mono)
+        rawnoise = QImage(w, h, QImage.Format.Format_Mono)
 
         noise_map = self.get_noise_map(self.versioned_seed)
         for (x,y), pixel in noise_map.items():
@@ -457,7 +474,7 @@ class Plugin(RevealerPlugin):
     def make_calnoise(self):
         random.seed(self.calibration_noise)
         w, h = self.SIZE
-        rawnoise = QImage(w, h, QImage.Format_Mono)
+        rawnoise = QImage(w, h, QImage.Format.Format_Mono)
         for x in range(w):
             for y in range(h):
                 rawnoise.setPixel(x,y,random.randint(0, 1))
@@ -467,7 +484,7 @@ class Plugin(RevealerPlugin):
         revealer = self.pixelcode_2x2(self.rawnoise)
         revealer.invertPixels()
         revealer = QBitmap.fromImage(revealer)
-        revealer = revealer.scaled(self.f_size, Qt.KeepAspectRatio)
+        revealer = revealer.scaled(self.f_size, Qt.AspectRatioMode.KeepAspectRatio)
         revealer = self.overlay_marks(revealer)
 
         self.filename_prefix = 'revealer_'
@@ -475,15 +492,15 @@ class Plugin(RevealerPlugin):
         self.toPdf(QImage(revealer))
 
     def make_cypherseed(self, img, rawnoise, calibration=False, is_seed = True):
-        img = img.convertToFormat(QImage.Format_Mono)
+        img = img.convertToFormat(QImage.Format.Format_Mono)
         p = QPainter()
         p.begin(img)
-        p.setCompositionMode(26) #xor
+        p.setCompositionMode(QPainter.CompositionMode.RasterOp_SourceXorDestination) #xor
         p.drawImage(0, 0, rawnoise)
         p.end()
         cypherseed = self.pixelcode_2x2(img)
         cypherseed = QBitmap.fromImage(cypherseed)
-        cypherseed = cypherseed.scaled(self.f_size, Qt.KeepAspectRatio)
+        cypherseed = cypherseed.scaled(self.f_size, Qt.AspectRatioMode.KeepAspectRatio)
         cypherseed = self.overlay_marks(cypherseed, True, calibration)
 
         if not is_seed:
@@ -503,9 +520,9 @@ class Plugin(RevealerPlugin):
         return cypherseed
 
     def calibration(self):
-        img = QImage(self.SIZE[0], self.SIZE[1], QImage.Format_Mono)
-        bitmap = QBitmap.fromImage(img, Qt.MonoOnly)
-        bitmap.fill(Qt.black)
+        img = QImage(self.SIZE[0], self.SIZE[1], QImage.Format.Format_Mono)
+        bitmap = QBitmap.fromImage(img, Qt.ImageConversionFlag.MonoOnly)
+        bitmap.fill(Qt.GlobalColor.black)
         self.make_calnoise()
         img = self.overlay_marks(self.calnoise.scaledToHeight(self.f_size.height()), False, True)
         self.calibration_pdf(img)
@@ -514,11 +531,11 @@ class Plugin(RevealerPlugin):
 
     def toPdf(self, image):
         printer = QPrinter()
-        printer.setPaperSize(QSizeF(210, 297), QPrinter.Millimeter)
+        printer.setPageSize(QPageSize(QSizeF(210, 297), QPageSize.Unit.Millimeter))
         printer.setResolution(600)
-        printer.setOutputFormat(QPrinter.PdfFormat)
+        printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
         printer.setOutputFileName(self.get_path_to_revealer_file('.pdf'))
-        printer.setPageMargins(0,0,0,0,6)
+        printer.setPageMargins(QMarginsF(0, 0, 0, 0), QPageLayout.Unit.Millimeter)
         painter = QPainter()
         painter.begin(printer)
 
@@ -533,28 +550,28 @@ class Plugin(RevealerPlugin):
         painter.drawImage(553,533, image)
         wpath = QPainterPath()
         wpath.addRoundedRect(QRectF(553,533, size_h, size_v), 19, 19)
-        painter.setPen(QPen(Qt.black, 1))
+        painter.setPen(QPen(Qt.GlobalColor.black, 1))
         painter.drawPath(wpath)
         painter.end()
 
     def calibration_pdf(self, image):
         printer = QPrinter()
-        printer.setPaperSize(QSizeF(210, 297), QPrinter.Millimeter)
+        printer.setPageSize(QPageSize(QSizeF(210, 297), QPageSize.Unit.Millimeter))
         printer.setResolution(600)
-        printer.setOutputFormat(QPrinter.PdfFormat)
+        printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
         printer.setOutputFileName(self.get_path_to_calibration_file())
-        printer.setPageMargins(0,0,0,0,6)
+        printer.setPageMargins(QMarginsF(0, 0, 0, 0), QPageLayout.Unit.Millimeter)
 
         painter = QPainter()
         painter.begin(printer)
         painter.drawImage(553,533, image)
-        font = QFont('Source Sans Pro', 10, QFont.Bold)
+        font = QFont('Source Sans 3', 10, QFont.Weight.Bold)
         painter.setFont(font)
         painter.drawText(254,277, _("Calibration sheet"))
-        font = QFont('Source Sans Pro', 7, QFont.Bold)
+        font = QFont('Source Sans 3', 7, QFont.Weight.Bold)
         painter.setFont(font)
         painter.drawText(600,2077, _("Instructions:"))
-        font = QFont('Source Sans Pro', 7, QFont.Normal)
+        font = QFont("", 7, QFont.Weight.Normal)
         painter.setFont(font)
         painter.drawText(700, 2177, _("1. Place this paper on a flat and well illuminated surface."))
         painter.drawText(700, 2277, _("2. Align your Revealer borderlines to the dashed lines on the top and left."))
@@ -564,7 +581,7 @@ class Plugin(RevealerPlugin):
         painter.end()
 
     def pixelcode_2x2(self, img):
-        result = QImage(img.width()*2, img.height()*2, QImage.Format_ARGB32)
+        result = QImage(img.width()*2, img.height()*2, QImage.Format.Format_ARGB32)
         white = qRgba(255,255,255,0)
         black = qRgba(0,0,0,255)
 
@@ -586,12 +603,13 @@ class Plugin(RevealerPlugin):
         return result
 
     def overlay_marks(self, img, is_cseed=False, calibration_sheet=False):
-        border_color = Qt.white
-        base_img = QImage(self.f_size.width(),self.f_size.height(), QImage.Format_ARGB32)
+        border_color = Qt.GlobalColor.white
+        base_img = QImage(self.f_size.width(),self.f_size.height(), QImage.Format.Format_ARGB32)
         base_img.fill(border_color)
         img = QImage(img)
 
         painter = QPainter()
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         painter.begin(base_img)
 
         total_distance_h = round(base_img.width() / self.abstand_v)
@@ -604,7 +622,7 @@ class Plugin(RevealerPlugin):
                           img)
 
         #frame around image
-        pen = QPen(Qt.black, 2)
+        pen = QPen(Qt.GlobalColor.black, 2)
         painter.setPen(pen)
 
         #horz
@@ -621,8 +639,8 @@ class Plugin(RevealerPlugin):
                              (total_distance_h)+(border_thick/2),
                              base_img.width()-((total_distance_h)*2)-((border_thick)-1),
                              (base_img.height()-((total_distance_h))*2)-((border_thick)-1)))
-        pen = QPen(Qt.black, border_thick)
-        pen.setJoinStyle (Qt.MiterJoin)
+        pen = QPen(Qt.GlobalColor.black, border_thick)
+        pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
 
         painter.setPen(pen)
         painter.drawPath(Rpath)
@@ -630,11 +648,11 @@ class Plugin(RevealerPlugin):
         Bpath = QPainterPath()
         Bpath.addRect(QRectF((total_distance_h), (total_distance_h),
                              base_img.width()-((total_distance_h)*2), (base_img.height()-((total_distance_h))*2)))
-        pen = QPen(Qt.black, 1)
+        pen = QPen(Qt.GlobalColor.black, 1)
         painter.setPen(pen)
         painter.drawPath(Bpath)
 
-        pen = QPen(Qt.black, 1)
+        pen = QPen(Qt.GlobalColor.black, 1)
         painter.setPen(pen)
         painter.drawLine(0, base_img.height()//2, total_distance_h, base_img.height()//2)
         painter.drawLine(base_img.width()//2, 0, base_img.width()//2, total_distance_h)
@@ -644,30 +662,29 @@ class Plugin(RevealerPlugin):
 
         #print code
         f_size = 37
-        QFontDatabase.addApplicationFont(os.path.join(os.path.dirname(__file__), 'DejaVuSansMono-Bold.ttf'))
-        font = QFont("DejaVu Sans Mono", f_size-11, QFont.Bold)
+        font = QFont("DejaVu Sans Mono", f_size-11, QFont.Weight.Bold)
         font.setPixelSize(35)
         painter.setFont(font)
 
         if not calibration_sheet:
             if is_cseed: #its a secret
-                painter.setPen(QPen(Qt.black, 1, Qt.DashDotDotLine))
+                painter.setPen(QPen(Qt.GlobalColor.black, 1, Qt.PenStyle.DashDotDotLine))
                 painter.drawLine(0, dist_v, base_img.width(), dist_v)
                 painter.drawLine(dist_h, 0,  dist_h, base_img.height())
                 painter.drawLine(0, base_img.height()-dist_v, base_img.width(), base_img.height()-(dist_v))
                 painter.drawLine(base_img.width()-(dist_h), 0,  base_img.width()-(dist_h), base_img.height())
 
                 painter.drawImage(((total_distance_h))+11, ((total_distance_h))+11,
-                                  QImage(icon_path('electrumb.png')).scaledToWidth(round(2.1*total_distance_h), Qt.SmoothTransformation))
+                                  QImage(internal_plugin_icon_path(self.name, 'electrumb.png')).scaledToWidth(round(2.1*total_distance_h), Qt.TransformationMode.SmoothTransformation))
 
-                painter.setPen(QPen(Qt.white, border_thick*8))
+                painter.setPen(QPen(Qt.GlobalColor.white, border_thick*8))
                 painter.drawLine(int(base_img.width()-total_distance_h-(border_thick*8)/2-(border_thick/2)-2),
                                  int(base_img.height()-total_distance_h-((border_thick*8)/2)-(border_thick/2)-2),
                                  int(base_img.width()-total_distance_h-(border_thick*8)/2-(border_thick/2)-2 - 77),
                                  int(base_img.height()-total_distance_h-((border_thick*8)/2)-(border_thick/2)-2))
                 painter.setPen(QColor(0,0,0,255))
                 painter.drawText(QRect(0, base_img.height()-107, base_img.width()-total_distance_h - border_thick - 11,
-                                       base_img.height()-total_distance_h - border_thick), Qt.AlignRight,
+                                       base_img.height()-total_distance_h - border_thick), Qt.AlignmentFlag.AlignRight,
                                  self.versioned_seed.version + '_'+self.versioned_seed.checksum)
                 painter.end()
 
@@ -679,16 +696,16 @@ class Plugin(RevealerPlugin):
                 painter.drawLine(0, base_img.height()-dist_v, base_img.width(), base_img.height()-(dist_v))
                 painter.drawLine(base_img.width()-(dist_h), 0,  base_img.width()-(dist_h), base_img.height())
 
-                painter.setPen(QPen(Qt.black, 2))
+                painter.setPen(QPen(Qt.GlobalColor.black, 2))
                 painter.drawLine(0, dist_v, base_img.width(), dist_v)
                 painter.drawLine(dist_h, 0,  dist_h, base_img.height())
                 painter.drawLine(0, base_img.height()-dist_v, base_img.width(), base_img.height()-(dist_v))
                 painter.drawLine(base_img.width()-(dist_h), 0,  base_img.width()-(dist_h), base_img.height())
-                logo = QImage(icon_path('revealer_c.png')).scaledToWidth(round(1.3*(total_distance_h)))
-                painter.drawImage(int(total_distance_h+border_thick), int(total_distance_h+border_thick), logo, Qt.SmoothTransformation)
+                logo = QImage(internal_plugin_icon_path(self.name, 'revealer_c.png')).scaledToWidth(round(1.3*(total_distance_h)))
+                painter.drawImage(int(total_distance_h+border_thick), int(total_distance_h+border_thick), logo)
 
                 #frame around logo
-                painter.setPen(QPen(Qt.black, border_thick))
+                painter.setPen(QPen(Qt.GlobalColor.black, border_thick))
                 painter.drawLine(int(total_distance_h+border_thick), int(total_distance_h+logo.height()+3*(border_thick/2)),
                                  int(total_distance_h+logo.width()+border_thick), int(total_distance_h+logo.height()+3*(border_thick/2)))
                 painter.drawLine(int(logo.width()+total_distance_h+3*(border_thick/2)), int(total_distance_h+(border_thick)),
@@ -707,7 +724,7 @@ class Plugin(RevealerPlugin):
                                  int(base_img.width()//2 + (total_distance_h/2)-border_thick-(border_thick*8)//2-qr_size),
                                  int((base_img.height()-((total_distance_h)))-(border_thick/2)-2))
 
-                painter.setPen(QPen(Qt.white, border_thick * 8))
+                painter.setPen(QPen(Qt.GlobalColor.white, border_thick * 8))
                 painter.drawLine(
                     int(base_img.width() - ((total_distance_h)) - (border_thick * 8) / 2 - (border_thick / 2) - 2),
                     int((base_img.height() - ((total_distance_h))) - ((border_thick * 8) / 2) - (border_thick / 2) - 2),
@@ -719,9 +736,9 @@ class Plugin(RevealerPlugin):
                                        int(base_img.height()-107),
                                        int(base_img.width()-total_distance_h - border_thick -93),
                                        int(base_img.height()-total_distance_h - border_thick)),
-                                 Qt.AlignLeft, self.versioned_seed.get_ui_string_version_plus_seed())
+                                 Qt.AlignmentFlag.AlignLeft, self.versioned_seed.get_ui_string_version_plus_seed())
                 painter.drawText(QRect(0, base_img.height()-107, base_img.width()-total_distance_h - border_thick -3 -qr_size,
-                                       base_img.height()-total_distance_h - border_thick), Qt.AlignRight, self.versioned_seed.checksum)
+                                       base_img.height()-total_distance_h - border_thick), Qt.AlignmentFlag.AlignRight, self.versioned_seed.checksum)
 
                 # draw qr code
                 qr_qt = self.paintQR(self.versioned_seed.get_ui_string_version_plus_seed()
@@ -730,7 +747,7 @@ class Plugin(RevealerPlugin):
                                 base_img.height()-65-qr_size,
                                 qr_size, qr_size)
                 painter.drawImage(target, qr_qt)
-                painter.setPen(QPen(Qt.black, 4))
+                painter.setPen(QPen(Qt.GlobalColor.black, 4))
                 painter.drawLine(
                     int(base_img.width()-65-qr_size),
                     int(base_img.height()-65-qr_size),
@@ -748,23 +765,23 @@ class Plugin(RevealerPlugin):
         else: # calibration only
             painter.end()
             cal_img = QImage(self.f_size.width() + 100, self.f_size.height() + 100,
-                              QImage.Format_ARGB32)
-            cal_img.fill(Qt.white)
+                              QImage.Format.Format_ARGB32)
+            cal_img.fill(Qt.GlobalColor.white)
 
             cal_painter = QPainter()
             cal_painter.begin(cal_img)
             cal_painter.drawImage(0,0, base_img)
 
             #black lines in the middle of border top left only
-            cal_painter.setPen(QPen(Qt.black, 1, Qt.DashDotDotLine))
+            cal_painter.setPen(QPen(Qt.GlobalColor.black, 1, Qt.PenStyle.DashDotDotLine))
             cal_painter.drawLine(0, dist_v, base_img.width(), dist_v)
             cal_painter.drawLine(dist_h, 0,  dist_h, base_img.height())
 
-            pen = QPen(Qt.black, 2, Qt.DashDotDotLine)
+            pen = QPen(Qt.GlobalColor.black, 2, Qt.PenStyle.DashDotDotLine)
             cal_painter.setPen(pen)
             n=15
 
-            cal_painter.setFont(QFont("DejaVu Sans Mono", 21, QFont.Bold))
+            cal_painter.setFont(QFont("DejaVu Sans Mono", 21, QFont.Weight.Bold))
             for x in range(-n,n):
                 #lines on bottom (vertical calibration)
                 cal_painter.drawLine(int((((base_img.width())/(n*2)) *(x))+ (base_img.width()//2)-13),
@@ -805,8 +822,8 @@ class Plugin(RevealerPlugin):
         qr.add_data(data)
         matrix = qr.get_matrix()
         k = len(matrix)
-        border_color = Qt.white
-        base_img = QImage(k * 5, k * 5, QImage.Format_ARGB32)
+        border_color = Qt.GlobalColor.white
+        base_img = QImage(k * 5, k * 5, QImage.Format.Format_ARGB32)
         base_img.fill(border_color)
         qrpainter = QPainter()
         qrpainter.begin(base_img)
@@ -814,8 +831,8 @@ class Plugin(RevealerPlugin):
         size = k * boxsize
         left = (base_img.width() - size)//2
         top = (base_img.height() - size)//2
-        qrpainter.setBrush(Qt.black)
-        qrpainter.setPen(Qt.black)
+        qrpainter.setBrush(Qt.GlobalColor.black)
+        qrpainter.setPen(Qt.GlobalColor.black)
 
         for r in range(k):
             for c in range(k):
@@ -856,7 +873,7 @@ class Plugin(RevealerPlugin):
         vbox.addSpacing(13)
         vbox.addLayout(Buttons(CloseButton(d), OkButton(d)))
 
-        if not d.exec_():
+        if not d.exec():
             return
 
         self.calibration_h = int(Decimal(horizontal.text()))

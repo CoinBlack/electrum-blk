@@ -1,12 +1,12 @@
 from typing import TYPE_CHECKING, Optional
+from PyQt6.QtWidgets import QLabel, QVBoxLayout, QGridLayout, QPushButton, QComboBox, QLineEdit, QSpacerItem, QWidget, QHBoxLayout
 
-from PyQt5.QtWidgets import QLabel, QVBoxLayout, QGridLayout, QPushButton, QComboBox, QLineEdit, QSpacerItem, QWidget, QHBoxLayout
+import electrum_ecc as ecc
 
 from electrum_blk.i18n import _
 from electrum_blk.transaction import PartialTxOutput, PartialTransaction
 from electrum_blk.lnutil import MIN_FUNDING_SAT
 from electrum_blk.lnworker import hardcoded_trampoline_nodes
-from electrum_blk import ecc
 from electrum_blk.util import NotEnoughFunds, NoDynamicFeeEstimates
 
 from electrum_blk.gui import messages
@@ -114,6 +114,7 @@ class NewChannelDialog(WindowModalDialog):
 
     def spend_min(self):
         self.max_button.setChecked(False)
+        self.amount_e.setFrozen(False)
         self.amount_e.setAmount(self.min_amount_sat)
 
     def spend_max(self):
@@ -134,7 +135,7 @@ class NewChannelDialog(WindowModalDialog):
         self.amount_e.setAmount(amount)
 
     def run(self):
-        if not self.exec_():
+        if not self.exec():
             return
         if self.max_button.isChecked() and self.amount_e.get_amount() < self.config.LIGHTNING_MAX_FUNDING_SAT:
             # if 'max' enabled and amount is strictly less than max allowed,

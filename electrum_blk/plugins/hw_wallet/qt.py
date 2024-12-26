@@ -28,14 +28,15 @@ import threading
 from functools import partial
 from typing import TYPE_CHECKING, Union, Optional, Sequence, Tuple
 
-from PyQt5.QtCore import QObject, pyqtSignal, Qt
-from PyQt5.QtWidgets import QVBoxLayout, QLineEdit, QHBoxLayout, QLabel
+from PyQt6.QtCore import QObject, pyqtSignal, Qt
+from PyQt6.QtWidgets import QVBoxLayout, QLineEdit, QHBoxLayout, QLabel
 
 from electrum_blk.gui.qt.password_dialog import PasswordLayout, PW_PASSPHRASE
 from electrum_blk.gui.qt.util import (read_QIcon, WWLabel, OkButton, WindowModalDialog,
                                   Buttons, CancelButton, TaskThread, char_width_in_lineedit,
                                   PasswordLineEdit)
 from electrum_blk.gui.qt.main_window import StatusBarButton
+from electrum_blk.gui.qt.util import read_QIcon_from_bytes
 
 from electrum_blk.i18n import _
 from electrum_blk.logging import Logger
@@ -92,8 +93,9 @@ class QtHandlerBase(HardwareHandlerBase, QObject, Logger):
     def _update_status(self, paired):
         if hasattr(self, 'button'):
             button = self.button
-            icon_name = button.icon_paired if paired else button.icon_unpaired
-            button.setIcon(read_QIcon(icon_name))
+            icon_bytes = button.icon_paired if paired else button.icon_unpaired
+            icon = read_QIcon_from_bytes(icon_bytes)
+            button.setIcon(icon)
 
     def query_choice(self, msg: str, labels: Sequence[Tuple]):
         self.done.clear()
@@ -142,7 +144,7 @@ class QtHandlerBase(HardwareHandlerBase, QObject, Logger):
             vbox.addLayout(playout.layout())
             vbox.addLayout(Buttons(CancelButton(d), OK_button))
             d.setLayout(vbox)
-            passphrase = playout.new_password() if d.exec_() else None
+            passphrase = playout.new_password() if d.exec() else None
         else:
             pw = PasswordLineEdit()
             pw.setMinimumWidth(200)
@@ -151,7 +153,7 @@ class QtHandlerBase(HardwareHandlerBase, QObject, Logger):
             vbox.addWidget(pw)
             vbox.addLayout(Buttons(CancelButton(d), OkButton(d)))
             d.setLayout(vbox)
-            passphrase = pw.text() if d.exec_() else None
+            passphrase = pw.text() if d.exec() else None
         self.passphrase = passphrase
         self.done.set()
 
@@ -164,7 +166,7 @@ class QtHandlerBase(HardwareHandlerBase, QObject, Logger):
         text.returnPressed.connect(dialog.accept)
         hbox.addWidget(text)
         hbox.addStretch(1)
-        dialog.exec_()  # Firmware cannot handle cancellation
+        dialog.exec()  # Firmware cannot handle cancellation
         self.word = text.text()
         self.done.set()
 
@@ -176,7 +178,7 @@ class QtHandlerBase(HardwareHandlerBase, QObject, Logger):
             title = _('Please check your {} device').format(self.device)
         self.dialog = dialog = WindowModalDialog(self.top_level_window(), title)
         label = QLabel(msg)
-        label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         vbox = QVBoxLayout(dialog)
         vbox.addWidget(label)
         if on_cancel:
@@ -222,9 +224,10 @@ class QtPluginBase(object):
             tooltip = self.device + '\n' + (keystore.label or 'unnamed')
             cb = partial(self._on_status_bar_button_click, window=window, keystore=keystore)
             sb = window.statusBar()
-            button = StatusBarButton(read_QIcon(self.icon_unpaired), tooltip, cb, sb.height())
-            button.icon_paired = self.icon_paired
-            button.icon_unpaired = self.icon_unpaired
+            icon = read_QIcon_from_bytes(self.read_file(self.icon_unpaired))
+            button = StatusBarButton(icon, tooltip, cb, sb.height())
+            button.icon_paired = self.read_file(self.icon_paired)
+            button.icon_unpaired = self.read_file(self.icon_unpaired)
             sb.addPermanentWidget(button)
             handler = self.create_handler(window)
             handler.button = button

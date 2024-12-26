@@ -71,7 +71,7 @@ info "Installing build dependencies"
 # note: re pip installing from PyPI,
 #       we prefer compiling C extensions ourselves, instead of using binary wheels,
 #       hence "--no-binary :all:" flags. However, we specifically allow
-#       - PyQt5, as it's harder to build from source
+#       - PyQt6, as it's harder to build from source
 #       - cryptography, as it's harder to build from source
 #       - the whole of "requirements-build-base.txt", which includes pip and friends, as it also includes "wheel",
 #         and I am not quite sure how to break the circular dependence there (I guess we could introduce
@@ -149,7 +149,7 @@ if [ ! -f "$DLL_TARGET_DIR/libsecp256k1.2.dylib" ]; then
 else
     info "Skipping libsecp256k1 build: reusing already built dylib."
 fi
-cp -f "$DLL_TARGET_DIR"/libsecp256k1.*.dylib "$PROJECT_ROOT/electrum_blk/" || fail "Could not copy libsecp256k1 dylib"
+#cp -f "$DLL_TARGET_DIR"/libsecp256k1.*.dylib "$PROJECT_ROOT/electrum_blk" || fail "Could not copy libsecp256k1 dylib"
 
 if [ ! -f "$DLL_TARGET_DIR/libzbar.0.dylib" ]; then
     info "Building ZBar dylib..."
@@ -169,6 +169,7 @@ cp -f "$DLL_TARGET_DIR/libusb-1.0.dylib" "$PROJECT_ROOT/electrum_blk/" || fail "
 
 
 info "Installing requirements..."
+export ELECTRUM_ECC_DONT_COMPILE=1
 python3 -m pip install --no-build-isolation --no-dependencies --no-binary :all: \
     --no-warn-script-location \
     -Ir ./contrib/deterministic-build/requirements.txt \
@@ -181,7 +182,7 @@ python3 -m pip install --no-build-isolation --no-dependencies --no-binary :all: 
     || fail "Could not install hardware wallet requirements"
 
 info "Installing dependencies specific to binaries..."
-python3 -m pip install --no-build-isolation --no-dependencies --no-binary :all: --only-binary PyQt5,PyQt5-Qt5,scrypt,cryptography \
+python3 -m pip install --no-build-isolation --no-dependencies --no-binary :all: --only-binary PyQt6,PyQt6-Qt6,scrypt,cryptography \
     --no-warn-script-location \
     -Ir ./contrib/deterministic-build/requirements-binaries-mac.txt \
     || fail "Could not install dependencies specific to binaries"
@@ -189,9 +190,9 @@ python3 -m pip install --no-build-isolation --no-dependencies --no-binary :all: 
 info "Building $PACKAGE..."
 python3 -m pip install --no-build-isolation --no-dependencies \
     --no-warn-script-location . > /dev/null || fail "Could not build $PACKAGE"
-# pyinstaller needs to be able to "import electrum", for which we need libsecp256k1:
+# pyinstaller needs to be able to "import electrum_ecc", for which we need libsecp256k1:
 # (or could try "pip install -e" instead)
-cp "$PROJECT_ROOT/electrum_blk"/libsecp256k1.*.dylib "$VENV_DIR/lib/python$PY_VER_MAJOR/site-packages/electrum_blk/"
+cp "$DLL_TARGET_DIR"/libsecp256k1.*.dylib "$VENV_DIR/lib/python$PY_VER_MAJOR/site-packages/electrum_ecc/"
 
 # strip debug symbols of some compiled libs
 # - hidapi (hid.cpython-39-darwin.so) in particular is not reproducible without this

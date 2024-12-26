@@ -5,6 +5,8 @@
 import hid
 from typing import TYPE_CHECKING, Dict, Tuple, Optional, List, Any, Callable
 
+import electrum_ecc as ecc
+
 from electrum_blk import bip32, constants
 from electrum_blk.i18n import _
 from electrum_blk.keystore import Hardware_KeyStore
@@ -18,7 +20,6 @@ from electrum_blk.storage import get_derivation_used_for_hw_device_encryption
 from electrum_blk.bitcoin import OnchainOutputType
 
 import electrum_blk.bitcoin as bitcoin
-import electrum_blk.ecc as ecc
 
 from ..hw_wallet import HW_PluginBase, HardwareClientBase, HardwareHandlerBase
 

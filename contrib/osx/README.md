@@ -4,6 +4,8 @@ Building macOS binaries
 ✓ _This binary should be reproducible, meaning you should be able to generate
    binaries that match the official releases._
 
+- _Minimum supported target system (i.e. what end-users need): macOS 11_
+
 This guide explains how to build Electrum-BLK binaries for macOS systems.
 
 
@@ -33,7 +35,7 @@ Notes about compatibility with different macOS versions:
     `notarytool` requires Xcode 13+, and that in turn requires macOS 11.3+.
 
 We currently build the release binaries on macOS 11.7.10, and these seem to run on
-10.14 or newer. (note: 10.13 might also work, haven't tested)
+11 or newer.
 
 
 #### Notes about reproducibility

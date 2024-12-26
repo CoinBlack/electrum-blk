@@ -8,7 +8,7 @@ from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject
 from electrum_blk.i18n import _
 from electrum_blk.gui import messages
 from electrum_blk.util import bfh
-from electrum_blk.lnutil import extract_nodeid, ConnStringFormatError
+from electrum_blk.lntransport import extract_nodeid, ConnStringFormatError
 from electrum_blk.bitcoin import DummyAddress
 from electrum_blk.lnworker import hardcoded_trampoline_nodes
 from electrum_blk.logging import get_logger

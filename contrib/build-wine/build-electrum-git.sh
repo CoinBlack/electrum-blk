@@ -32,6 +32,7 @@ export AIOHTTP_NO_EXTENSIONS=1
 export YARL_NO_EXTENSIONS=1
 export MULTIDICT_NO_EXTENSIONS=1
 export FROZENLIST_NO_EXTENSIONS=1
+export ELECTRUM_ECC_DONT_COMPILE=1
 
 info "Installing requirements..."
 $WINE_PYTHON -m pip install --no-build-isolation --no-dependencies --no-binary :all: --no-warn-script-location \
@@ -39,7 +40,7 @@ $WINE_PYTHON -m pip install --no-build-isolation --no-dependencies --no-binary :
 info "Installing dependencies specific to binaries..."
 # TODO tighten "--no-binary :all:" (but we don't have a C compiler...)
 $WINE_PYTHON -m pip install --no-build-isolation --no-dependencies --no-warn-script-location \
-    --no-binary :all: --only-binary cffi,cryptography,PyQt5,PyQt5-Qt5,PyQt5-sip,scrypt \
+    --no-binary :all: --only-binary cffi,cryptography,PyQt6,PyQt6-Qt6,PyQt6-sip,scrypt \
     --cache-dir "$WINE_PIP_CACHE_DIR" -r "$CONTRIB"/deterministic-build/requirements-binaries.txt
 info "Installing hardware wallet requirements..."
 $WINE_PYTHON -m pip install --no-build-isolation --no-dependencies --no-warn-script-location \
@@ -50,9 +51,9 @@ pushd $WINEPREFIX/drive_c/electrum-blk
 # see https://github.com/pypa/pip/issues/2195 -- pip makes a copy of the entire directory
 info "Pip installing Electrum-BLK. This might take a long time if the project folder is large."
 $WINE_PYTHON -m pip install --no-build-isolation --no-dependencies --no-warn-script-location .
-# pyinstaller needs to be able to "import electrum_blk", for which we need libsecp256k1:
+# pyinstaller needs to be able to "import electrum_ecc", for which we need libsecp256k1:
 # (or could try "pip install -e" instead)
-cp electrum_blk/libsecp256k1-*.dll "$WINEPREFIX/drive_c/python3/Lib/site-packages/electrum_blk/"
+cp electrum_blk/libsecp256k1-*.dll "$WINEPREFIX/drive_c/python3/Lib/site-packages/electrum_ecc/"
 popd
 
 

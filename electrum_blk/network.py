@@ -68,7 +68,7 @@ if TYPE_CHECKING:
     from .channel_db import ChannelDB
     from .lnrouter import LNPathFinder
     from .lnworker import LNGossip
-    from .lnwatcher import WatchTower
+    #from .lnwatcher import WatchTower
     from .daemon import Daemon
     from .simple_config import SimpleConfig
 
@@ -290,7 +290,6 @@ class Network(Logger, NetworkRetryManager[ServerAddr]):
 
     channel_db: Optional['ChannelDB'] = None
     lngossip: Optional['LNGossip'] = None
-    local_watchtower: Optional['WatchTower'] = None
     path_finder: Optional['LNPathFinder'] = None
 
     def __init__(self, config: 'SimpleConfig', *, daemon: 'Daemon' = None):
@@ -323,7 +322,7 @@ class Network(Logger, NetworkRetryManager[ServerAddr]):
 
         self._allowed_protocols = {PREFERRED_NETWORK_PROTOCOL}
 
-        self.proxy = None
+        self.proxy = None  # type: Optional[dict]
         self.is_proxy_tor = None
         self._init_parameters_from_config()
 
@@ -364,11 +363,6 @@ class Network(Logger, NetworkRetryManager[ServerAddr]):
         self._has_ever_managed_to_connect_to_server = False
         self._was_started = False
 
-        # lightning network
-        if self.config.WATCHTOWER_SERVER_ENABLED:
-            from . import lnwatcher
-            self.local_watchtower = lnwatcher.WatchTower(self)
-            asyncio.ensure_future(self.local_watchtower.start_watching())
 
     def has_internet_connection(self) -> bool:
         """Our guess whether the device has Internet-connectivity."""
@@ -885,7 +879,7 @@ class Network(Logger, NetworkRetryManager[ServerAddr]):
             self._set_status(ConnectionState.CONNECTING)
         self._trying_addr_now(server)
 
-        interface = Interface(network=self, server=server, proxy=self.proxy)
+        interface = Interface(network=self, server=server)
         # note: using longer timeouts here as DNS can sometimes be slow!
         timeout = self.get_network_timeout_seconds(NetworkTimeout.Generic)
         try:
@@ -1479,7 +1473,7 @@ class Network(Logger, NetworkRetryManager[ServerAddr]):
             timeout = self.get_network_timeout_seconds(NetworkTimeout.Urgent)
         responses = dict()
         async def get_response(server: ServerAddr):
-            interface = Interface(network=self, server=server, proxy=self.proxy)
+            interface = Interface(network=self, server=server)
             try:
                 await util.wait_for2(interface.ready, timeout)
             except BaseException as e:

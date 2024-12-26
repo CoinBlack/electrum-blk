@@ -1,17 +1,9 @@
 import threading
 import socket
 import base64
-import sys
 from typing import TYPE_CHECKING
 
-from electrum_blk.gui.common_qt import get_qt_major_version
-
-if (qt_ver := get_qt_major_version()) == 5:
-    from PyQt5.QtCore import pyqtSignal, pyqtProperty, pyqtSlot
-elif qt_ver == 6:
-    from PyQt6.QtCore import pyqtSignal, pyqtProperty, pyqtSlot
-else:
-    raise Exception(f"unexpected {qt_ver=}")
+from PyQt6.QtCore import pyqtSignal, pyqtProperty, pyqtSlot
 
 from electrum_blk.i18n import _
 from electrum_blk.bip32 import BIP32Node
@@ -90,7 +82,7 @@ class TrustedcoinPluginQObject(PluginQObject):
         return self._billingModel
 
     def updateBillingInfo(self, wallet):
-        billingModel = []
+        billing_model = []
 
         price_per_tx = wallet.price_per_tx
         for k, v in sorted(price_per_tx.items()):
@@ -101,9 +93,9 @@ class TrustedcoinPluginQObject(PluginQObject):
                 'value': k,
                 'sats_per_tx': v / k
             }
-            billingModel.append(item)
+            billing_model.append(item)
 
-        self._billingModel = billingModel
+        self._billingModel = billing_model
         self.billingModelChanged.emit()
 
     @pyqtSlot()
