@@ -103,39 +103,7 @@ NUM_PEERS_TARGET = 4
 # onchain channel backup data
 CB_VERSION = 0
 CB_MAGIC_BYTES = bytes([0, 0, 0, CB_VERSION])
-
-
-FALLBACK_NODE_LIST_TESTNET = (
-)
-
-FALLBACK_NODE_LIST_MAINNET = [
-    LNPeerAddr(host='172.81.181.3', port=9735, pubkey=bfh('0214382bdce7750dfcb8126df8e2b12de38536902dc36abcebdaeefdeca1df8284')),
-    LNPeerAddr(host='35.230.100.60', port=9735, pubkey=bfh('023f5e3582716bed96f6f26cfcd8037e07474d7b4743afdc8b07e692df63464d7e')),
-    LNPeerAddr(host='40.69.71.114', port=9735, pubkey=bfh('028303182c9885da93b3b25c9621d22cf34475e63c123942e402ab530c0556e675')),
-    LNPeerAddr(host='94.177.171.73', port=9735, pubkey=bfh('0276e09a267592e7451a939c932cf685f0754de382a3ca85d2fb3a864d4c365ad5')),
-    LNPeerAddr(host='34.236.113.58', port=9735, pubkey=bfh('02fa50c72ee1e2eb5f1b6d9c3032080c4c864373c4201dfa2966aa34eee1051f97')),
-    LNPeerAddr(host='52.50.244.44', port=9735, pubkey=bfh('030c3f19d742ca294a55c00376b3b355c3c90d61c6b6b39554dbc7ac19b141c14f')),
-    LNPeerAddr(host='157.245.68.47', port=9735, pubkey=bfh('03c2abfa93eacec04721c019644584424aab2ba4dff3ac9bdab4e9c97007491dda')),
-    LNPeerAddr(host='18.221.23.28', port=9735, pubkey=bfh('03abf6f44c355dec0d5aa155bdbdd6e0c8fefe318eff402de65c6eb2e1be55dc3e')),
-    LNPeerAddr(host='52.224.178.244', port=9735, pubkey=bfh('026b105ac13212c48714c6be9b11577a9ce10f10e1c88a45ce217e6331209faf8b')),
-    LNPeerAddr(host='34.239.230.56', port=9735, pubkey=bfh('03864ef025fde8fb587d989186ce6a4a186895ee44a926bfc370e2c366597a3f8f')),
-    LNPeerAddr(host='46.229.165.136', port=9735, pubkey=bfh('0390b5d4492dc2f5318e5233ab2cebf6d48914881a33ef6a9c6bcdbb433ad986d0')),
-    LNPeerAddr(host='157.230.28.160', port=9735, pubkey=bfh('0279c22ed7a068d10dc1a38ae66d2d6461e269226c60258c021b1ddcdfe4b00bc4')),
-    LNPeerAddr(host='74.108.13.152', port=9735, pubkey=bfh('0331f80652fb840239df8dc99205792bba2e559a05469915804c08420230e23c7c')),
-    LNPeerAddr(host='167.172.44.148', port=9735, pubkey=bfh('0395033b252c6f40e3756984162d68174e2bd8060a129c0d3462a9370471c6d28f')),
-    LNPeerAddr(host='138.68.14.104', port=9735, pubkey=bfh('03bb88ccc444534da7b5b64b4f7b15e1eccb18e102db0e400d4b9cfe93763aa26d')),
-    LNPeerAddr(host='3.124.63.44', port=9735, pubkey=bfh('0242a4ae0c5bef18048fbecf995094b74bfb0f7391418d71ed394784373f41e4f3')),
-    LNPeerAddr(host='2001:470:8:2e1::43', port=9735, pubkey=bfh('03baa70886d9200af0ffbd3f9e18d96008331c858456b16e3a9b41e735c6208fef')),
-    LNPeerAddr(host='2601:186:c100:6bcd:219:d1ff:fe75:dc2f', port=9735, pubkey=bfh('0298f6074a454a1f5345cb2a7c6f9fce206cd0bf675d177cdbf0ca7508dd28852f')),
-    LNPeerAddr(host='2001:41d0:e:734::1', port=9735, pubkey=bfh('03a503d8e30f2ff407096d235b5db63b4fcf3f89a653acb6f43d3fc492a7674019')),
-    LNPeerAddr(host='2a01:4f9:2b:2254::2', port=9735, pubkey=bfh('02f3069a342ae2883a6f29e275f06f28a56a6ea2e2d96f5888a3266444dcf542b6')),
-    LNPeerAddr(host='2a02:8070:24c1:100:528c:2997:6dbc:a054', port=9735, pubkey=bfh('02a45def9ae014fdd2603dd7033d157faa3a55a72b06a63ae22ef46d9fafdc6e8d')),
-    LNPeerAddr(host='2600:3c01::f03c:91ff:fe05:349c', port=9736, pubkey=bfh('02731b798b39a09f9f14e90ee601afb6ebb796d6e5797de14582a978770b33700f')),
-    LNPeerAddr(host='2a00:8a60:e012:a00::21', port=9735, pubkey=bfh('027ce055380348d7812d2ae7745701c9f93e70c1adeb2657f053f91df4f2843c71')),
-    LNPeerAddr(host='2604:a880:400:d1::8bd:1001', port=9735, pubkey=bfh('03649c72a4816f0cd546f84aafbd657e92a30ab474de7ab795e8b5650a427611f7')),
-    LNPeerAddr(host='2a01:4f8:c0c:7b31::1', port=9735, pubkey=bfh('02c16cca44562b590dd279c942200bdccfd4f990c3a69fad620c10ef2f8228eaff')),
-    LNPeerAddr(host='2001:41d0:1:b40d::1', port=9735, pubkey=bfh('026726a4b043d413b45b334876d17b8a98848129604429ec65532ba286a42efeac')),
-]
+NODE_ID_PREFIX_LEN = 16
 
 
 from .trampoline import trampolines_by_id, hardcoded_trampoline_nodes, is_hardcoded_trampoline
@@ -456,10 +424,14 @@ class LNWorker(Logger, EventListener, NetworkRetryManager[LNPeerAddr]):
                 return [peer]
 
         # getting desperate... let's try hardcoded fallback list of peers
-        if constants.net in (constants.BitcoinTestnet,):
-            fallback_list = FALLBACK_NODE_LIST_TESTNET
+        if constants.net in (constants.BitcoinTestnet4,):
+            fallback_list = constants.BitcoinTestnet4.FALLBACK_LN_NODES
+        elif constants.net in (constants.BitcoinTestnet,):
+            fallback_list = constants.BitcoinTestnet.FALLBACK_LN_NODES
         elif constants.net in (constants.BitcoinMainnet,):
-            fallback_list = FALLBACK_NODE_LIST_MAINNET
+            fallback_list = constants.BitcoinMainnet.FALLBACK_LN_NODES
+        elif constants.net in (constants.BitcoinSignet,):
+            fallback_list = constants.BitcoinSignet.FALLBACK_LN_NODES
         else:
             return []  # regtest??
 
@@ -815,6 +787,7 @@ class LNWallet(LNWorker):
         self.backup_key = generate_keypair(BIP32Node.from_xkey(xprv), LnKeyFamily.BACKUP_CIPHER).privkey
         self.static_payment_key = generate_keypair(BIP32Node.from_xkey(xprv), LnKeyFamily.PAYMENT_BASE)
         self.payment_secret_key = generate_keypair(BIP32Node.from_xkey(xprv), LnKeyFamily.PAYMENT_SECRET_KEY).privkey
+        self.funding_root_keypair = generate_keypair(BIP32Node.from_xkey(xprv), LnKeyFamily.FUNDING_ROOT_KEY)
         Logger.__init__(self)
         features = LNWALLET_FEATURES
         if self.config.ENABLE_ANCHOR_CHANNELS:
@@ -1099,7 +1072,7 @@ class LNWallet(LNWorker):
                 'txid': closing_txid,
                 'label': self.wallet.get_label_for_txid(closing_txid),
                 'type': 'channel_closure',
-                'amount_msat': -chan.balance_minus_outgoing_htlcs(LOCAL),
+                'amount_msat': -chan.balance(LOCAL),
                 'direction': PaymentDirection.SENT,
                 'timestamp': tx_height.timestamp,
                 'monotonic_timestamp': tx_height.timestamp or TX_TIMESTAMP_INF,
@@ -1129,6 +1102,10 @@ class LNWallet(LNWorker):
         for item in out:
             balance_msat += item['amount_msat']
             item['balance_msat'] = balance_msat
+
+        lb = sum(chan.balance(LOCAL) if not chan.is_closed() else 0
+                for chan in self.channels.values())
+        assert balance_msat  == lb
         return out
 
     def channel_peers(self) -> List[bytes]:
@@ -1296,8 +1273,14 @@ class LNWallet(LNWorker):
             public: bool,
             zeroconf=False,
             opening_fee=None,
-            password: Optional[str]) -> Tuple[Channel, PartialTransaction]:
+            password: Optional[str],
+    ) -> Tuple[Channel, PartialTransaction]:
 
+        if funding_sat > self.config.LIGHTNING_MAX_FUNDING_SAT:
+            raise Exception(
+                _("Requested channel capacity is over maximum.")
+                + f"\n{funding_sat} sat > {self.config.LIGHTNING_MAX_FUNDING_SAT} sat"
+            )
         coro = peer.channel_establishment_flow(
             funding_tx=funding_tx,
             funding_sat=funding_sat,
@@ -1331,8 +1314,8 @@ class LNWallet(LNWorker):
             self.remove_channel(chan.channel_id)
             raise
 
-    def cb_data(self, node_id):
-        return CB_MAGIC_BYTES + node_id[0:16]
+    def cb_data(self, node_id: bytes) -> bytes:
+        return CB_MAGIC_BYTES + node_id[0:NODE_ID_PREFIX_LEN]
 
     def decrypt_cb_data(self, encrypted_data, funding_address):
         funding_scripthash = bytes.fromhex(address_to_scripthash(funding_address))
@@ -1352,6 +1335,8 @@ class LNWallet(LNWorker):
             funding_sat: int,
             node_id: bytes,
             fee_est=None) -> PartialTransaction:
+        from .wallet import get_locktime_for_new_transaction
+
         outputs = [PartialTxOutput.from_address_and_value(DummyAddress.CHANNEL, funding_sat)]
         if self.has_recoverable_channels():
             dummy_scriptpubkey = make_op_return(self.cb_data(node_id))
@@ -1361,6 +1346,9 @@ class LNWallet(LNWorker):
             outputs=outputs,
             fee=fee_est)
         tx.set_rbf(False)
+        # rm randomness from locktime, as we use the locktime as entropy for deriving the funding_privkey
+        # (and it would be confusing to get a collision as a consequence of the randomness)
+        tx.locktime = get_locktime_for_new_transaction(self.network, include_random_component=False)
         return tx
 
     def suggest_funding_amount(self, amount_to_pay, coins):
@@ -1394,10 +1382,8 @@ class LNWallet(LNWorker):
             funding_sat: int,
             push_amt_sat: int,
             public: bool = False,
-            password: str = None) -> Tuple[Channel, PartialTransaction]:
-
-        if funding_sat > self.config.LIGHTNING_MAX_FUNDING_SAT:
-            raise Exception(_("Requested channel capacity is over maximum."))
+            password: str = None,
+    ) -> Tuple[Channel, PartialTransaction]:
 
         fut = asyncio.run_coroutine_threadsafe(self.add_peer(connect_str), self.network.asyncio_loop)
         try:
@@ -1468,6 +1454,9 @@ class LNWallet(LNWorker):
         self.wallet.set_label(key, lnaddr.get_description())
         self.set_invoice_status(key, PR_INFLIGHT)
         budget = PaymentFeeBudget.default(invoice_amount_msat=amount_to_pay, config=self.config)
+        if attempts is None and self.uses_trampoline():
+            # we don't expect lots of failed htlcs with trampoline, so we can fail sooner
+            attempts = 30
         success = False
         try:
             await self.pay_to_node(
@@ -2941,6 +2930,7 @@ class LNWallet(LNWorker):
             remote_revocation_pubkey = chan.config[REMOTE].revocation_basepoint.pubkey,
             remote_payment_pubkey = chan.config[REMOTE].payment_basepoint.pubkey,
             local_payment_pubkey=chan.config[LOCAL].payment_basepoint.pubkey,
+            multisig_funding_privkey=chan.config[LOCAL].multisig_key.privkey,
         )
 
     def export_channel_backup(self, channel_id):
@@ -3076,7 +3066,7 @@ class LNWallet(LNWorker):
                         encrypted_data = o2.scriptpubkey[2:]
                         data = self.decrypt_cb_data(encrypted_data, funding_address)
                         if data.startswith(CB_MAGIC_BYTES):
-                            node_id_prefix = data[4:]
+                            node_id_prefix = data[len(CB_MAGIC_BYTES):]
         if node_id_prefix is None:
             return
         funding_txid = tx.txid()

@@ -6,10 +6,9 @@ from typing import Optional, TYPE_CHECKING
 
 from PyQt6.QtGui import QFont, QCursor, QMouseEvent
 from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtWidgets import (QComboBox, QLabel, QVBoxLayout, QGridLayout, QLineEdit, QTextEdit,
+from PyQt6.QtWidgets import (QLabel, QVBoxLayout, QGridLayout, QTextEdit,
                              QHBoxLayout, QPushButton, QWidget, QSizePolicy, QFrame)
 
-from electrum_blk.bitcoin import is_address
 from electrum_blk.i18n import _
 from electrum_blk.util import InvoiceError
 from electrum_blk.invoices import pr_expiration_values
@@ -17,11 +16,9 @@ from electrum_blk.logging import Logger
 
 from .amountedit import AmountEdit, BTCAmountEdit, SizedFreezableLineEdit
 from .qrcodewidget import QRCodeWidget
-from .util import read_QIcon, ColorScheme, HelpLabel, WWLabel, MessageBoxMixin, MONOSPACE_FONT
-from .util import ButtonsTextEdit, get_iconname_qrcode
+from .util import read_QIcon, WWLabel, MessageBoxMixin, MONOSPACE_FONT, get_iconname_qrcode
 
 if TYPE_CHECKING:
-    from . import ElectrumGui
     from .main_window import ElectrumWindow
 
 

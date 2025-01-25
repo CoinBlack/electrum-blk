@@ -29,7 +29,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (QVBoxLayout, QCheckBox, QHBoxLayout, QLineEdit,
                              QLabel, QCompleter, QDialog, QStyledItemDelegate,
-                             QScrollArea, QWidget, QPushButton)
+                             QWidget, QPushButton)
 
 from electrum_blk.i18n import _
 from electrum_blk.mnemonic import Mnemonic, calc_seed_type, is_any_2fa_seed_type

@@ -24,7 +24,7 @@ from .bitcoin import (script_to_p2wsh, opcodes,
                       construct_witness)
 from .transaction import PartialTxInput, PartialTxOutput, PartialTransaction, Transaction, TxInput, TxOutpoint
 from .transaction import script_GetOp, match_script_against_template, OPPushDataGeneric, OPPushDataPubkey
-from .util import log_exceptions, BelowDustLimit, OldTaskGroup, age
+from .util import log_exceptions, ignore_exceptions, BelowDustLimit, OldTaskGroup, age
 from .lnutil import REDEEM_AFTER_DOUBLE_SPENT_DELAY
 from .bitcoin import dust_threshold, DummyAddress
 from .logging import Logger
@@ -152,6 +152,7 @@ class SwapData(StoredObject):
 
     _funding_prevout = None  # type: Optional[TxOutpoint]  # for RBF
     _payment_hash = None
+    _zeroconf = False
 
     @property
     def payment_hash(self) -> bytes:
@@ -351,7 +352,7 @@ class SwapManager(Logger):
                         self.lnwatcher.remove_callback(swap.lockup_address)
                         swap.is_redeemed = True
                 elif spent_height == TX_HEIGHT_LOCAL:
-                    if funding_height.conf > 0 or (swap.is_reverse and self.wallet.config.LIGHTNING_ALLOW_INSTANT_SWAPS):
+                    if funding_height.conf > 0 or (swap.is_reverse and swap._zeroconf):
                         tx = self.lnwatcher.adb.get_transaction(txin.spent_txid)
                         try:
                             await self.network.broadcast_transaction(tx)
@@ -428,7 +429,7 @@ class SwapManager(Logger):
             self.logger.info(f'adding claim tx {tx.txid()}')
             self.wallet.adb.add_transaction(tx)
             swap.spending_txid = tx.txid()
-            if funding_height.conf > 0 or (swap.is_reverse and self.wallet.config.LIGHTNING_ALLOW_INSTANT_SWAPS):
+            if funding_height.conf > 0 or (swap.is_reverse and swap._zeroconf):
                 try:
                     await self.network.broadcast_transaction(tx)
                 except TxBroadcastError:
@@ -823,6 +824,7 @@ class SwapManager(Logger):
             *,
             lightning_amount_sat: int,
             expected_onchain_amount_sat: int,
+            zeroconf: bool=False,
             channels: Optional[Sequence['Channel']] = None,
     ) -> Optional[str]:
         """send on Lightning, receive on-chain
@@ -903,6 +905,7 @@ class SwapManager(Logger):
             prepay_hash=prepay_hash,
             onchain_amount_sat=onchain_amount,
             lightning_amount_sat=lightning_amount_sat)
+        swap._zeroconf = zeroconf
         # initiate fee payment.
         if fee_invoice:
             asyncio.ensure_future(self.lnworker.pay_invoice(fee_invoice))
@@ -1376,6 +1379,7 @@ class NostrTransport(Logger):
             max_amount = offer['max_amount'],
         )
 
+    @ignore_exceptions
     @log_exceptions
     async def publish_offer(self, sm):
         assert self.sm.is_server

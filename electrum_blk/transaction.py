@@ -621,6 +621,9 @@ def script_GetOp(_bytes : bytes):
                 try: (nSize,) = struct.unpack_from('<I', _bytes, i)
                 except struct.error: raise MalformedBitcoinScript()
                 i += 4
+            if i + nSize > len(_bytes):
+                raise MalformedBitcoinScript(
+                    f"Push of data element that is larger than remaining data: {nSize} vs {len(_bytes) - i}")
             vch = _bytes[i:i + nSize]
             i += nSize
 
@@ -807,8 +810,6 @@ def multisig_script(public_keys: Sequence[str], m: int) -> bytes:
     n = len(public_keys)
     assert 1 <= m <= n <= 15, f'm {m}, n {n}'
     return construct_script([m, *public_keys, n, opcodes.OP_CHECKMULTISIG])
-
-
 
 
 class Transaction:

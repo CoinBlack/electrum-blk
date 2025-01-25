@@ -245,6 +245,9 @@ class SimpleConfig(Logger):
         self.amt_precision_post_satoshi = self.BTC_AMOUNTS_PREC_POST_SAT
         self.amt_add_thousands_sep = self.BTC_AMOUNTS_ADD_THOUSANDS_SEP
 
+    def list_config_vars(self) -> Sequence[str]:
+        return list(sorted(_config_var_from_key.keys()))
+
     def electrum_path_root(self):
         # Read electrum_path from command line
         # Otherwise use the user's default data directory.
@@ -1020,13 +1023,6 @@ Note that static backups only allow you to request a force-close with the remote
 
 If this is enabled, other nodes cannot open a channel to you. Channel recovery data is encrypted, so that only your wallet can decrypt it. However, blockchain analysis will be able to tell that the transaction was probably created by Electrum."""),
     )
-    LIGHTNING_ALLOW_INSTANT_SWAPS = ConfigVar(
-        'allow_instant_swaps', default=False, type_=bool,
-        short_desc=lambda: _("Allow instant swaps"),
-        long_desc=lambda: _("""If this option is checked, your client will complete reverse swaps before the funding transaction is confirmed.
-
-Note you are at risk of losing the funds in the swap, if the funding transaction never confirms."""),
-    )
     LIGHTNING_TO_SELF_DELAY_CSV = ConfigVar('lightning_to_self_delay', default=7 * 144, type_=int)
     LIGHTNING_MAX_FUNDING_SAT = ConfigVar('lightning_max_funding_sat', default=LN_MAX_FUNDING_SAT_LEGACY, type_=int)
     LIGHTNING_LEGACY_ADD_TRAMPOLINE = ConfigVar(
@@ -1128,6 +1124,7 @@ Warning: setting this to too low will result in lots of payment failures."""),
     GUI_QML_ADDRESS_LIST_SHOW_TYPE = ConfigVar('address_list_show_type', default=1, type_=int)
     GUI_QML_ADDRESS_LIST_SHOW_USED = ConfigVar('address_list_show_used', default=False, type_=bool)
     GUI_QML_ALWAYS_ALLOW_SCREENSHOTS = ConfigVar('android_always_allow_screenshots', default=False, type_=bool)
+    GUI_QML_SET_MAX_BRIGHTNESS_ON_QR_DISPLAY = ConfigVar('android_set_max_brightness_on_qr_display', default=True, type_=bool)
 
     BTC_AMOUNTS_DECIMAL_POINT = ConfigVar('decimal_point', default=DECIMAL_POINT_DEFAULT, type_=int)
     BTC_AMOUNTS_FORCE_NZEROS_AFTER_DECIMAL_POINT = ConfigVar(

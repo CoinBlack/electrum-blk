@@ -27,7 +27,7 @@ import os
 import sys
 
 
-MIN_PYTHON_VERSION = "3.8.0"  # FIXME duplicated from setup.py
+MIN_PYTHON_VERSION = "3.10.0"  # FIXME duplicated from setup.py
 _min_python_version_tuple = tuple(map(int, (MIN_PYTHON_VERSION.split("."))))
 
 
@@ -75,8 +75,8 @@ def check_imports():
         import aiorpcx
     except ImportError as e:
         sys.exit(f"Error: {str(e)}. Try 'sudo python3 -m pip install <module-name>'")
-    if not ((0, 22, 0) <= aiorpcx._version < (0, 24)):
-        raise RuntimeError(f'aiorpcX version {aiorpcx._version} does not match required: 0.22.0<=ver<0.24')
+    if not ((0, 22, 0) <= aiorpcx._version < (0, 25)):
+        raise RuntimeError(f'aiorpcX version {aiorpcx._version} does not match required: 0.22.0<=ver<0.25')
     # the following imports are for pyinstaller
     from google.protobuf import descriptor
     from google.protobuf import message
@@ -331,6 +331,9 @@ def main():
         if util.get_android_package_name() == "org.blackcoin.testnet.electrumblk":
             # ~hack for easier testnet builds. pkgname subject to change.
             config_options['testnet'] = True
+        elif util.get_android_package_name() == "org.electrum.regtest.electrum":
+            # ~hack for easier regtest builds. pkgname subject to change.
+            config_options['regtest'] = True
     else:
         config_options = args.__dict__
         f = lambda key: config_options[key] is not None and key not in config_variables.get(args.cmd, {}).keys()

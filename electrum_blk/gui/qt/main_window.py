@@ -39,12 +39,9 @@ import concurrent.futures
 
 from PyQt6.QtGui import QPixmap, QKeySequence, QIcon, QCursor, QFont, QFontMetrics, QAction, QShortcut
 from PyQt6.QtCore import Qt, QRect, QStringListModel, QSize, pyqtSignal
-from PyQt6.QtWidgets import (QMessageBox, QSystemTrayIcon, QTabWidget,
-                             QMenuBar, QFileDialog, QCheckBox, QLabel,
-                             QVBoxLayout, QGridLayout, QLineEdit,
-                             QHBoxLayout, QPushButton, QScrollArea, QTextEdit,
-                             QMainWindow, QInputDialog,
-                             QWidget, QSizePolicy, QStatusBar, QToolTip,
+from PyQt6.QtWidgets import (QMessageBox, QTabWidget, QMenuBar, QFileDialog, QCheckBox, QLabel,
+                             QVBoxLayout, QGridLayout, QLineEdit, QHBoxLayout, QPushButton, QScrollArea, QTextEdit,
+                             QMainWindow, QInputDialog, QWidget, QSizePolicy, QStatusBar, QToolTip,
                              QMenu, QToolButton)
 
 import electrum_ecc as ecc
@@ -54,7 +51,7 @@ from electrum_blk.gui import messages
 from electrum_blk import (keystore, constants, util, bitcoin, commands,
                       paymentrequest, lnutil)
 from electrum_blk.bitcoin import COIN, is_address, DummyAddress
-from electrum_blk.plugin import run_hook, BasePlugin
+from electrum_blk.plugin import run_hook
 from electrum_blk.i18n import _
 from electrum_blk.util import (format_time, UserCancelled, profiler, bfh, InvalidPassword,
                            UserFacingException, get_new_wallet_name, send_exception_to_crash_reporter,
@@ -68,13 +65,12 @@ from electrum_blk.wallet import (Multisig_Wallet, Abstract_Wallet,
                              sweep_preparations, InternalAddressCorruption,
                              CannotCPFP)
 from electrum_blk.version import ELECTRUM_VERSION
-from electrum_blk.network import Network, UntrustedServerReturnedError, NetworkException
+from electrum_blk.network import Network, UntrustedServerReturnedError
 from electrum_blk.exchange_rate import FxThread
 from electrum_blk.simple_config import SimpleConfig
 from electrum_blk.logging import Logger
 from electrum_blk.lntransport import extract_nodeid, ConnStringFormatError
 from electrum_blk.lnaddr import lndecode
-from electrum_blk.submarine_swaps import SwapServerError
 
 from .rate_limiter import rate_limited
 from .exception_window import Exception_Hook
@@ -86,13 +82,11 @@ from .fee_slider import FeeSlider, FeeComboBox
 from .util import (read_QIcon, ColorScheme, text_dialog, icon_path, WaitingDialog,
                    WindowModalDialog, HelpLabel, Buttons,
                    OkButton, InfoButton, WWLabel, TaskThread, CancelButton,
-                   CloseButton, HelpButton, MessageBoxMixin, EnterButton,
-                   import_meta_gui, export_meta_gui,
+                   CloseButton, MessageBoxMixin, EnterButton, import_meta_gui, export_meta_gui,
                    filename_field, address_field, char_width_in_lineedit, webopen,
                    TRANSACTION_FILE_EXTENSION_FILTER_ANY, MONOSPACE_FONT,
-                   getOpenFileName, getSaveFileName, font_height)
-from .util import ButtonsLineEdit, ShowQRLineEdit
-from .util import QtEventListener, qt_event_listener, event_listener
+                   getOpenFileName, getSaveFileName, ShowQRLineEdit, QtEventListener, qt_event_listener,
+                   event_listener, scan_qr_from_screenshot)
 from .wizard.wallet import WIF_HELP_TEXT
 from .history_list import HistoryList, HistoryModel
 from .update_checker import UpdateCheck, UpdateCheckThread
@@ -101,10 +95,10 @@ from .confirm_tx_dialog import ConfirmTxDialog
 from .rbf_dialog import BumpFeeDialog, DSCancelDialog
 from .qrreader import scan_qrcode
 from .swap_dialog import SwapDialog, InvalidSwapParameters
-from .balance_dialog import BalanceToolButton, COLOR_FROZEN, COLOR_UNMATURED, COLOR_UNCONFIRMED, COLOR_CONFIRMED, COLOR_LIGHTNING, COLOR_FROZEN_LIGHTNING
+from .balance_dialog import (BalanceToolButton, COLOR_FROZEN, COLOR_UNMATURED, COLOR_UNCONFIRMED, COLOR_CONFIRMED,
+                             COLOR_LIGHTNING, COLOR_FROZEN_LIGHTNING)
 
 if TYPE_CHECKING:
-    from electrum_blk.simple_config import ConfigVarWithConfig
     from . import ElectrumGui
 
 
@@ -1184,6 +1178,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
             except InvalidSwapParameters as e:
                 self.show_error(str(e))
                 return
+            except UserCancelled:
+                return
 
     def create_sm_transport(self):
         sm = self.wallet.lnworker.swap_manager
@@ -1681,7 +1677,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
             'util': util,
             'bitcoin': bitcoin,
             'lnutil': lnutil,
-            'channels': list(self.wallet.lnworker.channels.values()) if self.wallet.lnworker else []
+            'channels': list(self.wallet.lnworker.channels.values()) if self.wallet.lnworker else [],
+            'scan_qr': scan_qr_from_screenshot,
         })
 
         c = commands.Commands(

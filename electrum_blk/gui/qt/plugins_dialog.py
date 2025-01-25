@@ -1,14 +1,12 @@
 from typing import TYPE_CHECKING, Optional
 from functools import partial
 
-from PyQt6.QtWidgets import QLabel, QVBoxLayout, QGridLayout, QPushButton, QComboBox, QLineEdit, QSpacerItem, QWidget, QHBoxLayout, QScrollArea, QCheckBox, QFormLayout
+from PyQt6.QtWidgets import QLabel, QVBoxLayout, QGridLayout, QPushButton, QWidget, QScrollArea, QCheckBox, QFormLayout
 
 from electrum_blk.i18n import _
-from electrum_blk.gui import messages
-from electrum_blk.plugin import run_hook, BasePlugin
+from electrum_blk.plugin import run_hook
 
-from . import util
-from .util import WindowModalDialog, Buttons, CloseButton, HelpButton, WWLabel
+from .util import WindowModalDialog, Buttons, CloseButton, WWLabel, insert_spaces
 
 
 if TYPE_CHECKING:
@@ -23,6 +21,7 @@ class PluginDialog(WindowModalDialog):
         description = metadata.get('description', '')
         requires = metadata.get('requires')
         version = metadata.get('version', 'n/a')
+        zip_hash = metadata.get('zip_hash_sha256', None)
 
         WindowModalDialog.__init__(self, window, 'Plugin')
         self.setMinimumSize(400,250)
@@ -39,6 +38,8 @@ class PluginDialog(WindowModalDialog):
         form.addRow(QLabel(_('Author') + ':'), QLabel(author))
         form.addRow(QLabel(_('Description') + ':'), WWLabel(description))
         form.addRow(QLabel(_('Version') + ':'), QLabel(version))
+        if zip_hash:
+            form.addRow(QLabel('Hash [sha256]:'), WWLabel(insert_spaces(zip_hash, 8)))
         if requires:
             msg = '\n'.join(map(lambda x: x[1], requires))
             form.addRow(QLabel(_('Requires') + ':'), WWLabel(msg))

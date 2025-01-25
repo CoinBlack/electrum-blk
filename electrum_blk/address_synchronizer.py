@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Dict, Optional, Set, Tuple, NamedTuple, Sequen
 from .crypto import sha256
 from . import bitcoin, constants, util
 from .util import profiler, bfh, TxMinedInfo, UnrelatedTransactionException, with_lock, OldTaskGroup
-from .transaction import Transaction, TxOutput, TxInput, PartialTxInput, TxOutpoint, PartialTransaction
+from .transaction import Transaction, TxOutput, TxInput, PartialTxInput, TxOutpoint, PartialTransaction, tx_from_any
 from .synchronizer import Synchronizer
 from .verifier import SPV
 from .blockchain import hash_header, Blockchain
@@ -274,6 +274,8 @@ class AddressSynchronizer(Logger, EventListener):
         tx_hash = tx.txid()
         if tx_hash is None:
             raise Exception("cannot add tx without txid to wallet history")
+        # For sanity, try to serialize and deserialize tx early:
+        tx_from_any(str(tx))  # see if raises (no-side-effects)
         # we need self.transaction_lock but get_tx_height will take self.lock
         # so we need to take that too here, to enforce order of locks
         with self.lock, self.transaction_lock:

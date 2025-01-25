@@ -46,7 +46,7 @@ from .lnutil import (Outpoint, LocalConfig, RECEIVED, UpdateAddHtlc, ChannelConf
                      IncompatibleLightningFeatures, derive_payment_secret_from_payment_preimage,
                      ChannelType, LNProtocolWarning, validate_features, IncompatibleOrInsaneFeatures)
 from .lnutil import FeeUpdate, channel_id_from_funding_tx, PaymentFeeBudget
-from .lnutil import serialize_htlc_key
+from .lnutil import serialize_htlc_key, Keypair
 from .lntransport import LNTransport, LNTransportBase, LightningPeerConnectionClosed, HandshakeFailed
 from .lnmsg import encode_msg, decode_msg, UnknownOptionalMsgType, FailedToParseMsg
 from .interface import GracefulDisconnect
@@ -605,16 +605,17 @@ class Peer(Logger, EventListener):
         await self.querying.wait()
         self.querying.clear()
 
-    def query_short_channel_ids(self, ids, compressed=True):
+    def query_short_channel_ids(self, ids):
+        # compression MUST NOT be used according to updated bolt
+        # (https://github.com/lightning/bolts/pull/981)
         ids = sorted(ids)
         s = b''.join(ids)
-        encoded = zlib.compress(s) if compressed else s
-        prefix = b'\x01' if compressed else b'\x00'
+        prefix = b'\x00'  # uncompressed
         self.send_message(
             'query_short_channel_ids',
             chain_hash=constants.net.rev_genesis_bytes(),
-            len=1+len(encoded),
-            encoded_short_ids=prefix+encoded)
+            len=1+len(s),
+            encoded_short_ids=prefix+s)
 
     async def _message_loop(self):
         try:
@@ -673,7 +674,15 @@ class Peer(Logger, EventListener):
         self.logger.info(f"upfront shutdown script received: {upfront_shutdown_script}")
         return upfront_shutdown_script
 
-    def make_local_config(self, funding_sat: int, push_msat: int, initiator: HTLCOwner, channel_type: ChannelType) -> LocalConfig:
+    def make_local_config(
+        self,
+        *,
+        funding_sat: int,
+        push_msat: int,
+        initiator: HTLCOwner,
+        channel_type: ChannelType,
+        multisig_funding_keypair: Optional[Keypair],  # if None, will get derived from channel_seed
+    ) -> LocalConfig:
         channel_seed = os.urandom(32)
         initial_msat = funding_sat * 1000 - push_msat if initiator == LOCAL else push_msat
 
@@ -692,6 +701,14 @@ class Peer(Logger, EventListener):
             static_payment_key = None
             static_remotekey = bytes.fromhex(wallet.get_public_key(addr))
 
+        if multisig_funding_keypair:
+            for chan in self.lnworker.channels.values():  # check against all chans of lnworker, for sanity
+                if multisig_funding_keypair.pubkey == chan.config[LOCAL].multisig_key.pubkey:
+                    raise Exception(
+                        "Refusing to reuse multisig_funding_keypair for new channel. "
+                        "Wait one block before opening another channel with this peer."
+                    )
+
         dust_limit_sat = bitcoin.DUST_LIMIT_P2PKH
         reserve_sat = max(funding_sat // 100, dust_limit_sat)
         # for comparison of defaults, see
@@ -702,6 +719,7 @@ class Peer(Logger, EventListener):
             channel_seed=channel_seed,
             static_remotekey=static_remotekey,
             static_payment_key=static_payment_key,
+            multisig_key=multisig_funding_keypair,
             upfront_shutdown_script=upfront_shutdown_script,
             to_self_delay=self.network.config.LIGHTNING_TO_SELF_DELAY_CSV,
             dust_limit_sat=dust_limit_sat,
@@ -787,7 +805,21 @@ class Peer(Logger, EventListener):
                 'type': our_channel_type.to_bytes_minimal()
             }
 
-        local_config = self.make_local_config(funding_sat, push_msat, LOCAL, our_channel_type)
+        if self.use_anchors():
+            multisig_funding_keypair = lnutil.derive_multisig_funding_key_if_we_opened(
+                funding_root_secret=self.lnworker.funding_root_keypair.privkey,
+                remote_node_id_or_prefix=self.pubkey,
+                nlocktime=funding_tx.locktime,
+            )
+        else:
+            multisig_funding_keypair = None
+        local_config = self.make_local_config(
+            funding_sat=funding_sat,
+            push_msat=push_msat,
+            initiator=LOCAL,
+            channel_type=our_channel_type,
+            multisig_funding_keypair=multisig_funding_keypair,
+        )
         # if it includes open_channel_tlvs: MUST include upfront_shutdown_script.
         open_channel_tlvs['upfront_shutdown_script'] = {
             'shutdown_scriptpubkey': local_config.upfront_shutdown_script
@@ -1019,7 +1051,21 @@ class Peer(Logger, EventListener):
             if not channel_type.complies_with_features(self.features):
                 raise Exception("sender has sent a channel type we don't support")
 
-        local_config = self.make_local_config(funding_sat, push_msat, REMOTE, channel_type)
+        if self.use_anchors():
+            multisig_funding_keypair = lnutil.derive_multisig_funding_key_if_they_opened(
+                funding_root_secret=self.lnworker.funding_root_keypair.privkey,
+                remote_node_id_or_prefix=self.pubkey,
+                remote_funding_pubkey=payload['funding_pubkey'],
+            )
+        else:
+            multisig_funding_keypair = None
+        local_config = self.make_local_config(
+            funding_sat=funding_sat,
+            push_msat=push_msat,
+            initiator=REMOTE,
+            channel_type=channel_type,
+            multisig_funding_keypair=multisig_funding_keypair,
+        )
 
         upfront_shutdown_script = self.upfront_shutdown_script_from_payload(
             payload, 'open')
@@ -1455,6 +1501,7 @@ class Peer(Logger, EventListener):
         self.maybe_mark_open(chan)
 
     def send_node_announcement(self, alias:str):
+        from .channel_db import NodeInfo
         timestamp = int(time.time())
         node_id = privkey_to_pubkey(self.privkey)
         features = self.features.for_node_announcement()
@@ -1463,7 +1510,11 @@ class Peer(Logger, EventListener):
         rgb_color = bytes.fromhex('000000')
         alias = bytes(alias, 'utf8')
         alias += bytes(32 - len(alias))
-        addresses = b''
+        addr = self.lnworker.config.LIGHTNING_LISTEN
+        hostname, port = addr.split(':')
+        if port is None:  # use default port if not specified
+            port = 9735
+        addresses = NodeInfo.to_addresses_field(hostname, int(port))
         raw_msg = encode_msg(
             "node_announcement",
             flen=flen,
@@ -1605,7 +1656,7 @@ class Peer(Logger, EventListener):
         # if we are forwarding a trampoline payment, add trampoline onion
         if trampoline_onion:
             self.logger.info(f'adding trampoline onion to final payload')
-            trampoline_payload = hops_data[num_hops-2].payload
+            trampoline_payload = hops_data[-1].payload
             trampoline_payload["trampoline_onion_packet"] = {
                 "version": trampoline_onion.version,
                 "public_key": trampoline_onion.public_key,
@@ -2007,7 +2058,7 @@ class Peer(Logger, EventListener):
                 invoice_features=invoice_features,
                 fwd_trampoline_onion=next_trampoline_onion,
                 budget=budget,
-                attempts=1,
+                attempts=100,
                 fw_payment_key=fw_payment_key,
             )
         except OnionRoutingFailure as e:
@@ -2016,7 +2067,7 @@ class Peer(Logger, EventListener):
             self.logger.debug(
                 f"maybe_forward_trampoline. PaymentFailure for {payment_hash.hex()=}, {payment_secret.hex()=}: {e!r}")
             # FIXME: adapt the error code
-            raise OnionRoutingFailure(code=OnionFailureCode.UNKNOWN_NEXT_PEER, data=b'')
+            raise OnionRoutingFailure(code=OnionFailureCode.TRAMPOLINE_FEE_INSUFFICIENT, data=b'')
 
     def _maybe_refuse_to_forward_htlc_that_corresponds_to_payreq_we_created(self, payment_hash: bytes) -> bool:
         """Returns True if the HTLC should be failed.
@@ -2196,6 +2247,7 @@ class Peer(Logger, EventListener):
                     htlc=htlc,
                     processed_onion=trampoline_onion,
                     onion_packet_bytes=onion_packet_bytes,
+                    already_forwarded=already_forwarded,
                 )
             else:
                 callback = lambda: self.maybe_forward_trampoline(

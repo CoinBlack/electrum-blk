@@ -209,7 +209,11 @@ async def sweep(
     return tx
 
 
-def get_locktime_for_new_transaction(network: 'Network') -> int:
+def get_locktime_for_new_transaction(
+    network: 'Network',
+    *,
+    include_random_component: bool = True,
+) -> int:
     # if no network or not up to date, just set locktime to zero
     if not network:
         return 0
@@ -228,8 +232,9 @@ def get_locktime_for_new_transaction(network: 'Network') -> int:
     locktime = min(chain_height, server_height)
     # sometimes pick locktime a bit further back, to help privacy
     # of setups that need more time (offline/multisig/coinjoin/...)
-    if random.randint(0, 9) == 0:
-        locktime = max(0, locktime - random.randint(0, 99))
+    if include_random_component:
+        if random.randint(0, 9) == 0:
+            locktime = max(0, locktime - random.randint(0, 99))
     locktime = max(0, locktime)
     return locktime
 
@@ -1162,9 +1167,8 @@ class Abstract_Wallet(ABC, Logger, EventListener):
                 'date': timestamp_to_datetime(hist_item.tx_mined_status.timestamp),
                 'label': self.get_label_for_txid(hist_item.txid),
                 'txpos_in_block': hist_item.tx_mined_status.txpos,
+                'wanted_height': hist_item.tx_mined_status.wanted_height,
             }
-            if wanted_height := hist_item.tx_mined_status.wanted_height:
-                d['wanted_height'] = wanted_height
             yield d
 
     def create_invoice(self, *, outputs: List[PartialTxOutput], message, pr, URI) -> Invoice:
@@ -1423,6 +1427,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
                     parent['date'] = timestamp_to_datetime(tx_item['timestamp'])
                     parent['height'] = tx_item['height']
                     parent['confirmations'] = tx_item['confirmations']
+                    parent['wanted_height'] = tx_item.get('wanted_height')
                 parent['children'].append(tx_item)
 
         now = time.time()
