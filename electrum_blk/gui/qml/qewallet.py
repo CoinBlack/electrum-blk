@@ -3,7 +3,7 @@ import base64
 import queue
 import threading
 import time
-from typing import TYPE_CHECKING, Callable, Optional, Any
+from typing import TYPE_CHECKING, Callable, Optional, Any, Tuple
 from functools import partial
 
 from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject, QTimer
@@ -13,7 +13,8 @@ from electrum_blk.invoices import InvoiceError, PR_PAID, PR_BROADCASTING, PR_BRO
 from electrum_blk.logging import get_logger
 from electrum_blk.network import TxBroadcastError, BestEffortRequestFailed
 from electrum_blk.transaction import PartialTransaction, Transaction
-from electrum_blk.util import InvalidPassword, event_listener, AddTransactionException, get_asyncio_loop
+from electrum_blk.util import InvalidPassword, event_listener, AddTransactionException, get_asyncio_loop, NotEnoughFunds, \
+    NoDynamicFeeEstimates
 from electrum_blk.plugin import run_hook
 from electrum_blk.wallet import Multisig_Wallet
 from electrum_blk.crypto import pw_decode_with_version_and_mac
@@ -817,3 +818,20 @@ class QEWallet(AuthMixin, QObject, QtEventListener):
     def signMessage(self, address, message):
         sig = self.wallet.sign_message(address, message, self.password)
         return base64.b64encode(sig).decode('ascii')
+
+    def determine_max(self, *, mktx: Callable[[Optional[int]], PartialTransaction]) -> Tuple[Optional[int], Optional[str]]:
+        # TODO: merge with SendTab.spend_max() and move to backend wallet
+        amount = message = None
+        try:
+            try:
+                tx = mktx(None)
+            except (NotEnoughFunds, NoDynamicFeeEstimates) as e:
+                # Check if we had enough funds excluding fees,
+                # if so, still provide opportunity to set lower fees.
+                tx = mktx(0)
+            amount = tx.output_value()
+        except NotEnoughFunds as e:
+            self._logger.debug(str(e))
+            message = self.wallet.get_text_not_enough_funds_mentioning_frozen()
+
+        return amount, message
