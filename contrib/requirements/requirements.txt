@@ -7,7 +7,7 @@ aiohttp_socks>=0.8.4
 certifi
 attrs>=20.1.0
 jsonpatch
-scrypt
+scrypt>=0.8.27
 electrum_ecc>=0.0.4
 electrum_aionostr>=0.0.7
 
