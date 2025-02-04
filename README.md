@@ -149,9 +149,11 @@ Any help testing the software, reporting or fixing bugs, reviewing pull requests
 and recent changes, writing tests, or helping with outstanding issues is very welcome.
 Implementing new features, or improving/refactoring the codebase, is of course
 also welcome, but to avoid wasted effort, especially for larger changes,
-we encourage discussing these on the issue tracker or IRC first.
+we encourage discussing these in Discord first.
 
-Besides [GitHub](https://github.com/coinblack/electrum-blk),
-most communication about Electrum development happens on IRC, in the
-`#electrum` channel on Libera Chat. The easiest way to participate on IRC is
+Communication about Electrum-BLK development is happening in [Discord](https://discord.blackcoin.nl),
+in the `#electrum-blk` channel.
+
+Most communication concerning Electrum development, aside from [GitHub](https://github.com/spesmilo/electrum), 
+happens on IRC, in the `#electrum` channel on Libera Chat. The easiest way to participate on IRC is
 with the web client, [web.libera.chat](https://web.libera.chat/#electrum).
