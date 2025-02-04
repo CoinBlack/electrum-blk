@@ -1740,9 +1740,9 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             else:
                 status = 2  # not SPV verified
         elif is_staked:
-            status = 3 + max(min(conf // (constants.net.COINBASE_MATURITY // 10), 10), 1)
+            status = 3 + max(min(conf // (constants.net.COINBASE_MATURITY // 6), 6), 1)
         else:
-            status = 3 + min(conf, 10)
+            status = 3 + min(conf, 6)
         time_str = format_time(timestamp) if timestamp else _("unknown")
         status_str = TX_STATUS[status] if status < 4 else time_str
         if extra:
