@@ -5,7 +5,7 @@ set -e
 # Parameterize
 PYTHON_VERSION=3.11.9
 PY_VER_MAJOR="3.11"  # as it appears in fs paths
-PACKAGE=Electrum
+PACKAGE=Electrum-BLK
 GIT_REPO=https://github.com/CoinBlack/electrum-blk
 
 export GCC_STRIP_BINARIES="1"
