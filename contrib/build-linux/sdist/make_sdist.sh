@@ -74,7 +74,7 @@ fi
     cd "$BUILDDIR/dist2"
     tar -xzf "$BUILDDIR/dist1/$FINAL_DISTNAME"
     find -exec touch -h -d '2000-11-11T11:11:11+00:00' {} +
-    GZIP=-n tar --sort=name -czf "$FINAL_DISTNAME" "Electrum-$VERSION/"
+    GZIP=-n tar --sort=name -czf "$FINAL_DISTNAME" "Electrum-BLK-$VERSION/"
     mv "$FINAL_DISTNAME" "$DISTDIR/$FINAL_DISTNAME"
 )
 
