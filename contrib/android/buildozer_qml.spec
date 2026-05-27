@@ -73,6 +73,7 @@ requirements =
     plyer,
     libffi,
     libsecp256k1,
+    Pillow,
     pycryptodomex,
     pyqt6sip,
     pyqt6,

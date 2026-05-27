@@ -356,7 +356,7 @@ def main():
         if util.get_android_package_name() == "org.blackcoin.testnet.electrumblk":
             # ~hack for easier testnet builds. pkgname subject to change.
             config_options['testnet'] = True
-        elif util.get_android_package_name() == "org.electrum.regtest.electrum":
+        elif util.get_android_package_name() == "org.blackcoin.regtest.electrumblk":
             # ~hack for easier regtest builds. pkgname subject to change.
             config_options['regtest'] = True
     else:
