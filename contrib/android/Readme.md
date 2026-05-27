@@ -81,7 +81,7 @@ Without that, the default is to install to *all* profiles.
 ### How do I get an interactive shell inside docker?
 ```
 $ docker run -it --rm \
-    -v $PWD:/home/user/wspace/electrum \
+    -v $PWD:/home/user/wspace/electrum-blk \
     -v $PWD/.buildozer/.gradle:/home/user/.gradle \
     --workdir /home/user/wspace/electrum-blk \
     electrum-blk-android-builder-img

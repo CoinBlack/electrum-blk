@@ -57,3 +57,4 @@ contrib/osx/*.dylib
 # Blackcoin specifics
 .omo
 AGENTS.md
+buildozer.spec

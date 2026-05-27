@@ -23,7 +23,10 @@
 import binascii
 import concurrent.futures
 import logging
-import os, sys, re, json
+import os
+import sys
+import re
+import json
 from collections import defaultdict, OrderedDict
 from typing import (NamedTuple, Union, TYPE_CHECKING, Tuple, Optional, Callable, Any,
                     Sequence, Dict, Generic, TypeVar, List, Iterable, Set, Awaitable)
@@ -89,18 +92,18 @@ def all_subclasses(cls) -> Set:
 ca_path = certifi.where()
 
 
-base_units = {'BLK':8, 'mBLK':5, 'μBLK':2, 'sat':0}
+base_units = {'BLK':8, 'mBLK':5, 'bits':2, 'sat':0}
 base_units_inverse = inv_dict(base_units)
-base_units_list = ['BLK', 'mBLK', 'μBLK', 'sat']  # list(dict) does not guarantee order
+base_units_list = ['BLK', 'mBLK', 'bits', 'sat']  # list(dict) does not guarantee order
 
-DECIMAL_POINT_DEFAULT = 8  # BLK
+DECIMAL_POINT_DEFAULT = 8
 
 
 class UnknownBaseUnit(Exception): pass
 
 
 def decimal_point_to_base_unit_name(dp: int) -> str:
-    # e.g. 8 -> "BTC"
+    # e.g. 8 -> "BLK"
     try:
         return base_units_inverse[dp]
     except KeyError:
@@ -109,7 +112,7 @@ def decimal_point_to_base_unit_name(dp: int) -> str:
 
 def base_unit_name_to_decimal_point(unit_name: str) -> int:
     """Returns the max number of digits allowed after the decimal point."""
-    # e.g. "BTC" -> 8
+    # e.g. "BLK" -> 8
     try:
         return base_units[unit_name]
     except KeyError:
@@ -442,11 +445,13 @@ def print_stderr(*args):
     sys.stderr.write(" ".join(args) + "\n")
     sys.stderr.flush()
 
+
 def print_msg(*args):
     # Stringify args
     args = [str(item) for item in args]
     sys.stdout.write(" ".join(args) + "\n")
     sys.stdout.flush()
+
 
 def json_encode(obj):
     try:
@@ -455,11 +460,13 @@ def json_encode(obj):
         s = repr(obj)
     return s
 
+
 def json_decode(x):
     try:
         return json.loads(x, parse_float=Decimal)
     except Exception:
         return x
+
 
 def json_normalize(x):
     # note: The return value of commands, when going through the JSON-RPC interface,
@@ -476,6 +483,8 @@ def constant_time_compare(val1, val2):
 
 
 _profiler_logger = _logger.getChild('profiler')
+
+
 def profiler(func=None, *, min_threshold: Union[int, float, None] = None):
     """Function decorator that logs execution time.
 
@@ -528,6 +537,7 @@ def android_ext_dir():
     from android.storage import primary_external_storage_path
     return primary_external_storage_path()
 
+
 def android_backup_dir():
     pkgname = get_android_package_name()
     d = os.path.join(android_ext_dir(), pkgname)
@@ -535,10 +545,12 @@ def android_backup_dir():
         os.mkdir(d)
     return d
 
+
 def android_data_dir():
     import jnius
     PythonActivity = jnius.autoclass('org.kivy.android.PythonActivity')
     return PythonActivity.mActivity.getFilesDir().getPath() + '/data'
+
 
 def ensure_sparse_file(filename):
     # On modern Linux, no need to do anything.
@@ -874,16 +886,13 @@ def age(
     """Takes a timestamp and returns a string with the approximation of the age"""
     if from_date is None:
         return _("Unknown")
-
     from_date = datetime.fromtimestamp(from_date)
     if since_date is None:
         since_date = datetime.now(target_tz)
-
     distance_in_time = from_date - since_date
     is_in_past = from_date < since_date
     distance_in_seconds = int(round(abs(distance_in_time.days * 86400 + distance_in_time.seconds)))
     distance_in_minutes = int(round(distance_in_seconds / 60))
-
     if distance_in_minutes == 0:
         if include_seconds:
             if is_in_past:
@@ -942,12 +951,11 @@ def age(
             return _("in over {} years").format(round(distance_in_minutes / 525600))
 
 mainnet_block_explorers = {
-    'Bitinfocharts.com': ('https://bitinfocharts.com/blackcoin/',
-                        {'tx': 'tx/', 'addr': 'address/'}),
     'cryptoID': ('https://chainz.cryptoid.info/blk',
                         {'tx': 'tx.dws?', 'addr': 'address.dws?'}),
     'system default': ('https://chainz.cryptoid.info/blk',
                         {'tx': 'tx.dws?', 'addr': 'address.dws?'}),
+}
 }
 
 testnet_block_explorers = {
@@ -958,10 +966,7 @@ testnet_block_explorers = {
 }
 
 testnet4_block_explorers = {
-    'mempool.space': ('https://mempool.space/testnet4/',
-                        {'tx': 'tx/', 'addr': 'address/'}),
-    'wakiyamap.dev': ('https://testnet4-explorer.wakiyamap.dev/',
-                       {'tx': 'tx/', 'addr': 'address/'}),
+    # ...
 }
 
 signet_block_explorers = {
@@ -1025,9 +1030,6 @@ def block_explorer_URL(config: 'SimpleConfig', kind: str, item: str) -> Optional
     return ''.join(url_parts)
 
 
-
-
-
 # Python bug (http://bugs.python.org/issue1927) causes raw_input
 # to be redirected improperly between stdin/stderr on Unix systems
 #TODO: py3
@@ -1036,6 +1038,7 @@ def raw_input(prompt=None):
         sys.stdout.write(prompt)
     return builtin_raw_input()
 
+
 builtin_raw_input = builtins.input
 builtins.input = raw_input
 
@@ -1043,7 +1046,7 @@ builtins.input = raw_input
 def parse_json(message):
     # TODO: check \r\n pattern
     n = message.find(b'\n')
-    if n==-1:
+    if n == -1:
         return None, message
     try:
         j = json.loads(message[0:n].decode('utf8'))
@@ -1446,6 +1449,7 @@ class NetworkJobOnDefaultServer(Logger, ABC):
         self.interface = interface
 
         taskgroup = self.taskgroup
+
         async def run_tasks_wrapper():
             self.logger.debug(f"starting taskgroup ({hex(id(taskgroup))}).")
             try:
@@ -1502,6 +1506,7 @@ def detect_tor_socks_proxy() -> Optional[Tuple[str, int]]:
     # Probable ports for Tor to listen at
     candidates = [
         ("127.0.0.1", 9050),
+        ("127.0.0.1", 9051),
         ("127.0.0.1", 9150),
     ]
     for net_addr in candidates:
@@ -1529,6 +1534,8 @@ def is_tor_socks_port(host: str, port: int) -> bool:
 AS_LIB_USER_I_WANT_TO_MANAGE_MY_OWN_ASYNCIO_LOOP = False  # used by unit tests
 
 _asyncio_event_loop = None  # type: Optional[asyncio.AbstractEventLoop]
+
+
 def get_asyncio_loop() -> asyncio.AbstractEventLoop:
     """Returns the global asyncio event loop we use."""
     if loop := _asyncio_event_loop:
@@ -1665,8 +1672,8 @@ class OrderedDictWithIndex(OrderedDict):
 
 
 def multisig_type(wallet_type):
-    '''If wallet_type is mofn multi-sig, return [m, n],
-    otherwise return None.'''
+    """If wallet_type is mofn multi-sig, return [m, n],
+    otherwise return None."""
     if not wallet_type:
         return None
     match = re.match(r'(\d+)of(\d+)', wallet_type)
