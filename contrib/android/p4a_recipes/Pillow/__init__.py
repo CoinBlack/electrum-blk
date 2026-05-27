@@ -15,7 +15,7 @@ class PillowRecipePinned(util.InheritedRecipeMixin, PillowRecipe):
     sha512sum = "7d97e623bd41da94dd89a66dc600cea016d0a4f33fbf036175768ea96b2031c1968acf4fc3d9b2835ce93f9533838a9ce68a6579a7397f4aeccafb6032adb3db"
     hostpython_prerequisites = [
         HashPinnedDependency(package="setuptools==80.9.0",
-                             hashes=['sha256:f36b47402ecde768dbfafc46e8e4207b4360c654f1f3bb84475f0a28628fb19c']),
+                             hashes=['sha256:062d34222ad13e0cc312a4c02d73f059e86a4acbfbdea8f8f76b28c99f306922']),
     ]
 
 
