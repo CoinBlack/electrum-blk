@@ -1,14 +1,14 @@
 {
-    "testnet4-electrumx.wakiyamap.dev": {
+    "electrum1.blackcoin.nl": {
         "pruning": "-",
-        "s": "51002",
-        "t": "51001",
+        "s": "10001",
+        "t": "10002",
         "version": "1.4"
     },
-    "blackie.c3-soft.com": {
+    "electrum2.blackcoin.nl": {
         "pruning": "-",
-        "s": "57010",
-        "t": "57009",
+        "s": "20001",
+        "t": "20002",
         "version": "1.4"
     }
 }

@@ -62,6 +62,11 @@ repository.
 ### I changed something but I don't see any differences on the phone. What did I do wrong?
 You probably need to clear the cache: `rm -rf .buildozer/android/platform/build-*/{build,dists}`
 
+Or more extreme, to nuke all build-related dirs: `rm -rf .buildozer_qml/ packages/ contrib/android/.cache/`
+
+Having a several months old build cache might also cause confusing build failures,
+in such a case, worth a try clearing it.
+
 
 ### How do I deploy on connected phone for quick testing?
 Assuming `adb` is installed:
@@ -69,6 +74,8 @@ Assuming `adb` is installed:
 $ adb -d install -r dist/ElectrumBLK-*-arm64-v8a-debug.apk
 $ adb shell monkey -p org.blackcoin.electrumblk 1
 ```
+Note `adb install` can take a `--user {userId}` option to install the app for a specific profile.
+Without that, the default is to install to *all* profiles.
 
 
 ### How do I get an interactive shell inside docker?
@@ -106,8 +113,6 @@ Run electrum-blk with the `-g` switch: `electrumblk -g qml`
 
 Notes:
 
-- pyqt ~6.4 would work best, as the gui has not yet been adapted to styling changes in 6.5
-- However, pyqt6 as distributed on PyPI does not include a required module (PyQt6.QtQml) until 6.5
 - Installing these deps from your OS package manager should also work,
   except many don't distribute pyqt6 yet.
   For pyqt5 on debian-based distros, this used to look like this:

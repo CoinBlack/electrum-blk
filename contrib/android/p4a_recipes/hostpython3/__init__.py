@@ -1,7 +1,7 @@
 import os
 
 from pythonforandroid.recipes.hostpython3 import HostPython3Recipe
-from pythonforandroid.util import load_source
+from pythonforandroid.util import load_source, HashPinnedDependency
 
 util = load_source('util', os.path.join(os.path.dirname(os.path.dirname(__file__)), 'util.py'))
 
@@ -11,8 +11,25 @@ assert HostPython3Recipe.python_depends == []
 
 
 class HostPython3RecipePinned(util.InheritedRecipeMixin, HostPython3Recipe):
-    version = "3.12.10"
-    sha512sum = "113d8faf2685a7a9e868e4c0ecb2767aae3e54a8d3722a2de5ca00049b336c8728a6a6506b282326d94acc71a5c534ea706ad7b886a6ec7d15eaf46505ef233b"
+    # PYTHON_VERSION=    # < line here so that I can grep the codebase and teleport here
+    version = "3.11.14"
+    sha512sum = "4642f6d59c76c6e5dbd827fdb28694376a9cc76e513146d092b49afb41513b3c9dff2339cfcebfb5b260f5cdc49a59a69906e284e5d478b2189d3374e9e24fd5"
+
+    # this property overrides the default hostpython dependencies for PyProjectRecipe recipies
+    pyproject_base_dependencies = [
+        HashPinnedDependency(package="build==1.4.0",
+                             hashes=['sha256:6a07c1b8eb6f2b311b96fcbdbce5dab5fe637ffda0fd83c9cac622e927501596']),
+        HashPinnedDependency(package="pip==24.0",
+                             hashes=['sha256:ba0d021a166865d2265246961bec0152ff124de910c5cc39f1156ce3fa7c69dc']),
+        HashPinnedDependency(package="setuptools==80.9.0",
+                             hashes=['sha256:062d34222ad13e0cc312a4c02d73f059e86a4acbfbdea8f8f76b28c99f306922']),
+
+        # pin deptree build==1.4.0
+        HashPinnedDependency(package="packaging==26.0",
+                             hashes=['sha256:b36f1fef9334a5588b4166f8bcd26a14e521f2b55e6b9de3aaa80d3ff7a37529']),
+        HashPinnedDependency(package="pyproject_hooks==1.2.0",
+                             hashes=['sha256:9e5c6bfa8dcc30091c74b0cf803c81fdd29d94f01992a7707bc97babb1141913']),
+    ]
 
 
 recipe = HostPython3RecipePinned()

@@ -40,13 +40,23 @@ info "apk building phase starts."
 # Uncomment and change below to set a custom android package id,
 # e.g. to allow simultaneous mainnet and testnet installs of the apk.
 # defaults:
+#
 #   export APP_PACKAGE_NAME=ElectrumBLK
 #   export APP_PACKAGE_DOMAIN=org.blackcoin
-# FIXME: changing "APP_PACKAGE_NAME" seems to require a clean rebuild of ".buildozer/",
-#        to avoid that, maybe change "APP_PACKAGE_DOMAIN" instead.
-# So, in particular, to build a testnet apk, simply uncomment:
+#
+# FIXME: changing "APP_PACKAGE_NAME" seems to require a clean rebuild of ".buildozer/".
+#        However, even with a clean build, the build appears to break in the final stages (~4.7.0).
+#        To avoid these issues; only change "APP_PACKAGE_DOMAIN" instead.
+#
+# So, in particular, to build testnet APKs, simply uncomment one of the following at a time (per-build):
+#
+# Testnet
 #export APP_PACKAGE_DOMAIN=org.blackcoin.testnet
+#
+# Testnet4
+#export APP_PACKAGE_DOMAIN=org.blackcoin.testnet4
 export APP_PACKAGE_DOMAIN=org.blackcoin
+export APP_PACKAGE_NAME=ElectrumBLK
 
 if [ $CI ]; then
     # override log level specified in buildozer.spec to "debug":
@@ -93,16 +103,22 @@ if [[ "$2" == "all" ]] ; then
     # FIXME failures are not propagated out: we should fail the script if any arch build fails
     export APP_ANDROID_ARCHS=armeabi-v7a
     export APP_ANDROID_NUMERIC_VERSION=$("$CONTRIB_ANDROID"/get_apk_versioncode.py "$APP_ANDROID_ARCHS")
+    "$CONTRIB_ANDROID"/make_barcode_scanner.sh "$APP_ANDROID_ARCHS" || fail "make_barcode_scanner.sh failed"
     make $TARGET
+
     export APP_ANDROID_ARCHS=arm64-v8a
     export APP_ANDROID_NUMERIC_VERSION=$("$CONTRIB_ANDROID"/get_apk_versioncode.py "$APP_ANDROID_ARCHS")
+    "$CONTRIB_ANDROID"/make_barcode_scanner.sh "$APP_ANDROID_ARCHS" || fail "make_barcode_scanner.sh failed"
     make $TARGET
+
     export APP_ANDROID_ARCHS=x86_64
     export APP_ANDROID_NUMERIC_VERSION=$("$CONTRIB_ANDROID"/get_apk_versioncode.py "$APP_ANDROID_ARCHS")
+    "$CONTRIB_ANDROID"/make_barcode_scanner.sh "$APP_ANDROID_ARCHS" || fail "make_barcode_scanner.sh failed"
     make $TARGET
 else
     export APP_ANDROID_ARCHS=$2
     export APP_ANDROID_NUMERIC_VERSION=$("$CONTRIB_ANDROID"/get_apk_versioncode.py "$APP_ANDROID_ARCHS")
+    "$CONTRIB_ANDROID"/make_barcode_scanner.sh "$APP_ANDROID_ARCHS" || fail "make_barcode_scanner.sh failed"
     make $TARGET
 fi
 
