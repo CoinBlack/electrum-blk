@@ -18,6 +18,7 @@ ElDialog {
     property string _bolt11: request.bolt11
     property string _bip21uri: request.bip21
     property string _address: request.address
+    property bool _has_lightning: Daemon.currentWallet && Daemon.currentWallet.isLightning
 
     property bool _render_qr: false // delay qr rendering until dialog is shown
 
@@ -132,6 +133,7 @@ ElDialog {
                                 Layout.fillWidth: true
                                 Layout.preferredWidth: 1
                                 text: qsTr('Lightning')
+                                visible: _has_lightning
                                 enabled: _bolt11
                                 checked: rootLayout.state == 'bolt11'
                                 indicator: _ind.createObject()
@@ -243,7 +245,7 @@ ElDialog {
                 icon.color: 'transparent'
                 text: 'Copy'
                 onClicked: {
-                    if (request.isLightning && rootLayout.state == 'bolt11')
+                    if (_has_lightning && rootLayout.state == 'bolt11')
                         AppController.textToClipboard(_bolt11.toLowerCase())
                     else if (rootLayout.state == 'bip21uri')
                         AppController.textToClipboard(_bip21uri)
@@ -260,7 +262,7 @@ ElDialog {
                 text: 'Share'
                 onClicked: {
                     enabled = false
-                    if (request.isLightning && rootLayout.state == 'bolt11')
+                    if (_has_lightning && rootLayout.state == 'bolt11')
                         AppController.doShare(_bolt11.toLowerCase(), qsTr('Payment Request'))
                     else if (rootLayout.state == 'bip21uri')
                         AppController.doShare(_bip21uri, qsTr('Payment Request'))
@@ -309,13 +311,13 @@ ElDialog {
         wallet: Daemon.currentWallet
         onDetailsChanged: {
             var req_type = Config.preferredRequestType
-            if (bolt11 && req_type == 'bolt11') {
+            if (_has_lightning && bolt11 && req_type == 'bolt11') {
                 rootLayout.state = 'bolt11'
             } else if (bip21 && req_type == 'bip21uri') {
                 rootLayout.state = 'bip21uri'
             } else if (req_type == 'address') {
                 rootLayout.state = 'address'
-            } else if (bolt11) {
+            } else if (_has_lightning && bolt11) {
                 rootLayout.state = 'bolt11'
             } else if (bip21) {
                 rootLayout.state = 'bip21uri'

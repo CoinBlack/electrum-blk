@@ -518,12 +518,8 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         return self.config.ENABLE_ANCHOR_CHANNELS and self.has_channels()
 
     def can_have_lightning(self) -> bool:
-        if self.config.ENABLE_ANCHOR_CHANNELS:
-            # this excludes hardware wallets, watching-only wallets
-            return self.can_have_deterministic_lightning()
-        else:
-            # we want static_remotekey to be a wallet address
-            return self.txin_type == 'p2wpkh'
+        # Lightning Network is not supported for Blackcoin
+        return False
 
     def can_have_deterministic_lightning(self) -> bool:
         if not self.txin_type == 'p2wpkh':
