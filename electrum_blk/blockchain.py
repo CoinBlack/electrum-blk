@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 _logger = get_logger(__name__)
 
 HEADER_SIZE = 80  # bytes
-CHUNK_SIZE = 2016
+CHUNK_SIZE = 2016  # num headers in a difficulty retarget period
 
 
 class MissingHeader(Exception):
@@ -175,7 +175,7 @@ def get_best_chain() -> 'Blockchain':
 
 # block hash -> chain work; up to and including that block
 _CHAINWORK_CACHE = {
-    "0000000000000000000000000000000000000000000000000000000000000000": 0,
+    "0000000000000000000000000000000000000000000000000000000000000000": 0,  # virtual block at height -1
 }  # type: Dict[str, int]
 
 
@@ -323,8 +323,7 @@ class Blockchain(Logger):
         self._size = os.path.getsize(p)//HEADER_SIZE if os.path.exists(p) else 0
 
     @classmethod
-    def verify_header(cls, header: dict, prev_hash: str, target: int, expected_header_hash: str = None) -> None:
-        # Blackcoin: SPV client, skip PoW/PoS target verification
+    def verify_header(cls, header: dict, prev_hash: str, target: int, expected_header_hash: str=None) -> None:
         _hash = hash_header(header)
         if expected_header_hash and expected_header_hash != _hash:
             raise InvalidHeader("hash mismatches with expected: {} vs {}".format(expected_header_hash, _hash))

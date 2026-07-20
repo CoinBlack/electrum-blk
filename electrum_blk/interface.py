@@ -1534,10 +1534,7 @@ class Interface(Logger):
 
     async def get_fee_histogram(self) -> Sequence[Tuple[Union[float, int], int]]:
         # do request
-        try:
-            res = await self.session.send_request('mempool.get_fee_histogram')
-        except aiorpcx.jsonrpc.RPCError:
-            return []
+        res = await self.session.send_request('mempool.get_fee_histogram')
         # check response
         assert_list_or_tuple(res)
         prev_fee = float('inf')

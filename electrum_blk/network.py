@@ -1160,10 +1160,7 @@ class Network(Logger, NetworkRetryManager[ServerAddr]):
     def _set_preferred_chain(self, chain: Optional[Blockchain]):
         if chain:
             height = chain.get_max_forkpoint()
-            try:
-                header_hash = chain.get_hash(height)
-            except blockchain.MissingHeader:
-                header_hash = constants.net.GENESIS
+            header_hash = chain.get_hash(height)
         else:
             height = 0
             header_hash = constants.net.GENESIS

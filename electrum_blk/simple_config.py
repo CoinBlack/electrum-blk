@@ -242,7 +242,7 @@ class SimpleConfig(Logger):
         # ~hack for easier testnet builds. pkgname subject to change.
         android_pkg_name = util.get_android_package_name()
         for chain in constants.NETS_LIST:
-            if android_pkg_name == f"org.blackcoin.{chain.cli_flag()}.electrum":
+            if android_pkg_name == f"org.blackcoin.{chain.cli_flag()}.electrumBLK":
                 config_options[chain.cli_flag()] = True
 
     def get_selected_chain(self) -> Type[constants.AbstractNet]:

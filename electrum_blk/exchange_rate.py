@@ -208,7 +208,7 @@ class ExchangeBase(Logger):
         return sorted([str(a) for (a, b) in rates.items() if b is not None and len(a) >= 3])
 
     def get_cached_spot_quote(self, ccy: str) -> Decimal:
-        """Returns the exchange rate as a Decimal"""
+        """Returns the cached exchange rate as a Decimal"""
         if ccy == 'BLK':
             return Decimal(1)
         rate = self._quotes.get(ccy)

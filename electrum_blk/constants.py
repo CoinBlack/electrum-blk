@@ -152,16 +152,17 @@ class AbstractNet:
 
 
 class BitcoinMainnet(AbstractNet):
+
     NET_NAME = "mainnet"
     TESTNET = False
     WIF_PREFIX = 0x99
     ADDRTYPE_P2PKH = 25
     ADDRTYPE_P2SH = 85
     SEGWIT_HRP = "blk"
-    BOLT11_HRP = "blk"
+    BOLT11_HRP = SEGWIT_HRP
     GENESIS = "000001faef25dec4fbcf906e6242621df2c183bf232f263d0ba5b101911e4563"
     DEFAULT_PORTS = {'t': '10001', 's': '10002'}
-    BLOCK_HEIGHT_FIRST_LIGHTNING_CHANNELS = 0
+    BLOCK_HEIGHT_FIRST_LIGHTNING_CHANNELS = 9497000
     COINBASE_MATURITY = 500
     LAST_POW_BLOCK = 10000
     TOTAL_COIN_SUPPLY_LIMIT_IN_BTC = 100_000_000  # 100M BLK (unlimited supply, 1% APR -- sensible upper bound for amount validation)
@@ -180,23 +181,23 @@ class BitcoinMainnet(AbstractNet):
     MAX_REORG_DEPTH = 500
 
     XPRV_HEADERS = {
-        'standard':    0x0488ade4,
-        'p2wpkh-p2sh': 0x049d7878,
-        'p2wsh-p2sh':  0x0295b005,
-        'p2wpkh':      0x04b2430c,
-        'p2wsh':       0x02aa7a99,
+        'standard':    0x0488ade4,  # xprv
+        'p2wpkh-p2sh': 0x049d7878,  # yprv
+        'p2wsh-p2sh':  0x0295b005,  # Yprv
+        'p2wpkh':      0x04b2430c,  # zprv
+        'p2wsh':       0x02aa7a99,  # Zprv
     }
     XPRV_HEADERS_INV = inv_dict(XPRV_HEADERS)
     XPUB_HEADERS = {
-        'standard':    0x0488b21e,
-        'p2wpkh-p2sh': 0x049d7cb2,
-        'p2wsh-p2sh':  0x0295b43f,
-        'p2wpkh':      0x04b24746,
-        'p2wsh':       0x02aa7ed3,
+        'standard':    0x0488b21e,  # xpub
+        'p2wpkh-p2sh': 0x049d7cb2,  # ypub
+        'p2wsh-p2sh':  0x0295b43f,  # Ypub
+        'p2wpkh':      0x04b24746,  # zpub
+        'p2wsh':       0x02aa7ed3,  # Zpub
     }
     XPUB_HEADERS_INV = inv_dict(XPUB_HEADERS)
     BIP44_COIN_TYPE = 10
-    LN_REALM_BYTE = 0
+    LN_REALM_BYTE = 10
     LN_DNS_SEEDS = []
 
     @classmethod
@@ -205,13 +206,14 @@ class BitcoinMainnet(AbstractNet):
 
 
 class BitcoinTestnet(AbstractNet):
+
     NET_NAME = "testnet"
     TESTNET = True
     WIF_PREFIX = 0xef
     ADDRTYPE_P2PKH = 111
     ADDRTYPE_P2SH = 196
     SEGWIT_HRP = "tblk"
-    BOLT11_HRP = "tblk"
+    BOLT11_HRP = SEGWIT_HRP
     GENESIS = "0000724595fb3b9609d441cbfb9577615c292abf07d996d3edabc48de843642d"
     DEFAULT_PORTS = {'t': '10011', 's': '10012'}
     COINBASE_MATURITY = 10
@@ -232,19 +234,19 @@ class BitcoinTestnet(AbstractNet):
     MAX_REORG_DEPTH = 500
 
     XPRV_HEADERS = {
-        'standard':    0x04358394,
-        'p2wpkh-p2sh': 0x044a4e28,
-        'p2wsh-p2sh':  0x024285b5,
-        'p2wpkh':      0x045f18bc,
-        'p2wsh':       0x02575048,
+        'standard':    0x04358394,  # tprv
+        'p2wpkh-p2sh': 0x044a4e28,  # uprv
+        'p2wsh-p2sh':  0x024285b5,  # Uprv
+        'p2wpkh':      0x045f18bc,  # vprv
+        'p2wsh':       0x02575048,  # Vprv
     }
     XPRV_HEADERS_INV = inv_dict(XPRV_HEADERS)
     XPUB_HEADERS = {
-        'standard':    0x043587cf,
-        'p2wpkh-p2sh': 0x044a5262,
-        'p2wsh-p2sh':  0x024289ef,
-        'p2wpkh':      0x045f1cf6,
-        'p2wsh':       0x02575483,
+        'standard':    0x043587cf,  # tpub
+        'p2wpkh-p2sh': 0x044a5262,  # upub
+        'p2wsh-p2sh':  0x024289ef,  # Upub
+        'p2wpkh':      0x045f1cf6,  # vpub
+        'p2wsh':       0x02575483,  # Vpub
     }
     XPUB_HEADERS_INV = inv_dict(XPUB_HEADERS)
     BIP44_COIN_TYPE = 1
@@ -253,11 +255,11 @@ class BitcoinTestnet(AbstractNet):
 
 
 class BitcoinRegtest(BitcoinTestnet):
+
     NET_NAME = "regtest"
     SEGWIT_HRP = "blrt"
-    BOLT11_HRP = "blrt"
+    BOLT11_HRP = SEGWIT_HRP
     GENESIS = "0000724595fb3b9609d441cbfb9577615c292abf07d996d3edabc48de843642d"
-    DEFAULT_PORTS = {'t': '51001', 's': '51002'}
     LAST_POW_BLOCK = 0x7fffffff
     FIRST_POSV3_1_BLOCK_TIME = 1713938400
     LN_DNS_SEEDS = []
