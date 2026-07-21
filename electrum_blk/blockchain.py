@@ -562,15 +562,15 @@ class Blockchain(Logger):
             return self.get_limit(height, net, ispos)
 
         new_target = self.bits_to_target(prev.get('bits'))
-        nTargetSpacing = 64 if height >= net.FIRST_POSV2_BLOCK else 60
+        nTargetSpacing = net.TARGET_SPACING if height >= net.FIRST_POSV2_BLOCK else net.TARGET_SPACING_V1
         nActualSpacing = prev.get('timestamp') - pprev.get('timestamp')
 
         if height >= net.FIRST_POSV1RF_BLOCK and nActualSpacing < 0:
             nActualSpacing = nTargetSpacing
-        if height >= net.FIRST_POSV3_BLOCK and nActualSpacing > 10:
+        if height >= net.FIRST_POSV3_BLOCK and nActualSpacing > nTargetSpacing * 10:
             nActualSpacing = nTargetSpacing * 10
 
-        nInterval = 16 * 60 // nTargetSpacing
+        nInterval = net.TARGET_TIMESPAN // nTargetSpacing
         new_target *= ((nInterval - 1) * nTargetSpacing + nActualSpacing + nActualSpacing)
         new_target //= ((nInterval + 1) * nTargetSpacing)
 
