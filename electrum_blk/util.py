@@ -959,14 +959,14 @@ mainnet_block_explorers = {
                         {'tx': 'tx.dws?', 'addr': 'address.dws?'}),
     'Blackcoin.NL': ('https://mainnet.blackcoin.nl/',
                         {'tx': 'tx/', 'addr': 'address/'}),
-    'system default': ('blockchain:/',
+    'system default': ('https://mainnet.blackcoin.nl/',
                         {'tx': 'tx/', 'addr': 'address/'}),
 }
 
 testnet_block_explorers = {
     'Blackcoin.NL': ('https://testnet.blackcoin.nl/',
                         {'tx': 'tx/', 'addr': 'address/'}),
-    'system default': ('blockchain:/',
+    'system default': ('https://testnet.blackcoin.nl/',
                         {'tx': 'tx/', 'addr': 'address/'}),
 }
 
