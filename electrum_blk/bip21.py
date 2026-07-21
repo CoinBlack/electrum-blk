@@ -6,7 +6,7 @@ from typing import Optional
 
 from . import bitcoin
 from .util import format_satoshis_plain
-from .bitcoin import COIN
+from .bitcoin import COIN, TOTAL_COIN_SUPPLY_LIMIT_IN_BTC
 from .bolt11 import decode_bolt11_invoice, BOLT11DecodeException
 
 # note: when checking against these, use .lower() to support case-insensitivity
