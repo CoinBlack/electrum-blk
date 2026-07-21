@@ -39,9 +39,9 @@ if TYPE_CHECKING:
 
 WIF_HELP_TEXT = (_('WIF keys are typed in Electrum, based on script type.') + '\n\n' +
                  _('A few examples') + ':\n' +
-                 'p2pkh:KxZcY47uGp9a...       \t-> 1DckmggQM...\n' +
-                 'p2wpkh-p2sh:KxZcY47uGp9a... \t-> 3NhNeZQXF...\n' +
-                 'p2wpkh:KxZcY47uGp9a...      \t-> bc1q3fjfk...')
+                 'p2pkh:PxZcY47uGp9a...       \t-> BDckmggQM...\n' +
+                 'p2wpkh-p2sh:PxZcY47uGp9a... \t-> bNhNeZQXF...\n' +
+                 'p2wpkh:PxZcY47uGp9a...      \t-> blk1q3fjfk...')
 
 MSG_HW_STORAGE_ENCRYPTION = _("Set wallet file encryption.") + '\n'\
                           + _("Your wallet file does not contain secrets, mostly just metadata. ") \
