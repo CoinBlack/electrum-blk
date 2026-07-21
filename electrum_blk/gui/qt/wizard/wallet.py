@@ -402,6 +402,10 @@ class WCWalletType(WalletWizardComponent):
         self.layout().addStretch(1)
         self._valid = True
 
+        for i, c in enumerate(self.choice_w.choices):
+            if c.key == '2fa':
+                self.choice_w.group.button(i).setEnabled(False)
+
     def apply(self):
         self.wizard_data['wallet_type'] = self.choice_w.selected_key
 
