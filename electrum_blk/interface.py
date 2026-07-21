@@ -1335,12 +1335,16 @@ class Interface(Logger):
                 ip_addr = ip_address(self.ip_addr())  # type: Union[IPv4Address, IPv6Address]
             except ValueError:
                 return ''
+            if not ip_addr:
+                return ''
             if ip_addr.is_loopback:  # localhost is exempt
                 return ''
             if ip_addr.version == 4:
-                return str(IPv4Network(ip_addr).supernet(prefixlen_diff=0))
+                slash16 = IPv4Network(ip_addr).supernet(prefixlen_diff=32-16)
+                return str(slash16)
             elif ip_addr.version == 6:
-                return str(IPv6Network(ip_addr).supernet(prefixlen_diff=0))
+                slash48 = IPv6Network(ip_addr).supernet(prefixlen_diff=128-48)
+                return str(slash48)
             return ''
 
         if not self._ipaddr_bucket:
@@ -1572,18 +1576,16 @@ class Interface(Logger):
 
     async def get_relay_fee(self) -> int:
         """Returns the min relay feerate in sat/kbyte."""
-        relayfee = 100000
-        try:
-            if self.active_protocol_tuple >= (1, 6):
-                res = await self.session.send_request('mempool.get_info')
-                minrelaytxfee = assert_dict_contains_field(res, field_name='minrelaytxfee')
-            else:
-                minrelaytxfee = await self.session.send_request('blockchain.relayfee')
-            assert_non_negative_int_or_float(minrelaytxfee)
-            relayfee = int(minrelaytxfee * bitcoin.COIN)
-            relayfee = max(0, relayfee)
-        except (aiorpcx.jsonrpc.RPCError, aiorpcx.jsonrpc.ProtocolError):
-            pass
+        # do request
+        if self.active_protocol_tuple >= (1, 6):
+            res = await self.session.send_request('mempool.get_info')
+            minrelaytxfee = assert_dict_contains_field(res, field_name='minrelaytxfee')
+        else:
+            minrelaytxfee = await self.session.send_request('blockchain.relayfee')
+        # check response
+        assert_non_negative_int_or_float(minrelaytxfee)
+        relayfee = int(minrelaytxfee * bitcoin.COIN)
+        relayfee = max(0, relayfee)
         return relayfee
 
     async def get_estimatefee(self, num_blocks: int) -> int:

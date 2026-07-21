@@ -517,24 +517,33 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         return new_path
 
     def has_lightning(self) -> bool:
-        if constants.net.BOLT11_HRP not in ('bc', 'tb', 'bcrt', 'sb'):
-            return False
-        return self.lnworker is not None
+        return bool(self.lnworker)
 
     def has_channels(self):
         return self.lnworker is not None and len(self.lnworker._channels) > 0
 
     def can_have_lightning(self) -> bool:
         """ whether this wallet can create new channels """
-        return False
+        # we want static_remotekey to be a wallet address
+        if not self.txin_type == 'p2wpkh':
+            return False
+        if not self.config.TEST_LN_OPEN_SRK_CHANNELS:  # anchors
+            if not self.keystore:
+                return False
+            if self.keystore.is_watching_only():
+                return False
+            # exclude hardware wallets
+            if not self.keystore.may_have_password():
+                return False
+        return True
 
     def can_have_deterministic_lightning(self) -> bool:
-        return False
+        if not self.can_have_lightning():
+            return False
+        return self.keystore.can_have_deterministic_lightning_xprv()
 
     def init_lightning(self, *, password) -> None:
-        if not self.can_have_lightning():
-            self.logger.warning("Lightning not supported for Blackcoin")
-            return
+        assert self.can_have_lightning()
         assert self.db.get('lightning_xprv') is None
         assert self.db.get('lightning_privkey2') is None
         if self.can_have_deterministic_lightning():
@@ -1055,16 +1064,8 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             result = {}   # type: Dict[str, Tuple[List[str], List[str]]]
             parents = []  # type: List[str]
             uncles = []   # type: List[str]
-            try:
-                tx = self.adb.get_transaction(txid)
-            except Exception as e:
-                self.logger.warning(f"failed to get transaction {txid}: {e}")
-                self._tx_parents_cache[txid] = result
-                return result
-            if not tx:
-                self.logger.warning(f"cannot find {txid} in db")
-                self._tx_parents_cache[txid] = result
-                return result
+            tx = self.adb.get_transaction(txid)
+            assert tx, f"cannot find {txid} in db"
             for i, txin in enumerate(tx.inputs()):
                 _txid = txin.prevout.txid.hex()
                 parents.append(_txid)
@@ -1718,15 +1719,10 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         return self._labels.get(tx_hash) or self._get_default_label_for_txid(tx_hash) or ""
 
     def _get_default_label_for_txid(self, tx_hash: str) -> str:
-        if tx_hash in self._default_labels:
-            return self._default_labels[tx_hash]
+        if label := self._default_labels.get(tx_hash):
+            return label
         labels = []
-        try:
-            tx = self.adb.get_transaction(tx_hash)
-        except Exception as e:
-            self.logger.warning(f"failed to get transaction {tx_hash}: {e}")
-            self._default_labels[tx_hash] = ""
-            return ""
+        tx = self.adb.get_transaction(tx_hash)
         if tx:
             for txin in tx.inputs():
                 outpoint = txin.prevout.to_str()
@@ -3786,7 +3782,7 @@ class Imported_Wallet(Simple_Wallet):
 
     def __init__(self, db, *, config):
         Abstract_Wallet.__init__(self, db, config=config)
-        self.use_change = db.get('use_change', True)
+        self.use_change = db.get('use_change', False)
 
     def is_watching_only(self):
         return self.keystore is None
@@ -4015,22 +4011,7 @@ class Deterministic_Wallet(Abstract_Wallet):
         # for a few seconds!
         self.synchronize()
 
-    def can_have_lightning(self) -> bool:
-        """ whether this wallet can create new channels """
-        if constants.net.BOLT11_HRP not in ('bc', 'tb', 'bcrt', 'sb'):
-            return False
-        return self.db.get('lightning_xprv') is not None or self.can_have_deterministic_lightning()
-
-    def can_have_deterministic_lightning(self) -> bool:
-        if constants.net.BOLT11_HRP not in ('bc', 'tb', 'bcrt', 'sb'):
-            return False
-        return self.keystore.can_have_deterministic_lightning_xprv()
-
     def _init_lnworker(self):
-        # Blackcoin: Lightning not supported
-        if not self.can_have_lightning():
-            self.lnworker = None
-            return
         # lightning_privkey2 is not deterministic (legacy wallets, bip39)
         ln_xprv = self.db.get('lightning_xprv') or self.db.get('lightning_privkey2')
         # lnworker can only be initialized once receiving addresses are available
