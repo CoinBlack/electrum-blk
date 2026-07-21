@@ -200,7 +200,7 @@ def command(s):
                 except InvalidPassword as e:
                     raise UserFacingException(str(e)) from None
             if cmd.requires_lightning and (not wallet or not wallet.has_lightning()):
-                raise UserFacingException('Lightning Network is not supported for Blackcoin')
+                raise UserFacingException('Lightning not enabled and supported for Blackcoin')
             return await func(*args, **kwargs)
         return func_wrapper
     return decorator
