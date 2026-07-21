@@ -121,16 +121,13 @@ class AbstractNet:
 
     _cached_checkpoints = None
     @classproperty
-    def CHECKPOINTS(cls):
+    def CHECKPOINTS(cls) -> Mapping[str, str]:
         if cls._cached_checkpoints is None:
-            default_file = {} if cls.TESTNET else None
             try:
-                cls._cached_checkpoints = read_json(os.path.join('chains', cls.NET_NAME, 'checkpoints.json'), default_file)
+                cls._cached_checkpoints = read_json(os.path.join('chains', cls.NET_NAME, 'checkpoints.json'))
             except Exception as e:
-                if not cls.TESTNET:
-                    raise Exception(f"Failed to load checkpoints for {cls.NET_NAME}: {e}. "
-                                    f"Ensure chains/{cls.NET_NAME}/checkpoints.json exists.") from e
-                cls._cached_checkpoints = {}
+                raise Exception(f"Failed to load checkpoints for {cls.NET_NAME}: {e}. "
+                                f"Ensure chains/{cls.NET_NAME}/checkpoints.json exists.") from e
         return cls._cached_checkpoints
 
     @classmethod
