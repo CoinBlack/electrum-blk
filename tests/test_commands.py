@@ -291,7 +291,6 @@ class TestCommandsTestnet(ElectrumTestCase):
         self.assertEqual("p2wpkh:cQAj4WGf1socCPCJNMjXYCJ8Bs5JUAk5pbDr4ris44QdgAXcV24S",
                          await cmds.getprivatekeyforpath("m/5h/100000/88h/7", wallet=wallet))
 
-    @unittest.skip(SKIP_BITCOIN_TX_FORMAT)
     async def test_payto(self):
         wallet = restore_wallet_from_text__for_unittest(
             'disagree rug lemon bean unaware square alone beach tennis exhibit fix mimic',
