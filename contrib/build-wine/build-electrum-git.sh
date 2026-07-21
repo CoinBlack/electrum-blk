@@ -119,4 +119,4 @@ EOF
     done
 )
 
-sha256sum dist/electrum*.exe
+sha256sum dist/electrum-blk*.exe
