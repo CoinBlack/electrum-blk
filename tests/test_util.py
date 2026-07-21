@@ -511,7 +511,7 @@ class TestUtil(ElectrumTestCase):
                 await group.spawn(cancelled_task())
 
         # Check that exceptions were retrieved (task.exception() won't warn/error)
-        for task in group._all_tasks:
+        for task in group.tasks:
             self.assertTrue(task.done())
             # calling exception() should not raise CancelledError or throw warning
             if not task.cancelled():
@@ -525,7 +525,7 @@ class TestUtil(ElectrumTestCase):
             await group.spawn(successful_task())
             await group.spawn(failing_task())
 
-        for task in group._all_tasks:
+        for task in group.tasks:
             self.assertTrue(task.done())
             if not task.cancelled() and task.exception():
                 self.assertIsNotNone(task.exception())

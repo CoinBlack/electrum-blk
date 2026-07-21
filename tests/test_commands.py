@@ -24,13 +24,11 @@ from electrum_blk.bolt11 import decode_bolt11_invoice
 from electrum_blk.daemon import Daemon
 from electrum_blk import json_db
 
-from . import ElectrumTestCase
-
-# Blackcoin uses a different transaction serialization format from Bitcoin.
-# Tests that depend on hardcoded Bitcoin transaction data cannot pass on Blackcoin.
-SKIP_BITCOIN_TX_FORMAT = "Blackcoin uses different transaction serialization"
-from . import restore_wallet_from_text__for_unittest
+from . import ElectrumTestCase, restore_wallet_from_text__for_unittest
+from .lnhelpers import MockLNWallet
 from .test_wallet_vertical import WalletIntegrityHelper
+
+SKIP_BITCOIN_TX_FORMAT = "Blackcoin uses different transaction serialization"
 
 
 class TestCommands(ElectrumTestCase):
@@ -155,8 +153,8 @@ class TestCommands(ElectrumTestCase):
     async def test_verifymessage_enforces_strict_base64(self):
         cmds = Commands(config=self.config)
         msg = "hello there"
-        addr = "bc1qq2tmmcngng78nllq2pvrkchcdukemtj56uyue0"
-        sig = "HznHvCsY//Zr5JvPIR3rN/RbCkttvrUs8Yt+vw+e1c29BLMSlcrN4+Y4Pq8e/UJuh2bDrUboTfsFhBJap+fPmNY="
+        addr = "1C6Rc3w25VHud3dLDamutaqfKWqhrLRTaD"
+        sig = "HwhLEDDT30lm9CTrPnIPt4VrTbysRiBaPNLljFB4m0ZLUHQU47fVq3N6j1fCjpBJc4wJvcbLg+vhDloHBzi5vHU="
         self.assertTrue(await cmds.verifymessage(addr, sig, msg))
         self.assertFalse(await cmds.verifymessage(addr, sig+"trailinggarbage", msg))
 
@@ -490,6 +488,8 @@ class TestCommandsTestnet(ElectrumTestCase):
             'disagree rug lemon bean unaware square alone beach tennis exhibit fix mimic',
             path=None,
             config=self.config)['wallet']
+        if wallet.lnworker is None:
+            wallet.lnworker = MockLNWallet(wallet, wallet.db.get('lightning_xprv'))
 
         cmds = Commands(config=self.config)
         preimage: str = sha256(urandom(32)).hex()
@@ -667,6 +667,8 @@ class TestCommandsTestnet(ElectrumTestCase):
             'disagree rug lemon bean unaware square alone beach tennis exhibit fix mimic',
             path=None,
             config=self.config)['wallet']
+        if wallet.lnworker is None:
+            wallet.lnworker = MockLNWallet(wallet, wallet.db.get('lightning_xprv'))
 
         cmds = Commands(config=self.config)
 
@@ -732,6 +734,8 @@ class TestCommandsTestnet(ElectrumTestCase):
             'disagree rug lemon bean unaware square alone beach tennis exhibit fix mimic',
             path=None,
             config=self.config)['wallet']
+        if w.lnworker is None:
+            w.lnworker = MockLNWallet(w, w.db.get('lightning_xprv'))
         cmds = Commands(config=self.config)
 
         preimage = os.urandom(32)

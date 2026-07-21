@@ -44,26 +44,18 @@ class TestWalletPaymentRequests(ElectrumTestCase):
         text = 'bitter grass shiver impose acquire brush forget axis eager alone wine silver'
         d = restore_wallet_from_text__for_unittest(text, path=self.wallet1_path, config=self.config)
         wallet1 = d['wallet']  # type: Standard_Wallet
-        self.assertIsNotNone(wallet1.lnworker)
-        self.assertTrue(wallet1.has_lightning())
-        # create payreq
-        addr = wallet1.get_unused_address()
-        pr_key = wallet1.create_request(amount_sat=10000, message="msg", address=None, exp_delay=86400)
-        pr = wallet1.get_request(pr_key)
-        self.assertIsNotNone(pr)
-        self.assertTrue(pr.is_lightning())
-        self.assertEqual(PR_UNPAID, wallet1.get_invoice_status(pr))
-        # get paid on LN
-        wallet1.lnworker.set_request_status(bytes.fromhex(pr.rhash), PR_PAID)
-        self.assertEqual(PR_PAID, wallet1.get_invoice_status(pr))
+        # Lightning is disabled in Blackcoin
+        self.assertIsNone(wallet1.lnworker)
+        self.assertFalse(wallet1.has_lightning())
 
     async def test_wallet_with_ln_creates_payreq_and_gets_paid_onchain(self):
         text = 'bitter grass shiver impose acquire brush forget axis eager alone wine silver'
         d = restore_wallet_from_text__for_unittest(text, path=self.wallet1_path, config=self.config)
         wallet1 = d['wallet']  # type: Standard_Wallet
         wallet1.db.put('stored_height', 1000)
-        self.assertIsNotNone(wallet1.lnworker)
-        self.assertTrue(wallet1.has_lightning())
+        # Lightning is disabled in Blackcoin
+        self.assertIsNone(wallet1.lnworker)
+        self.assertFalse(wallet1.has_lightning())
         # create payreq
         addr = wallet1.get_unused_address()
         pr_key = wallet1.create_request(amount_sat=10000, message="msg", address=addr, exp_delay=86400)
@@ -124,8 +116,8 @@ class TestWalletPaymentRequests(ElectrumTestCase):
         d = restore_wallet_from_text__for_unittest(text, path=self.wallet1_path, config=self.config)
         wallet1 = d['wallet']  # type: Standard_Wallet
         wallet1.db.put('stored_height', 1000)
-        self.assertIsNotNone(wallet1.lnworker)
-        self.assertTrue(wallet1.has_lightning())
+        self.assertIsNone(wallet1.lnworker)
+        self.assertFalse(wallet1.has_lightning())
         # create payreq
         addr = wallet1.get_unused_address()
         pr_key = wallet1.create_request(amount_sat=10000, message="msg", address=addr, exp_delay=86400)
@@ -153,8 +145,8 @@ class TestWalletPaymentRequests(ElectrumTestCase):
         text = 'bitter grass shiver impose acquire brush forget axis eager alone wine silver'
         d = restore_wallet_from_text__for_unittest(text, path=self.wallet1_path, gap_limit=3, config=self.config)
         wallet1 = d['wallet']  # type: Standard_Wallet
-        self.assertIsNotNone(wallet1.lnworker)
-        self.assertTrue(wallet1.has_lightning())
+        self.assertIsNone(wallet1.lnworker)
+        self.assertFalse(wallet1.has_lightning())
         # create payreq1
         addr1 = wallet1.get_unused_address()
         pr1_key = wallet1.create_request(amount_sat=10000, message="msg", address=addr1, exp_delay=86400)
@@ -181,8 +173,8 @@ class TestWalletPaymentRequests(ElectrumTestCase):
         text = 'bitter grass shiver impose acquire brush forget axis eager alone wine silver'
         d = restore_wallet_from_text__for_unittest(text, path=self.wallet1_path, gap_limit=3, config=self.config)
         wallet1 = d['wallet']  # type: Standard_Wallet
-        self.assertIsNotNone(wallet1.lnworker)
-        self.assertTrue(wallet1.has_lightning())
+        self.assertIsNone(wallet1.lnworker)
+        self.assertFalse(wallet1.has_lightning())
         # create payreq1
         addr1 = wallet1.get_unused_address()
         pr1_key = wallet1.create_request(amount_sat=10000, message="msg", address=addr1, exp_delay=86400)

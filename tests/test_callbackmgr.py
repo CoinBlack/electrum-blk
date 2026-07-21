@@ -130,9 +130,8 @@ class TestCallbackMgr(ElectrumTestCase):
         wallet = restore_wallet_from_text__for_unittest(
             "9dk", path=None, config=config,
         )["wallet"]
-        assert wallet.lnworker is not None
+        assert wallet.lnworker is None
         # now delete the wallet, and wait for it to get GC-ed
-        # note: need to wait for cyclic GC. example: wallet.lnworker.wallet
         wr = weakref.ref(wallet)
         del wallet
         async with util.async_timeout(5):
