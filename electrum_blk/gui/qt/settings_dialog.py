@@ -120,18 +120,6 @@ class SettingsDialog(QDialog, QtEventListener):
         self.alias_e.editingFinished.connect(self.on_alias_edit)
 
 
-        msat_cb = checkbox_from_configvar(self.config.cv.BTC_AMOUNTS_PREC_POST_SAT)
-        msat_cb.setChecked(self.config.BTC_AMOUNTS_PREC_POST_SAT > 0)
-
-        def on_msat_checked(_x):
-            prec = 3 if msat_cb.isChecked() else 0
-            if self.config.amt_precision_post_satoshi != prec:
-                self.config.amt_precision_post_satoshi = prec
-                self.config.BTC_AMOUNTS_PREC_POST_SAT = prec
-                self.app.refresh_tabs_signal.emit()
-
-        msat_cb.stateChanged.connect(on_msat_checked)
-
         # units
         units = base_units_list
         msg = (_('Base unit of your wallet.')
@@ -328,7 +316,7 @@ class SettingsDialog(QDialog, QtEventListener):
         units_widgets = []
         units_widgets.append((unit_label, unit_combo))
         units_widgets.append((nz_label, nz))
-        units_widgets.append((msat_cb, None))
+
         units_widgets.append((thousandsep_cb, None))
         fiat_widgets = []
         fiat_widgets.append((QLabel(_('Fiat currency')), ccy_combo))
