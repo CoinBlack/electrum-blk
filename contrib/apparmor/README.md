@@ -16,10 +16,10 @@ Verify that the profile is loaded:
 ```
 sudo apparmor_status
 ```
-Look for the entry corresponding to `electrum`
+Look for the entry corresponding to `electrum-blk`
 
 ## Usage 
-After installing the AppArmor profile, electrum will be restricted to the permissions specified in the profile.
+After installing the AppArmor profile, electrum-blk will be restricted to the permissions specified in the profile.
 
 ## Compatibility
 The help tab may not function as expected as browser permissions can be tricky (Tarball Binaries)
