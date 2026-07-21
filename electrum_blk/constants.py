@@ -160,14 +160,14 @@ class BitcoinMainnet(AbstractNet):
     BOLT11_HRP = SEGWIT_HRP
     GENESIS = "000001faef25dec4fbcf906e6242621df2c183bf232f263d0ba5b101911e4563"
     DEFAULT_PORTS = {'t': '10001', 's': '10002'}
-    BLOCK_HEIGHT_FIRST_LIGHTNING_CHANNELS = 9497000
+    BLOCK_HEIGHT_FIRST_LIGHTNING_CHANNELS = 100000000
     COINBASE_MATURITY = 500
-    LAST_POW_BLOCK = 10000
     TOTAL_COIN_SUPPLY_LIMIT_IN_BTC = 100_000_000  # 100M BLK (unlimited supply, 1% APR -- sensible upper bound for amount validation)
 
     POW_LIMIT = 0x00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
     POS_LIMIT = 0x00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
     POS_LIMITV2 = 0x000000000000ffffffffffffffffffffffffffffffffffffffffffffffffffff
+    LAST_POW_BLOCK = 10000
     TARGET_TIMESPAN = 16 * 60
     TARGET_SPACING_V1 = 60
     TARGET_SPACING = 64
@@ -175,7 +175,12 @@ class BitcoinMainnet(AbstractNet):
     FIRST_POSV1RF_BLOCK = 38425
     FIRST_POSV2_BLOCK = 319002
     FIRST_POSV3_BLOCK = 872456
-    FIRST_POSV3_1_BLOCK_TIME = 1713938400
+    # Protocol version transition timestamps (from Core's nProtocolV*Time in chainparams.cpp)
+    # Used for timestamp-based gating matching IsProtocolV1RetargetingFixed/V2/V3 predicates
+    FIRST_POSV1RF_BLOCK_TIME = 1395631999  # nProtocolV1RetargetingFixedTime
+    FIRST_POSV2_BLOCK_TIME   = 1407053625  # nProtocolV2Time
+    FIRST_POSV3_BLOCK_TIME   = 1444028400  # nProtocolV3Time
+    FIRST_POSV3_1_BLOCK_TIME = 1713938400  # nProtocolV3_1Time
     MAX_REORG_DEPTH = 500
 
     XPRV_HEADERS = {
@@ -214,8 +219,8 @@ class BitcoinTestnet(AbstractNet):
     BOLT11_HRP = SEGWIT_HRP
     GENESIS = "0000724595fb3b9609d441cbfb9577615c292abf07d996d3edabc48de843642d"
     DEFAULT_PORTS = {'t': '10011', 's': '10012'}
+    BLOCK_HEIGHT_FIRST_LIGHTNING_CHANNELS = 100000000
     COINBASE_MATURITY = 10
-    LAST_POW_BLOCK = 0x7fffffff
     TOTAL_COIN_SUPPLY_LIMIT_IN_BTC = 100_000_000  # 100M BLK (unlimited supply, 1% APR -- sensible upper bound for amount validation)
 
     POW_LIMIT = 0x0000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
@@ -225,10 +230,15 @@ class BitcoinTestnet(AbstractNet):
     TARGET_SPACING_V1 = 60
     TARGET_SPACING = 64
     STAKE_TIMESTAMP_MASK = 0xf
+    LAST_POW_BLOCK = 0x7fffffff
     FIRST_POSV1RF_BLOCK = 38425
     FIRST_POSV2_BLOCK = 319002
     FIRST_POSV3_BLOCK = 872456
-    FIRST_POSV3_1_BLOCK_TIME = 1667779200
+    # Protocol version transition timestamps (from Core's nProtocolV*Time in chainparams.cpp)
+    FIRST_POSV1RF_BLOCK_TIME = 1395631999  # nProtocolV1RetargetingFixedTime
+    FIRST_POSV2_BLOCK_TIME   = 1407053625  # nProtocolV2Time
+    FIRST_POSV3_BLOCK_TIME   = 1444028400  # nProtocolV3Time
+    FIRST_POSV3_1_BLOCK_TIME = 1667779200  # nProtocolV3_1Time
     MAX_REORG_DEPTH = 500
 
     XPRV_HEADERS = {

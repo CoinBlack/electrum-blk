@@ -538,16 +538,18 @@ class Blockchain(Logger):
                 raise MissingHeader(height)
             return hash_header(header)
 
+    # Blackcoin
     @classmethod
-    def get_limit(cls, height: int, net, ispos: bool):
+    def get_limit(cls, prev_timestamp: int, net, ispos: bool):
         if ispos:
-            if height > net.FIRST_POSV2_BLOCK:
+            if prev_timestamp > net.FIRST_POSV2_BLOCK_TIME and prev_timestamp != 1407053678:
                 return net.POS_LIMITV2
             else:
                 return net.POS_LIMIT
         else:
             return net.POW_LIMIT
 
+    # Blackcoin
     def get_target(self, height: int, ispos: bool, prev=None, pprev=None) -> int:
         net = constants.net
 
@@ -559,22 +561,27 @@ class Blockchain(Logger):
         if not pprev:
             pprev = self.read_header(height - 2)
         if not prev or not pprev:
-            return self.get_limit(height, net, ispos)
+            return self.get_limit(0, net, ispos)
 
+        # New target
         new_target = self.bits_to_target(prev.get('bits'))
-        nTargetSpacing = net.TARGET_SPACING if height >= net.FIRST_POSV2_BLOCK else net.TARGET_SPACING_V1
-        nActualSpacing = prev.get('timestamp') - pprev.get('timestamp')
+        prev_timestamp = prev.get('timestamp')
 
-        if height >= net.FIRST_POSV1RF_BLOCK and nActualSpacing < 0:
+        # Limit adjustment step
+        nTargetSpacing = net.TARGET_SPACING if (prev_timestamp > net.FIRST_POSV2_BLOCK_TIME and prev_timestamp != 1407053678) else net.TARGET_SPACING_V1
+        nActualSpacing = prev_timestamp - pprev.get('timestamp')
+
+        if (prev_timestamp > net.FIRST_POSV1RF_BLOCK_TIME and prev_timestamp != 1395631999) and nActualSpacing < 0:
             nActualSpacing = nTargetSpacing
-        if height >= net.FIRST_POSV3_BLOCK and nActualSpacing > nTargetSpacing * 10:
+        if (prev_timestamp > net.FIRST_POSV3_BLOCK_TIME and prev_timestamp != 1444028400) and nActualSpacing > nTargetSpacing * 10:
             nActualSpacing = nTargetSpacing * 10
 
+        # Retarget
         nInterval = net.TARGET_TIMESPAN // nTargetSpacing
         new_target *= ((nInterval - 1) * nTargetSpacing + nActualSpacing + nActualSpacing)
         new_target //= ((nInterval + 1) * nTargetSpacing)
 
-        target_limit = self.get_limit(height, net, ispos)
+        target_limit = self.get_limit(prev_timestamp, net, ispos)
         if new_target <= 0 or new_target > target_limit:
             new_target = target_limit
         new_target = self.bits_to_target(self.target_to_bits(new_target))
@@ -618,6 +625,7 @@ class Blockchain(Logger):
             bitsBase >>= 8
         return bitsN << 24 | bitsBase
 
+    # Blackcoin
     @with_lock
     def get_chainwork(self, height=None) -> int:
         if height is None:
@@ -660,6 +668,7 @@ class Blockchain(Logger):
             return False
 
     def get_checkpoints(self):
+        # for each chunk, store the hash of the last block and the target after the chunk
         cp = {}
         n = self.height() // CHUNK_SIZE
         for index in range(n):
