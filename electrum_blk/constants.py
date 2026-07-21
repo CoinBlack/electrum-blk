@@ -86,7 +86,8 @@ class AbstractNet:
     def max_checkpoint(cls) -> int:
         if not cls.CHECKPOINTS:
             return 0
-        return max(int(k) for k in cls.CHECKPOINTS)
+        valid_heights = [int(k) for k, v in cls.CHECKPOINTS.items() if v and v != "0"]
+        return max(valid_heights, default=0)
 
     @classmethod
     def rev_genesis_bytes(cls) -> bytes:
