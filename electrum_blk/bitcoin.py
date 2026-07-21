@@ -871,10 +871,9 @@ def control_block_for_taproot_script_spend(
 
 
 # user message signing
+# Blackcoin: Prefix length byte is updated from \x18 to \x1a (26) to match the "BlackCoin Signed Message:\n" header string length.
 def usermessage_magic(message: bytes) -> bytes:
     length = var_int(len(message))
-    if constants.net.WIF_PREFIX == 0x80 or constants.net.ADDRTYPE_P2PKH == 0:
-        return b"\x18Bitcoin Signed Message:\n" + length + message
     return b"\x1aBlackCoin Signed Message:\n" + length + message
 
 
