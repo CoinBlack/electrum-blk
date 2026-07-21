@@ -1241,7 +1241,10 @@ class Transaction:
             marker = '00'
             flag = '01'
             witness = ''.join(self.serialize_witness(x, estimate_size=estimate_size).hex() for x in inputs)
-            return nVersion + marker + flag + txins + txouts + witness + nLocktime
+            if self.version < 2:
+                return nVersion + nTime + marker + flag + txins + txouts + witness + nLocktime
+            else:
+                return nVersion + marker + flag + txins + txouts + witness + nLocktime
         else:
             # Blackcoin v1 transactions include nTime after nVersion
             if self.version < 2:
