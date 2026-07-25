@@ -11,10 +11,19 @@ from typing import TYPE_CHECKING, List
 import sys
 import pkgutil
 import builtins
+
 import electrum_blk
+import electrum_blk.logging
+from electrum_blk import constants
+from electrum_blk import util
+from electrum_blk.util import OldTaskGroup
+from electrum_blk.logging import Logger
+from electrum_blk.wallet import restore_wallet_from_text
+import electrum_blk.bitcoin
+
 
 # Inject electrum into builtins so it's globally accessible in tests
-builtins.electrum = electrum_blk
+setattr(builtins, 'electrum', electrum_blk)
 
 # Walk and import all submodules of electrum_blk to populate sys.modules
 sys.modules['electrum'] = electrum_blk
@@ -33,9 +42,6 @@ for name, module in list(sys.modules.items()):
         if alias not in sys.modules:
             sys.modules[alias] = module
 
-import electrum_blk.logging
-from electrum_blk import constants
-import electrum_blk.bitcoin
 
 # Override total supply limit to Bitcoin's 21M for testing regex/amount limits
 # (production value is 100M BLK, but tests use Bitcoin's 21M cap)
@@ -63,16 +69,12 @@ constants.BitcoinMainnet.GENESIS = "000000000019d6689c085ae165831e934ff763ae46a2
 constants.BitcoinTestnet.WIF_PREFIX = 0xef
 constants.BitcoinTestnet.ADDRTYPE_P2PKH = 111
 constants.BitcoinTestnet.ADDRTYPE_P2SH = 196
-constants.BitcoinTestnet.SEGWIT_HRP = "tb"
-constants.BitcoinTestnet.BOLT11_HRP = "tb"
 constants.BitcoinTestnet.BIP44_COIN_TYPE = 1
 constants.BitcoinTestnet.GENESIS = "000000000933ea01ad0ee984209779baaec3ced90fa3f408719526f8d77f4943"
 
 constants.BitcoinRegtest.WIF_PREFIX = 0xef
 constants.BitcoinRegtest.ADDRTYPE_P2PKH = 111
 constants.BitcoinRegtest.ADDRTYPE_P2SH = 196
-constants.BitcoinRegtest.SEGWIT_HRP = "bcrt"
-constants.BitcoinRegtest.BOLT11_HRP = "bcrt"
 constants.BitcoinRegtest.BIP44_COIN_TYPE = 1
 constants.BitcoinRegtest.GENESIS = "0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206"
 
@@ -87,11 +89,6 @@ _fee_policy.FEERATE_WARNING_HIGH_FEE = 600000
 _fee_policy.FEERATE_MIN_RELAY = 100
 _fee_policy.FEERATE_DEFAULT_RELAY = 1000
 _fee_policy.FEERATE_MAX_RELAY = 50000
-
-from electrum_blk import util
-from electrum_blk.util import OldTaskGroup
-from electrum_blk.logging import Logger
-from electrum_blk.wallet import restore_wallet_from_text
 
 if TYPE_CHECKING:
     from .test_lnpeer import MockLNWallet

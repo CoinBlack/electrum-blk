@@ -153,10 +153,10 @@ class TestUtil(ElectrumTestCase):
 
     @as_testnet
     def test_parse_URI_unsupported_req_key(self):
-        self._do_test_parse_URI('blackcoin:TB1QXJ6KVTE6URY2MX695METFTFT7LR5HYK4M3VT5F?amount=0.00100000&label=test&somethingyoudontunderstand=50',
-                                {'address': 'TB1QXJ6KVTE6URY2MX695METFTFT7LR5HYK4M3VT5F', 'amount': 100000, 'label': 'test', 'somethingyoudontunderstand': '50'})
+        self._do_test_parse_URI('blackcoin:TBLK1QXJ6KVTE6URY2MX695METFTFT7LR5HYK4YTEGEX?amount=0.00100000&label=test&somethingyoudontunderstand=50',
+                                {'address': 'TBLK1QXJ6KVTE6URY2MX695METFTFT7LR5HYK4YTEGEX', 'amount': 100000, 'label': 'test', 'somethingyoudontunderstand': '50'})
         # now test same URI but with "req-test=1" added
-        self.assertRaises(InvalidBitcoinURI, parse_bip21_URI, 'blackcoin:TB1QXJ6KVTE6URY2MX695METFTFT7LR5HYK4M3VT5F?amount=0.00100000&label=test&req-test=1&somethingyoudontunderstand=50')
+        self.assertRaises(InvalidBitcoinURI, parse_bip21_URI, 'blackcoin:TBLK1QXJ6KVTE6URY2MX695METFTFT7LR5HYK4YTEGEX?amount=0.00100000&label=test&req-test=1&somethingyoudontunderstand=50')
 
     @as_testnet
     def test_parse_URI_lightning_consistency(self):

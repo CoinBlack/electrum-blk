@@ -18,6 +18,7 @@ from electrum_blk.wallet import (Abstract_Wallet, Standard_Wallet, create_new_wa
 from electrum_blk.exchange_rate import ExchangeBase, FxThread
 from electrum_blk.util import TxMinedInfo, InvalidPassword
 from electrum_blk.bitcoin import COIN
+from . import ElectrumTestCase, as_testnet
 from electrum_blk.wallet_db import WalletDB, JsonDB
 from electrum_blk.simple_config import SimpleConfig
 from electrum_blk import util, storage
@@ -228,7 +229,8 @@ class TestHistoryExport(ElectrumTestCase):
         # mock timezone, explicitly define timezone as the CI seems to miss a timezone db and cant resolve just 'CET'
         self.patch_timezone = mock.patch.dict(os.environ, {'TZ': 'CET-1CEST,M3.5.0,M10.5.0/3'})
         self.patch_timezone.start()
-        time.tzset()
+        if hasattr(time, 'tzset'):
+            time.tzset()
         super(TestHistoryExport, self).setUp()
         shutil.copytree(Path(__file__).parent / "fiat_fx_data", Path(self.electrum_path) / "cache")
         self.config = SimpleConfig({'electrum_path': self.electrum_path})
@@ -236,17 +238,19 @@ class TestHistoryExport(ElectrumTestCase):
     def tearDown(self):
         super(TestHistoryExport, self).tearDown()
         self.patch_timezone.stop()
-        time.tzset()
+        if hasattr(time, 'tzset'):
+            time.tzset()
 
-    @mock.patch('electrum.wallet.run_hook')
-    @mock.patch.object(storage.WalletStorage, 'write')
-    @mock.patch.object(storage.WalletStorage, 'append')
-    @unittest.skip(SKIP_BITCOIN_TX_FORMAT)
-    async def test_export_history_to_file(self, _mock_append, _mock_write, mock_run_hook):
+    # blackcoin: Lightning Network (LN) features are omitted in electrum-blk
+    # @as_testnet
+    # @mock.patch('electrum.wallet.run_hook')
+    # @mock.patch.object(storage.WalletStorage, 'write')
+    # @mock.patch.object(storage.WalletStorage, 'append')
+    # async def _disabled_test_export_history_to_file(self, _mock_append, _mock_write, mock_run_hook):
         # prepare wallet with realistic history
         c = self.config
         c.NETWORK_OFFLINE = True
-        c.FX_EXCHANGE, c.FX_CURRENCY, c.FX_USE_EXCHANGE_RATE, c.FX_HISTORY_RATES = "BitFinex", "EUR", True, True
+        c.FX_EXCHANGE, c.FX_CURRENCY, c.FX_USE_EXCHANGE_RATE, c.FX_HISTORY_RATES = "CoinGecko", "EUR", True, True
         daemon = Daemon(config=c, listen_jsonrpc=False)
         test_wallet_name = "client_4_5_2_9dk_with_ln"  # has labels, local tx, ln tx
         wallet_path = self.get_wallet_file_path(test_wallet_name)

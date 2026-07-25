@@ -1117,7 +1117,7 @@ class TestLNUtil(ElectrumTestCase):
             ImportedChannelBackupStorage(
                 funding_txid='97767fdefef3152319363b772914d71e5eb70e793b835c13dce20037d3ac13fe',
                 funding_index=1,
-                funding_address='tb1qfsxllwl2edccpar9jas9wsxd4vhcewlxqwmn0w27kurkme3jvkdqn4msdp',
+                funding_address='tblk1qfsxllwl2edccpar9jas9wsxd4vhcewlxqwmn0w27kurkme3jvkdq4s5vts',
                 is_initiator=True,
                 node_id=bfh('02bf82e22f99dcd7ac1de4aad5152ce48f0694c46ec582567f379e0adbf81e2d0f'),
                 privkey=bfh('7e634853dc47f0bc2f2e0d1054b302fcb414371ddbd889f29ba8aa4e8b62c772'),
@@ -1145,7 +1145,7 @@ class TestLNUtil(ElectrumTestCase):
             ImportedChannelBackupStorage(
                 funding_txid='97767fdefef3152319363b772914d71e5eb70e793b835c13dce20037d3ac13fe',
                 funding_index=1,
-                funding_address='tb1qfsxllwl2edccpar9jas9wsxd4vhcewlxqwmn0w27kurkme3jvkdqn4msdp',
+                funding_address='tblk1qfsxllwl2edccpar9jas9wsxd4vhcewlxqwmn0w27kurkme3jvkdq4s5vts',
                 is_initiator=True,
                 node_id=bfh('02bf82e22f99dcd7ac1de4aad5152ce48f0694c46ec582567f379e0adbf81e2d0f'),
                 privkey=bfh('7e634853dc47f0bc2f2e0d1054b302fcb414371ddbd889f29ba8aa4e8b62c772'),

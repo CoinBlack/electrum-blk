@@ -404,13 +404,11 @@ class TestTransaction(ElectrumTestCase):
         txid = 'c18f2b70324d34c935b9378a9339c35ebc10e305521a350b0a74cbd05af9323e'
         self._run_naive_tests_on_tx(raw_tx, txid)
 
-    @unittest.skip(SKIP_BITCOIN_TX_FORMAT)
     def test_txid_negative_version_num(self):
         # This tx has a negative version (0xf0b47b9a = -257232998 as signed int32).
-        # In Blackcoin, any version < 2 causes nTime to be read, which corrupts parsing.
-        # This edge case cannot be converted to a v2 tx (negative version is the test point).
-        raw_tx = 'f0b47b9a01ecf5e5c3bbf2cf1f71ecdc7f708b0b222432e914b394e24aad1494a42990ddfc000000008b483045022100852744642305a99ad74354e9495bf43a1f96ded470c256cd32e129290f1fa191022030c11d294af6a61b3da6ed2c0c296251d21d113cfd71ec11126517034b0dcb70014104a0fe6e4a600f859a0932f701d3af8e0ecd4be886d91045f06a5a6b931b95873aea1df61da281ba29cadb560dad4fc047cf47b4f7f2570da4c0b810b3dfa7e500ffffffff0240420f00000000001976a9147eeacb8a9265cd68c92806611f704fc55a21e1f588ac05f00d00000000001976a914eb3bd8ccd3ba6f1570f844b59ba3e0a667024a6a88acff7f0000'
-        txid = 'c659729a7fea5071361c2c1a68551ca2bf77679b27086cc415adeeb03852e369'
+        # In Blackcoin, version < 2 includes nTime after version.
+        raw_tx = 'f0b47b9a0000000001ecf5e5c3bbf2cf1f71ecdc7f708b0b222432e914b394e24aad1494a42990ddfc000000008b483045022100852744642305a99ad74354e9495bf43a1f96ded470c256cd32e129290f1fa191022030c11d294af6a61b3da6ed2c0c296251d21d113cfd71ec11126517034b0dcb70014104a0fe6e4a600f859a0932f701d3af8e0ecd4be886d91045f06a5a6b931b95873aea1df61da281ba29cadb560dad4fc047cf47b4f7f2570da4c0b810b3dfa7e500ffffffff0240420f00000000001976a9147eeacb8a9265cd68c92806611f704fc55a21e1f588ac05f00d00000000001976a914eb3bd8ccd3ba6f1570f844b59ba3e0a667024a6a88acff7f0000'
+        txid = '1cd3df78159031825c1d42ee6f2a93392465f7c0d5c274024aa2a70f8ebaa7ea'
         self._run_naive_tests_on_tx(raw_tx, txid)
 
     def test_txid_regression_issue_4333(self):
@@ -915,7 +913,7 @@ class TestTransactionTestnet(ElectrumTestCase):
 
         # Build the Transaction Output
         txout = PartialTxOutput.from_address_and_value(
-            'tb1qv9hg20f0g08d460l67ph6p4ukwt7m0ttqzj7mk', sats_less_fees)
+            'tblk1qv9hg20f0g08d460l67ph6p4ukwt7m0ttlc8ake', sats_less_fees)
 
         # Build and sign the transaction using version=2 (Blackcoin standard)
         tx = PartialTransaction.from_io([txin], [txout], locktime=locktime, version=2)
@@ -939,7 +937,7 @@ class TestTransactionTestnet(ElectrumTestCase):
             locktime, opcodes.OP_CHECKLOCKTIMEVERIFY, opcodes.OP_DROP, pubkey, opcodes.OP_CHECKSIG,
         ])
         from_addr = bitcoin.script_to_p2wsh(witness_script)
-        self.assertEqual("tb1q9dn6qke9924xe3zmptmhrdge0s043pjxpjndypgnu2t9fvsd4crs2qjuer", from_addr)
+        self.assertEqual("tblk1q9dn6qke9924xe3zmptmhrdge0s043pjxpjndypgnu2t9fvsd4crsv9aqlj", from_addr)
         prevout = TxOutpoint(txid=bfh('8680971efd5203025cffe746f8598d0a704fae81f236ffe009c2609ec673d59a'), out_idx=0)
         txin = PartialTxInput(prevout=prevout)
         txin._trusted_value_sats = sats
@@ -949,7 +947,7 @@ class TestTransactionTestnet(ElectrumTestCase):
 
         # Build the Transaction Output
         txout = PartialTxOutput.from_address_and_value(
-            'tb1qtgsfkgptcxdn6dz6wh8c4dguk3cezwne5j5c47', sats_less_fees)
+            'tblk1qtgsfkgptcxdn6dz6wh8c4dguk3cezwnetgpmc3', sats_less_fees)
 
         # Build and sign the transaction
         tx = PartialTransaction.from_io([txin], [txout], locktime=locktime, version=2)

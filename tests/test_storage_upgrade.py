@@ -66,7 +66,6 @@ class TestStorageUpgrade(WalletTestCase):
         wallet_str = self._get_wallet_str()
         await self._upgrade_storage(wallet_str)
 
-    @unittest.skip("Blackcoin: wallet data contains Bitcoin transactions")
     async def test_upgrade_from_client_2_0_4_trezor_multiacc(self):
         wallet_str = self._get_wallet_str()
         await self._upgrade_storage(wallet_str, accounts=2)
@@ -91,7 +90,6 @@ class TestStorageUpgrade(WalletTestCase):
         wallet_str = self._get_wallet_str()
         await self._upgrade_storage(wallet_str)
 
-    @unittest.skip("Blackcoin: wallet data contains Bitcoin transactions")
     async def test_upgrade_from_client_2_1_1_trezor_multiacc(self):
         wallet_str = self._get_wallet_str()
         await self._upgrade_storage(wallet_str, accounts=2)
@@ -116,7 +114,6 @@ class TestStorageUpgrade(WalletTestCase):
         wallet_str = self._get_wallet_str()
         await self._upgrade_storage(wallet_str)
 
-    @unittest.skip("Blackcoin: wallet data contains Bitcoin transactions")
     async def test_upgrade_from_client_2_2_0_trezor_multiacc(self):
         wallet_str = self._get_wallet_str()
         await self._upgrade_storage(wallet_str, accounts=2)
@@ -141,7 +138,6 @@ class TestStorageUpgrade(WalletTestCase):
         wallet_str = self._get_wallet_str()
         await self._upgrade_storage(wallet_str)
 
-    @unittest.skip("Blackcoin: wallet data contains Bitcoin transactions")
     async def test_upgrade_from_client_2_3_2_trezor_multiacc(self):
         wallet_str = self._get_wallet_str()
         await self._upgrade_storage(wallet_str, accounts=2)
@@ -166,7 +162,6 @@ class TestStorageUpgrade(WalletTestCase):
         wallet_str = self._get_wallet_str()
         await self._upgrade_storage(wallet_str)
 
-    @unittest.skip("Blackcoin: wallet data contains Bitcoin transactions")
     async def test_upgrade_from_client_2_4_3_trezor_multiacc(self):
         wallet_str = self._get_wallet_str()
         await self._upgrade_storage(wallet_str, accounts=2)
@@ -191,7 +186,6 @@ class TestStorageUpgrade(WalletTestCase):
         wallet_str = self._get_wallet_str()
         await self._upgrade_storage(wallet_str)
 
-    @unittest.skip("Blackcoin: wallet data contains Bitcoin transactions")
     async def test_upgrade_from_client_2_5_4_trezor_multiacc(self):
         wallet_str = self._get_wallet_str()
         await self._upgrade_storage(wallet_str, accounts=2)
@@ -272,7 +266,6 @@ class TestStorageUpgrade(WalletTestCase):
         await self._upgrade_storage(wallet_str)
 
     @as_testnet
-    @unittest.skip("Blackcoin: wallet data contains Bitcoin transactions")
     async def test_upgrade_from_client_2_9_3_old_seeded_with_realistic_history(self):
         wallet_str = self._get_wallet_str()
         await self._upgrade_storage(wallet_str)
@@ -316,7 +309,6 @@ class TestStorageUpgrade(WalletTestCase):
         await wallet.stop()
 
     @as_testnet
-    @unittest.skip("Blackcoin: wallet data contains Bitcoin transactions")
     async def test_upgrade_from_client_3_3_8_xpub_with_realistic_history(self):
         wallet_str = self._get_wallet_str()
         await self._upgrade_storage(wallet_str)
@@ -326,20 +318,21 @@ class TestStorageUpgrade(WalletTestCase):
         wallet_str = self._get_wallet_str()
         await self._upgrade_storage(wallet_str)
 
-    @as_testnet
-    @unittest.skip("Blackcoin: wallet data contains Bitcoin transactions")
-    async def test_upgrade_from_client_4_5_2_9dk_with_ln(self):
+    # blackcoin: Lightning Network (LN) features and lntb BOLT11 invoices are omitted in electrum-blk
+    # @as_testnet
+    # async def _disabled_test_upgrade_from_client_4_5_2_9dk_with_ln(self):
         # This is a realistic testnet wallet, from the "9dk" seed, including some lightning sends/receives,
         # some labels, frozen addresses, saved local txs, invoices/requests, etc. The file also has partial writes.
         # Also, regression test for #8913
-        wallet_str = self._get_wallet_str()
-        await self._upgrade_storage(wallet_str)
+        # wallet_str = self._get_wallet_str()
+        # await self._upgrade_storage(wallet_str)
 
-    @as_regtest
-    async def test_upgrade_from_client_4_6_0_with_unfulfilled_htlcs(self):
+    # blackcoin: Lightning Network (LN) features and lntb BOLT11 invoices are omitted in electrum-blk
+    # @as_regtest
+    # async def _disabled_test_upgrade_from_client_4_6_0_with_unfulfilled_htlcs(self):
         # tests unfulfilled_htlcs conversion in 62->63. seed_version is 60.
-        wallet_str = self._get_wallet_str()
-        await self._upgrade_storage(wallet_str)
+        # wallet_str = self._get_wallet_str()
+        # await self._upgrade_storage(wallet_str)
 
 ##########
 

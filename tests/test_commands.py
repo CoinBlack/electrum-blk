@@ -248,7 +248,7 @@ class TestCommandsTestnet(ElectrumTestCase):
             ],
             "outputs": [
                 {
-                    "address": "tb1q4s8z6g5jqzllkgt8a4har94wl8tg0k9m8kv5zd",
+                    "address": "tblk1q4s8z6g5jqzllkgt8a4har94wl8tg0k9mcveh0z",
                     "value_sats": 990000
                 }
             ]
@@ -270,7 +270,7 @@ class TestCommandsTestnet(ElectrumTestCase):
             ],
             "outputs": [
                 {
-                    "address": "tb1q4s8z6g5jqzllkgt8a4har94wl8tg0k9m8kv5zd",
+                    "address": "tblk1q4s8z6g5jqzllkgt8a4har94wl8tg0k9mcveh0z",
                     "value_sats": 990000
                 }
             ]
@@ -304,14 +304,14 @@ class TestCommandsTestnet(ElectrumTestCase):
 
         cmds = Commands(config=self.config)
         tx_str = await cmds.payto(
-            destination="tb1qsyzgpwa0vg2940u5t6l97etuvedr5dejpf9tdy",
+            destination="tblk1qsyzgpwa0vg2940u5t6l97etuvedr5dej7nsgqt",
             amount="0.00123456",
             feerate=50,
             locktime=1972344,
             wallet=wallet)
 
         tx_str_2 = await cmds.payto(
-            destination="tb1qsyzgpwa0vg2940u5t6l97etuvedr5dejpf9tdy",
+            destination="tblk1qsyzgpwa0vg2940u5t6l97etuvedr5dej7nsgqt",
             amount="0.00123456",
             feerate="50.000",  # test that passing a string feerate results in the same tx
             locktime=1972344,
@@ -320,7 +320,7 @@ class TestCommandsTestnet(ElectrumTestCase):
         self.assertEqual(tx_str, tx_str_2)
         tx = tx_from_any(tx_str)
         self.assertEqual(2, len(tx.outputs()))
-        txout = TxOutput.from_address_and_value("tb1qsyzgpwa0vg2940u5t6l97etuvedr5dejpf9tdy", 123456)
+        txout = TxOutput.from_address_and_value("tblk1qsyzgpwa0vg2940u5t6l97etuvedr5dej7nsgqt", 123456)
         self.assertTrue(txout in tx.outputs())
         self.assertEqual("02000000000101a0a8800d2d6bb0a4a8b93b793f39439c4139a40d30e634cf5cd601e5391de6ed0100000000fdffffff0240e2010000000000160014810480bbaf62145abf945ebe5f657c665a3a3732462b060000000000160014a5103285eb519f826520a9f7d3227e1eaa7ec5f802473044022057a6f4b1ec63336c7d0ba233e785ec9f2e2d9c2d67617a50e069f4498ee6a3b7022032fb331e0bef06f46e9cb77bfe94413142653c4912516835e941fa7f170c1a53012103001b55f19541faaf7e6d57dd1bdb9fdc37725fc500e12f2418cc11e0aed4154978181e00",
                          tx_str)
@@ -341,7 +341,7 @@ class TestCommandsTestnet(ElectrumTestCase):
 
         async def create_tx():
             return await cmds.payto(
-                destination="tb1qsyzgpwa0vg2940u5t6l97etuvedr5dejpf9tdy",
+                destination="tblk1qsyzgpwa0vg2940u5t6l97etuvedr5dej7nsgqt",
                 amount="0.00123456",
                 feerate=50,
                 locktime=1972344,
@@ -356,7 +356,7 @@ class TestCommandsTestnet(ElectrumTestCase):
 
         tx = tx_from_any(tx_str)
         self.assertEqual(2, len(tx.outputs()))
-        txout = TxOutput.from_address_and_value("tb1qsyzgpwa0vg2940u5t6l97etuvedr5dejpf9tdy", 123456)
+        txout = TxOutput.from_address_and_value("tblk1qsyzgpwa0vg2940u5t6l97etuvedr5dej7nsgqt", 123456)
         self.assertTrue(txout in tx.outputs())
 
     async def test_paytomany_multiple_max_spends(self):
@@ -372,10 +372,10 @@ class TestCommandsTestnet(ElectrumTestCase):
 
         cmds = Commands(config=self.config)
         tx_str = await cmds.paytomany(
-            outputs=[["tb1qk3g0t9pw5wctkzz7gh6k3ljfuukn729s67y54e", 0.002],
-                     ["tb1qr7evucrllljtryam6y2k3ntmlptq208pghql2h", "2!"],
-                     ["tb1qs3msqp0n0qade2haanjw2dkaa5lm77vwvce00h", 0.003],
-                     ["tb1qar4ye43tdfj6y5n3yndp9adhs2wuz2v0wgqn5l", "3!"]],
+            outputs=[["tblk1qk3g0t9pw5wctkzz7gh6k3ljfuukn729s9y3hck", 0.002],
+                     ["tblk1qr7evucrllljtryam6y2k3ntmlptq208phd4u8c", "2!"],
+                     ["tblk1qs3msqp0n0qade2haanjw2dkaa5lm77vwnzvvzc", 0.003],
+                     ["tblk1qar4ye43tdfj6y5n3yndp9adhs2wuz2v03j4ses", "3!"]],
             fee="0.00005000",
             locktime=2094054,
             wallet=wallet)
@@ -392,7 +392,6 @@ class TestCommandsTestnet(ElectrumTestCase):
         self.assertEqual("020000000221d3645ba44f33fff6fe2666dc080279bc34b531c66888729712a80b204a32a1010000006a47304402205b30e188e30c846f98dacc714c16b7cd3a58a3fa24973d289683c9d32813e24c0220153855a29e96fb083084417ba3e3873ccaeb08435dad93773ab60716f94a36160121033f6737e40a3a6087bc58bc5b82b427f9ed26d710b8fe2f70bfdd3d62abebcf74fdffffffdd7f90d51acf98dc45ad7489316a983868c75e16bf14ffeb9eae01603a7b4da4010000006a473044022010daa3dadf53bdcb071c6eff6b8787e3f675ed61feb4fef72d0bf9d99c0162f802200e73abd880b6f2ee5fe8c0abab731f1dddeb0f60df5e050a79c365bd718da1c80121033f6737e40a3a6087bc58bc5b82b427f9ed26d710b8fe2f70bfdd3d62abebcf74fdffffff02e8030000000000001976a9149a9ec2b35a7660c80dae38dd806fdf9b0fde68fd88ac74c11000000000001976a914f0dc093f7fb1b76cfd06610d5359d6595676cc2b88aca79b1d00",
                          await cmds.signtransaction_with_privkey(tx=unsigned_tx, privkey=privkey))
 
-    @unittest.skip(SKIP_BITCOIN_TX_FORMAT)
     async def test_signtransaction_with_wallet(self):
         wallet = restore_wallet_from_text__for_unittest(
             'bitter grass shiver impose acquire brush forget axis eager alone wine silver',
@@ -400,20 +399,19 @@ class TestCommandsTestnet(ElectrumTestCase):
             config=self.config)['wallet']
 
         # bootstrap wallet1
-        funding_tx = Transaction('01000000014576dacce264c24d81887642b726f5d64aa7825b21b350c7b75a57f337da6845010000006b483045022100a3f8b6155c71a98ad9986edd6161b20d24fad99b6463c23b463856c0ee54826d02200f606017fd987696ebbe5200daedde922eee264325a184d5bbda965ba5160821012102e5c473c051dae31043c335266d0ef89c1daab2f34d885cc7706b267f3269c609ffffffff0240420f00000000001600148a28bddb7f61864bdcf58b2ad13d5aeb3abc3c42a2ddb90e000000001976a914c384950342cb6f8df55175b48586838b03130fad88ac00000000')
+        funding_tx = Transaction('02000000014576dacce264c24d81887642b726f5d64aa7825b21b350c7b75a57f337da6845010000006b483045022100a3f8b6155c71a98ad9986edd6161b20d24fad99b6463c23b463856c0ee54826d02200f606017fd987696ebbe5200daedde922eee264325a184d5bbda965ba5160821012102e5c473c051dae31043c335266d0ef89c1daab2f34d885cc7706b267f3269c609ffffffff0240420f00000000001600148a28bddb7f61864bdcf58b2ad13d5aeb3abc3c42a2ddb90e000000001976a914c384950342cb6f8df55175b48586838b03130fad88ac00000000')
         funding_txid = funding_tx.txid()
         funding_output_value = 1000000
-        self.assertEqual('add2535aedcbb5ba79cc2260868bb9e57f328738ca192937f2c92e0e94c19203', funding_txid)
+        self.assertEqual('8216d3443d045f1f929ba6120be84b82ae9e5b808a81ed628244dca5d82807ba', funding_txid)
         wallet.adb.receive_tx_callback(funding_tx, tx_height=TX_HEIGHT_UNCONFIRMED)
 
         cmds = Commands(config=self.config)
 
-        unsigned_tx = "cHNidP8BAHECAAAAAQOSwZQOLsnyNykZyjiHMn/luYuGYCLMebq1y+1aU9KtAAAAAAD+////AigjAAAAAAAAFgAUaQtZqBQGAvsjzCkE7OnMTa82EFIwGw8AAAAAABYAFKwOLSKSAL/7IWftb9GWrvnWh9i7AAAAAAABAN8BAAAAAUV22sziZMJNgYh2Qrcm9dZKp4JbIbNQx7daV/M32mhFAQAAAGtIMEUCIQCj+LYVXHGpitmYbt1hYbINJPrZm2RjwjtGOFbA7lSCbQIgD2BgF/2YdpbrvlIA2u3eki7uJkMloYTVu9qWW6UWCCEBIQLlxHPAUdrjEEPDNSZtDvicHaqy802IXMdwayZ/MmnGCf////8CQEIPAAAAAAAWABSKKL3bf2GGS9z1iyrRPVrrOrw8QqLduQ4AAAAAGXapFMOElQNCy2+N9VF1tIWGg4sDEw+tiKwAAAAAIgYDD67ptKJbfbggI8qYkZJxLN1MtT09kzhZHHkJ5YGuHAwQsuNafQAAAIAAAAAAAAAAAAAiAgKFhOeJ459BORsvJ4UsoYq+wGpUEcIb41D+1h7scSDeUxCy41p9AAAAgAEAAAAAAAAAAAA="
+        unsigned_tx = "cHNidP8BAHECAAAAAboHKNil3ESCYu2BioBbnq6CS+gLEqabkh9fBD1E0xaCAAAAAAD+////AigjAAAAAAAAFgAUaQtZqBQGAvsjzCkE7OnMTa82EFIwGw8AAAAAABYAFKwOLSKSAL/7IWftb9GWrvnWh9i7AAAAAAABAN8CAAAAAUV22sziZMJNgYh2Qrcm9dZKp4JbIbNQx7daV/M32mhFAQAAAGtIMEUCIQCj+LYVXHGpitmYbt1hYbINJPrZm2RjwjtGOFbA7lSCbQIgD2BgF/2YdpbrvlIA2u3eki7uJkMloYTVu9qWW6UWCCEBIQLlxHPAUdrjEEPDNSZtDvicHaqy802IXMdwayZ/MmnGCf////8CQEIPAAAAAAAWABSKKL3bf2GGS9z1iyrRPVrrOrw8QqLduQ4AAAAAGXapFMOElQNCy2+N9VF1tIWGg4sDEw+tiKwAAAAAIgYDD67ptKJbfbggI8qYkZJxLN1MtT09kzhZHHkJ5YGuHAwQsuNafQAAAIAAAAAAAAAAAAAiAgKFhOeJ459BORsvJ4UsoYq+wGpUEcIb41D+1h7scSDeUxCy41p9AAAAgAEAAAAAAAAAAAA="
 
-        self.assertEqual("020000000001010392c1940e2ec9f2372919ca3887327fe5b98b866022cc79bab5cbed5a53d2ad0000000000feffffff022823000000000000160014690b59a8140602fb23cc2904ece9cc4daf361052301b0f0000000000160014ac0e2d229200bffb2167ed6fd196aef9d687d8bb02473044022027e1e37172e52b2d84106663cff5bcf6e447dcb41f6483f99584cfb4de2785f4022005c72f6324ad130c78fca43fe5fc565526d1723f2c9dc3efea78f66d7ae9d4360121030faee9b4a25b7db82023ca989192712cdd4cb53d3d9338591c7909e581ae1c0c00000000",
+        self.assertEqual("02000000000101ba0728d8a5dc448262ed818a805b9eae824be80b12a69b921f5f043d44d316820000000000feffffff022823000000000000160014690b59a8140602fb23cc2904ece9cc4daf361052301b0f0000000000160014ac0e2d229200bffb2167ed6fd196aef9d687d8bb0247304402205aacd17a717e8398f2a44cc16fa8cc7f02a834c38bac953f712b0d7e5af7ad35022032309c22aa060007a3a8889cbbca2cbc773807405a25a856d2cfd0f8f2e2992e0121030faee9b4a25b7db82023ca989192712cdd4cb53d3d9338591c7909e581ae1c0c00000000",
                          await cmds.signtransaction(tx=unsigned_tx, wallet=wallet))
 
-    @unittest.skip(SKIP_BITCOIN_TX_FORMAT)
     async def test_bumpfee(self):
         wallet = restore_wallet_from_text__for_unittest(
             'right nominee cheese afford exotic pilot mask illness rug fringe degree pottery',
@@ -428,7 +426,8 @@ class TestCommandsTestnet(ElectrumTestCase):
         orig_rawtx = "02000000000101b9723dfc69af058ef6613539a000d2cd098a2c8a74e802b6d8739db708ba8c9a0100000000fdffffff02a00f00000000000016001429e1fd187f0cac845946ae1b11dc136c536bfc0fe8b2000000000000160014100611bcb3aee7aad176936cf4ed56ade03027aa02473044022063c05e2347f16251922830ccc757231247b3c2970c225f988e9204844a1ab7b802204652d2c4816707e3d3bea2609b83b079001a435bad2a99cc2e730f276d07070c012102ee3f00141178006c78b0b458aab21588388335078c655459afe544211f15aee050721f00"
         orig_tx = tx_from_any(orig_rawtx)
         orig_txid = orig_tx.txid()
-        self.assertEqual("02000000000101b9723dfc69af058ef6613539a000d2cd098a2c8a74e802b6d8739db708ba8c9a0100000000fdffffff02a00f00000000000016001429e1fd187f0cac845946ae1b11dc136c536bfc0f84b2000000000000160014100611bcb3aee7aad176936cf4ed56ade03027aa0247304402203aa63539b673a3bd70a76482b17f35f8843974fab28f84143a00450789010bc40220779c2ce2d0217f973f1f6c9f718e19fc7ebd14dd8821a962f002437cda3082ec012102ee3f00141178006c78b0b458aab21588388335078c655459afe544211f15aee000000000",
+        expected_bumpfee = "02000000000101b9723dfc69af058ef6613539a000d2cd098a2c8a74e802b6d8739db708ba8c9a0100000000fdffffff02a00f00000000000016001429e1fd187f0cac845946ae1b11dc136c536bfc0fceb2000000000000160014100611bcb3aee7aad176936cf4ed56ade03027aa024730440220021701ef855562cc547487eb124e3c532aebd2e6ea3c3be066b235e487c360fd0220337d24c97ee921acce35abc7c26911b4d88b7321599b1fa56202ba090eea0575012102ee3f00141178006c78b0b458aab21588388335078c655459afe544211f15aee000000000"
+        self.assertEqual(expected_bumpfee,
                          await cmds.bumpfee(tx=orig_rawtx, new_fee_rate='1.6', wallet=wallet))
         # test txid as first arg
         # -> first test while NOT having the tx in the wallet db:
@@ -437,11 +436,11 @@ class TestCommandsTestnet(ElectrumTestCase):
         self.assertTrue("Transaction not in wallet" in ctx.exception.args[0])
         # -> now test while having the tx:
         assert wallet.adb.add_transaction(orig_tx)
-        self.assertEqual("02000000000101b9723dfc69af058ef6613539a000d2cd098a2c8a74e802b6d8739db708ba8c9a0100000000fdffffff02a00f00000000000016001429e1fd187f0cac845946ae1b11dc136c536bfc0f84b2000000000000160014100611bcb3aee7aad176936cf4ed56ade03027aa0247304402203aa63539b673a3bd70a76482b17f35f8843974fab28f84143a00450789010bc40220779c2ce2d0217f973f1f6c9f718e19fc7ebd14dd8821a962f002437cda3082ec012102ee3f00141178006c78b0b458aab21588388335078c655459afe544211f15aee000000000",
+        self.assertEqual(expected_bumpfee,
                          await cmds.bumpfee(tx=orig_txid, new_fee_rate='1.6', wallet=wallet))
         wallet.adb.remove_transaction(orig_txid)  # undo side-effect on wallet
         # test "from_coins" arg
-        self.assertEqual("02000000000101b9723dfc69af058ef6613539a000d2cd098a2c8a74e802b6d8739db708ba8c9a0100000000fdffffff02a00f00000000000016001429e1fd187f0cac845946ae1b11dc136c536bfc0f84b2000000000000160014100611bcb3aee7aad176936cf4ed56ade03027aa0247304402203aa63539b673a3bd70a76482b17f35f8843974fab28f84143a00450789010bc40220779c2ce2d0217f973f1f6c9f718e19fc7ebd14dd8821a962f002437cda3082ec012102ee3f00141178006c78b0b458aab21588388335078c655459afe544211f15aee000000000",
+        self.assertEqual(expected_bumpfee,
                          await cmds.bumpfee(tx=orig_rawtx, new_fee_rate='1.6', from_coins="9a8cba08b79d73d8b602e8748a2c8a09cdd200a0393561f68e05af69fc3d72b9:1", wallet=wallet))
 
     async def test_importprivkey(self):
@@ -582,7 +581,6 @@ class TestCommandsTestnet(ElectrumTestCase):
 
     @mock.patch.object(storage.WalletStorage, 'write')
     @mock.patch.object(storage.WalletStorage, 'append')
-    @unittest.skip(SKIP_BITCOIN_TX_FORMAT)
     async def test_onchain_history(self, *mock_args):
         cmds = Commands(config=self.config, daemon=self.daemon)
         wallet_path = self.get_wallet_file_path("client_3_3_8_xpub_with_realistic_history")
@@ -630,8 +628,8 @@ class TestCommandsTestnet(ElectrumTestCase):
                         }
                     ],
                     'outputs': [
-                        {'address': 'tb1qr5mf6sumdlhjrq9t6wlyvdm960zu0n0t5d60ug', 'value_sat': 500000},
-                        {'address': 'tb1qp3p2d72gj2l7r6za056tgu4ezsurjphper4swh', 'value_sat': 762100}
+                        {'address': 'tblk1qr5mf6sumdlhjrq9t6wlyvdm960zu0n0tth0v38', 'value_sat': 500000},
+                        {'address': 'tblk1qp3p2d72gj2l7r6za056tgu4ezsurjphpxeqnrc', 'value_sat': 762100}
                     ],
                 }
             )

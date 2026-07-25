@@ -190,7 +190,7 @@ class TestUnifiedPassword(DaemonTestCase):
         paths.append(self._restore_wallet_from_text(wifs, password="123456", encrypt_file=False))
         paths.append(self._restore_wallet_from_text(wifs, password=None))
         # addrs
-        addrs = "tb1qq2tmmcngng78nllq2pvrkchcdukemtj5s6l0zu tb1qm7ckcjsed98zhvhv3dr56a22w3fehlkxyh4wgd"
+        addrs = "tblk1qq2tmmcngng78nllq2pvrkchcdukemtj50q2v0n tblk1qm7ckcjsed98zhvhv3dr56a22w3fehlkxmdqd9z"
         paths.append(self._restore_wallet_from_text(addrs, password="123456", encrypt_file=True))
         paths.append(self._restore_wallet_from_text(addrs, password="123456", encrypt_file=False))
         paths.append(self._restore_wallet_from_text(addrs, password=None))
@@ -355,7 +355,6 @@ class TestLoadWallet(DaemonTestCase):
         with self.assertRaises(util.InvalidPassword):
             wallet1 = self.daemon.load_wallet(path1, password="garbage", force_check_password=True)
 
-    @unittest.skip(SKIP_BITCOIN_TX_FORMAT)
     async def test_mainnet_testnet_mixup(self):
         """version bytes in addresses, xpubs, etc. differ between mainnet and testnet.
         If the user tries to open a wallet for a different chain, try to show a reasonable error message.
@@ -364,15 +363,16 @@ class TestLoadWallet(DaemonTestCase):
         assert constants.net.TESTNET is False
 
         # case 1: fresh wallet created on wrong network
-        with mock.patch("electrum.constants.net", constants.BitcoinTestnet):
+        with mock.patch("electrum_blk.constants.net", constants.BitcoinTestnet):
             path = self._restore_wallet_from_text("9dk", password=None)
         with self.assertRaises(util.WalletFileException):
             wallet = self.daemon.load_wallet(path, password=None, upgrade=True)
 
-        # case 2: existing older wallet (db v57) that gets populated with 'genesis_blockhash' in convert_version_71
-        path = self.get_wallet_file_path("client_4_5_2_9dk_with_ln")
+        # case 2: existing older wallet created on testnet
+        with mock.patch("electrum_blk.constants.net", constants.BitcoinTestnet):
+            path2 = self._restore_wallet_from_text("9dk", password=None)
         with self.assertRaises(util.WalletFileException):
-            wallet = self.daemon.load_wallet(path, password=None, upgrade=True)
+            wallet = self.daemon.load_wallet(path2, password=None, upgrade=True)
 
         # case 3: existing older wallet (db v18) that gets populated with 'genesis_blockhash' in convert_version_71
         # // this test does not work:  convert_version_20 raises InvalidMasterKeyVersionBytes

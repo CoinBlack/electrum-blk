@@ -61,8 +61,8 @@ class MockNetwork(Logger):
         return True
 
 
-SWAP_FUNDING_TX = "01000000000101500e9d67647481864edfb020b5c45e1c40d90f06b0130f9faed1a5149c6d26450000000000ffffffff0226080300000000002200205059c44bf57534303ab8f090f06b7bde58f5d2522440247a1ff6b41bdca9348df312c20100000000160014021d4f3b17921d790e1c022367a5bb078ce4deb402483045022100d41331089a2031396a1db8e4dec6dda9cacefe1288644b92f8e08a23325aa19b02204159230691601f7d726e4e6e0b7124d3377620f400d699a01095f0b0a09ee26a012102d60315c72c0cefd41c6d07883c20b88be3fc37aac7912f0052722a95de0de71600000000"
-SWAP_CLAIM_TX = "02000000000101f9db8580febd5c0f85b6f1576c83f7739109e3a2d772743e3217e9537fea7e89000000000001000000017005030000000000160014b113a47f3718da3fd161339a6681c150fef2cfe30347304402204c6d40103589b1a8177a37a824f0c66a3a7b22bc570b14c9e07965b56f6ace8f02203a35cffe0ab10de00f3e15ecf5aafdd2c7f6c62da11edd9054a1bce7a9e1455c0120f1939b5723155713855d7ebea6e174f77d41d669269e7f138856c3de190e7a366a8201208763a914d7a62ef0270960fe23f0f351b28caadab62c21838821030bfd61153816df786036ea293edce851d3a4b9f4a1c66bdc1a17f00ffef3d6b167750334ef24b1752102fc8128f17f9e666ea281c702171ab16c1dd2a4337b71f08970f5aa10c608a93268ac00000000"
+SWAP_FUNDING_TX = "02000000000101500e9d67647481864edfb020b5c45e1c40d90f06b0130f9faed1a5149c6d26450000000000ffffffff0226080300000000002200205059c44bf57534303ab8f090f06b7bde58f5d2522440247a1ff6b41bdca9348df312c20100000000160014021d4f3b17921d790e1c022367a5bb078ce4deb402483045022100d41331089a2031396a1db8e4dec6dda9cacefe1288644b92f8e08a23325aa19b02204159230691601f7d726e4e6e0b7124d3377620f400d699a01095f0b0a09ee26a012102d60315c72c0cefd41c6d07883c20b88be3fc37aac7912f0052722a95de0de71600000000"
+SWAP_CLAIM_TX = "02000000000101880e89a09bb6ee91ec3d45e0932fea7d1a0b837a9035693dbcef4034d2cc7aca000000000001000000017e05030000000000160014b113a47f3718da3fd161339a6681c150fef2cfe3034730440220084f268826f0c1424c85823f761143027ea5203e039be6a2d227e643bfd871b202201eec15b359031e07c43ffe94394083b002ef77b891d9a91409351cd8c85611750120f1939b5723155713855d7ebea6e174f77d41d669269e7f138856c3de190e7a366a8201208763a914d7a62ef0270960fe23f0f351b28caadab62c21838821030bfd61153816df786036ea293edce851d3a4b9f4a1c66bdc1a17f00ffef3d6b167750334ef24b1752102fc8128f17f9e666ea281c702171ab16c1dd2a4337b71f08970f5aa10c608a93268ac00000000"
 
 SWAPDATA = SwapData(
     is_reverse=True,
@@ -73,9 +73,9 @@ SWAPDATA = SwapData(
     preimage=bytes.fromhex('f1939b5723155713855d7ebea6e174f77d41d669269e7f138856c3de190e7a36'),
     prepay_hash=None,
     privkey=bytes.fromhex('58fd0018a9a2737d1d6b81d380df96bf0c858473a9592015508a270a7c9b1d8d'),
-    lockup_address='tb1q2pvugjl4w56rqw4c7zg0q6mmmev0t5jjy3qzg7sl766phh9fxjxsrtl77t',
+    lockup_address='tblk1q2pvugjl4w56rqw4c7zg0q6mmmev0t5jjy3qzg7sl766phh9fxjxs9wszc6',
     claim_to_output=None,
-    funding_txid='897eea7f53e917323e7472d7a2e3099173f7836c57f1b6850f5cbdfe8085dbf9',
+    funding_txid='ca7accd23440efbc3d6935907a830b1a7dea2f93e0453dec91eeb69ba0890e88',
     spending_txid=None,
     is_redeemed=False,
 )
@@ -150,7 +150,6 @@ class TestTxBatcher(ElectrumTestCase):
         return wallet
 
     @mock.patch.object(wallet.Abstract_Wallet, 'save_db')
-    @unittest.skip(SKIP_BITCOIN_TX_FORMAT)
     async def test_batch_payments(self, mock_save_db):
         # output 1:     tx1(o1) ---------------
         #                                      \
@@ -160,7 +159,7 @@ class TestTxBatcher(ElectrumTestCase):
         # tx1 gets mined
         # txbatcher creates a new transaction tx2, child of tx1
         #
-        OUTGOING_ADDRESS = 'tb1q7rl9cxr85962ztnsze089zs8ycv52hk43f3m9n'
+        OUTGOING_ADDRESS = 'tblk1q7rl9cxr85962ztnsze089zs8ycv52hk4wnycgu'
         wallet = self._create_wallet()
         # fund wallet
         funding_tx = Transaction(WALLET_DATA["funding_tx"])
@@ -212,14 +211,14 @@ class TestTxBatcher(ElectrumTestCase):
         self.logger.info(f'wallet balance1 {wallet.get_balance()}')
 
         # to_self_payment tx1
-        output1 = PartialTxOutput.from_address_and_value("tb1qyfnv3y866ufedugxxxfksyratv4pz3h78g9dad", 20_000)
+        output1 = PartialTxOutput.from_address_and_value("tblk1qyfnv3y866ufedugxxxfksyratv4pz3h7cjswsz", 20_000)
         wallet.txbatcher.add_payment_output('default', output1)
         tx1 = await self.network.next_tx()
         assert len(tx1.outputs()) == 2
         assert output1 in tx1.outputs()
 
         # outgoing payment tx2
-        output2 = PartialTxOutput.from_address_and_value("tb1qkfn0fude7z789uys2u7sf80kd4805zpvs3na0h", 90_000)
+        output2 = PartialTxOutput.from_address_and_value("tblk1qkfn0fude7z789uys2u7sf80kd4805zpv0tx7zc", 90_000)
         wallet.txbatcher.add_payment_output('default', output2)
         # before tx1 gets confirmed, txbatch.create_transaction will raise notenoughfunds
         await asyncio.sleep(wallet.txbatcher.SLEEP_INTERVAL)
@@ -235,7 +234,6 @@ class TestTxBatcher(ElectrumTestCase):
 
 
     @mock.patch.object(wallet.Abstract_Wallet, 'save_db')
-    @unittest.skip(SKIP_BITCOIN_TX_FORMAT)
     async def test_sweep_from_submarine_swap(self, mock_save_db):
         self.maxDiff = None
         # create wallet
@@ -250,7 +248,7 @@ class TestTxBatcher(ElectrumTestCase):
         self.assertEqual(SWAP_CLAIM_TX, str(tx))
         # add a new payment, reusing the same input
         # this tests that txin.make_witness() can be called more than once
-        output1 = PartialTxOutput.from_address_and_value("tb1qyfnv3y866ufedugxxxfksyratv4pz3h78g9dad", 20_000)
+        output1 = PartialTxOutput.from_address_and_value("tblk1qyfnv3y866ufedugxxxfksyratv4pz3h7cjswsz", 20_000)
         wallet.txbatcher.add_payment_output('default', output1)
         new_tx = await self.network.next_tx()
         # check that we batched with previous tx
