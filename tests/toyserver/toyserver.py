@@ -16,7 +16,7 @@ from electrum_blk.util import bfh, OrderedSet
 from electrum_blk.logging import Logger
 from electrum_blk.transaction import Transaction, TxOutput, TxInput, TxOutpoint, PartialTxOutput
 from electrum_blk import constants
-from electrum_blk.bitcoin import script_to_scripthash, COIN, COINBASE_MATURITY
+from electrum_blk.bitcoin import script_to_scripthash, COIN
 from electrum_blk.simple_config import SimpleConfig
 from electrum_blk.synchronizer import history_status
 from electrum_blk.wallet import Abstract_Wallet
@@ -28,7 +28,7 @@ from .. import restore_wallet_from_text__for_unittest
 
 DAEMON_ERROR = 2
 
-REGTEST_GENESIS_HEADER = bfh("0100000000000000000000000000000000000000000000000000000000000000000000003ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4adae5494dffff7f2002000000")
+REGTEST_GENESIS_HEADER = bfh("01000000000000000000000000000000000000000000000000000000000000000000000090dc08aaa21e939141d461fc706c9e8cb95fda4d59c2c887b2247fa9160d6312e0df0a53ffff001f724c0300")
 
 T = TypeVar("T")
 
@@ -380,9 +380,9 @@ class ToyServer(Logger):
         assert not any(tx.txid() is None for tx in txs)
         # new header
         prev_header = self._blocks[-1].header
-        prev_blockhash = blockchain.hash_raw_header(prev_header)
+        prev_blockhash = blockchain.hash_header(blockchain.deserialize_header(prev_header, self.cur_height))
         new_header = blockchain.serialize_header({
-            'version': 99999,  # don't care
+            'version': 7,
             'prev_block_hash': prev_blockhash,
             'merkle_root': 'deadbeef' * 8,  # don't care
             'timestamp': 1_500_000_000,  # don't care
@@ -429,7 +429,7 @@ class ToyServer(Logger):
         for faucet_addr in self._faucet_w.get_receiving_addresses():
             block, cb_tx = await self.mine_block(coinbase_outputs=[TxOutput.from_address_and_value(faucet_addr, 50 * COIN)])
             self._faucet_w.adb.receive_tx_callback(cb_tx, tx_height=self.cur_height)
-        for _ in range(COINBASE_MATURITY):  # need to mine some blocks for maturity
+        for _ in range(constants.net.COINBASE_MATURITY):  # need to mine some blocks for maturity
             await self.mine_block()
         # note: balance is unverified due to lack of SPV, gets treated as "unconfirmed":
         assert self._faucet_w.get_balance() == (0, 50 * COIN * num_starting_utxos, 0), self._faucet_w.get_balance()

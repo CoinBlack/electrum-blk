@@ -220,12 +220,16 @@ class BaseInvoice(StoredObject):
         timestamp = lnaddr.date
         exp_delay = lnaddr.get_expiry()
         message = lnaddr.get_description()
+        outputs = None
+        if fallback_addr := lnaddr.get_fallback_address():
+            amount_sat = (amount_msat // 1000) if amount_msat else 0
+            outputs = [PartialTxOutput.from_address_and_value(fallback_addr, amount_sat)]
         return Invoice(
             message=message,
             amount_msat=amount_msat,
             time=timestamp,
             exp=exp_delay,
-            outputs=None,
+            outputs=outputs,
             height=0,
             lightning_invoice=invoice,
         )

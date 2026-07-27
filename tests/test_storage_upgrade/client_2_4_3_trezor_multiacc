@@ -70,7 +70,7 @@
     },
     "accounts_expanded": {},
     "addr_history": {
-        "12vWPzJtGLKRZjnYVtWSufjRuoE8pHLpmi": [
+        "B6Nb1hm61quL1aGi7NqR2oY6eQfibdMq2a": [
             [
                 "a242aeff746aa481c5d8a496111039262f2a3fbde6038124301522539fa06837",
                 490002
@@ -89,7 +89,7 @@
         "2",
         "xpub6BycoSLDNcWjHWrJyJJYmq9dDwBxSkFbWeaFFcrB6zBH9JTvyRVbAoWcmbPRmxicUkiutGQWqfsom9CbKSVG8Zh5HqHyR25xHE1xxmHeNYa",
         "031b68cff8114df7677c4fe80619b701ea966428ecbeba55c9224cd8149cc5f05e",
-        "1JGek3B8b3Nt3p39x27QK5UnFtNnZ2ZdGJ"
+        "BMijMkdLLYxnVeXKZWSNSDHSzVpNHBuhcu"
     ],
     "pruned_txo": {},
     "stored_height": 490009,
@@ -101,7 +101,7 @@
     },
     "txo": {
         "a242aeff746aa481c5d8a496111039262f2a3fbde6038124301522539fa06837": {
-            "12vWPzJtGLKRZjnYVtWSufjRuoE8pHLpmi": [
+            "B6Nb1hm61quL1aGi7NqR2oY6eQfibdMq2a": [
                 [
                     0,
                     5000,

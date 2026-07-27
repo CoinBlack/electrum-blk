@@ -47,36 +47,8 @@ for name, module in list(sys.modules.items()):
 # (production value is 100M BLK, but tests use Bitcoin's 21M cap)
 electrum_blk.bitcoin.TOTAL_COIN_SUPPLY_LIMIT_IN_BTC = 21000000
 
-import electrum_blk.blockchain
-def test_hash_header(header: dict) -> str:
-    if header is None:
-        return '0' * 64
-    if header.get('prev_block_hash') is None:
-        header['prev_block_hash'] = '00'*32
-    return electrum_blk.blockchain.hash_raw_header(electrum_blk.blockchain.serialize_header(header))
-electrum_blk.blockchain.hash_header = test_hash_header
 
-# Override network constants to use Bitcoin values during tests, since the entire
-# test suite is inherited from upstream and expects Bitcoin addresses, derivations, and WIF formats.
-constants.BitcoinMainnet.WIF_PREFIX = 0x80
-constants.BitcoinMainnet.ADDRTYPE_P2PKH = 0
-constants.BitcoinMainnet.ADDRTYPE_P2SH = 5
-constants.BitcoinMainnet.SEGWIT_HRP = "bc"
-constants.BitcoinMainnet.BOLT11_HRP = "bc"
-constants.BitcoinMainnet.BIP44_COIN_TYPE = 0
-constants.BitcoinMainnet.GENESIS = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"
 
-constants.BitcoinTestnet.WIF_PREFIX = 0xef
-constants.BitcoinTestnet.ADDRTYPE_P2PKH = 111
-constants.BitcoinTestnet.ADDRTYPE_P2SH = 196
-constants.BitcoinTestnet.BIP44_COIN_TYPE = 1
-constants.BitcoinTestnet.GENESIS = "000000000933ea01ad0ee984209779baaec3ced90fa3f408719526f8d77f4943"
-
-constants.BitcoinRegtest.WIF_PREFIX = 0xef
-constants.BitcoinRegtest.ADDRTYPE_P2PKH = 111
-constants.BitcoinRegtest.ADDRTYPE_P2SH = 196
-constants.BitcoinRegtest.BIP44_COIN_TYPE = 1
-constants.BitcoinRegtest.GENESIS = "0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206"
 
 # Override fee constants to Bitcoin values for test compatibility.
 # The test suite is inherited from upstream Electrum and uses hardcoded

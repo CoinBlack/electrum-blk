@@ -493,7 +493,7 @@ class WalletWizardTestCase(WizardTestCase):
         v = w.resolve_next(v.view, d)
 
         wallet = self._set_password_and_check_address(
-            v=v, w=w, recv_addr="bc1qq2tmmcngng78nllq2pvrkchcdukemtj56uyue0",
+            v=v, w=w, recv_addr="blk1qq2tmmcngng78nllq2pvrkchcdukemtj5cjf9ue",
             password="1234", encrypt_file=True,
         )
         self.assertTrue(wallet.has_password())
@@ -515,7 +515,7 @@ class WalletWizardTestCase(WizardTestCase):
         v = w.resolve_next(v.view, d)
 
         wallet = self._set_password_and_check_address(
-            v=v, w=w, recv_addr="bc1qq2tmmcngng78nllq2pvrkchcdukemtj56uyue0",
+            v=v, w=w, recv_addr="blk1qq2tmmcngng78nllq2pvrkchcdukemtj5cjf9ue",
             password="1234", encrypt_file=False,
         )
         self.assertTrue(wallet.has_password())
@@ -542,7 +542,7 @@ class WalletWizardTestCase(WizardTestCase):
         self.assertEqual('confirm_seed', v.view)
 
         v = w.resolve_next(v.view, d)
-        self._set_password_and_check_address(v=v, w=w, recv_addr="bc1qq2tmmcngng78nllq2pvrkchcdukemtj56uyue0")
+        self._set_password_and_check_address(v=v, w=w, recv_addr="blk1qq2tmmcngng78nllq2pvrkchcdukemtj5cjf9ue")
 
     async def test_create_standard_wallet_createseed_passphrase(self):
         w = self._wizard_for(wallet_type='standard')
@@ -568,7 +568,7 @@ class WalletWizardTestCase(WizardTestCase):
         self.assertEqual('confirm_ext', v.view)
 
         v = w.resolve_next(v.view, d)
-        self._set_password_and_check_address(v=v, w=w, recv_addr="bc1qgvx24uzdv4mapfmtlu8azty5fxdcw9ghxu4pr4")
+        self._set_password_and_check_address(v=v, w=w, recv_addr="blk1qgvx24uzdv4mapfmtlu8azty5fxdcw9ghyjccxr")
 
     async def test_create_standard_wallet_haveseed_electrum_oldseed(self):
         w = self._wizard_for(wallet_type='standard')
@@ -584,7 +584,7 @@ class WalletWizardTestCase(WizardTestCase):
             'seed': 'powerful random nobody notice nothing important anyway look away hidden message over',
             'seed_type': 'old', 'seed_extend': False, 'seed_variant': 'electrum'})
         v = w.resolve_next(v.view, d)
-        wallet = self._set_password_and_check_address(v=v, w=w, recv_addr="1FJEEB8ihPMbzs2SkLmr37dHyRFzakqUmo")
+        wallet = self._set_password_and_check_address(v=v, w=w, recv_addr="BJkJqtavStwWShWcMq6pAFRxi2haLsAmxY")
 
         self.assertIsInstance(wallet, Deterministic_Wallet)
         self.assertEqual(wallet.get_seed(password=None), 'powerful random nobody notice nothing important anyway look away hidden message over')
@@ -603,7 +603,7 @@ class WalletWizardTestCase(WizardTestCase):
             'seed': 'acb740e454c3134901d7c8f16497cc1c',
             'seed_type': 'old', 'seed_extend': False, 'seed_variant': 'electrum'})
         v = w.resolve_next(v.view, d)
-        wallet = self._set_password_and_check_address(v=v, w=w, recv_addr="1FJEEB8ihPMbzs2SkLmr37dHyRFzakqUmo")
+        wallet = self._set_password_and_check_address(v=v, w=w, recv_addr="BJkJqtavStwWShWcMq6pAFRxi2haLsAmxY")
 
         self.assertIsInstance(wallet, Deterministic_Wallet)
         self.assertEqual(wallet.get_seed(password=None), 'powerful random nobody notice nothing important anyway look away hidden message over')
@@ -644,7 +644,7 @@ class WalletWizardTestCase(WizardTestCase):
 
         d.update({'seed': '9dk', 'seed_type': 'segwit', 'seed_extend': False, 'seed_variant': 'electrum'})
         v = w.resolve_next(v.view, d)
-        self._set_password_and_check_address(v=v, w=w, recv_addr="bc1qq2tmmcngng78nllq2pvrkchcdukemtj56uyue0")
+        self._set_password_and_check_address(v=v, w=w, recv_addr="blk1qq2tmmcngng78nllq2pvrkchcdukemtj5cjf9ue")
 
     async def test_create_standard_wallet_haveseed_electrum_passphrase(self):
         w = self._wizard_for(wallet_type='standard')
@@ -662,7 +662,7 @@ class WalletWizardTestCase(WizardTestCase):
 
         d.update({'seed_extra_words': UNICODE_HORROR})
         v = w.resolve_next(v.view, d)
-        self._set_password_and_check_address(v=v, w=w, recv_addr="bc1qgvx24uzdv4mapfmtlu8azty5fxdcw9ghxu4pr4")
+        self._set_password_and_check_address(v=v, w=w, recv_addr="blk1qgvx24uzdv4mapfmtlu8azty5fxdcw9ghyjccxr")
 
     async def test_create_standard_wallet_have_master_key(self):
         w = self._wizard_for(wallet_type='standard')
@@ -678,7 +678,7 @@ class WalletWizardTestCase(WizardTestCase):
             'master_key': 'zpub6nAZodjgiMNf9zzX1pTqd6ZVX61ax8azhUDnWRumKVUr1VYATVoqAuqv3qKsb8WJXjxei4wei2p4vnMG9RnpKnen2kmgdhvZUmug2NnHNsr',
             'multisig_master_pubkey': 'zpub6nAZodjgiMNf9zzX1pTqd6ZVX61ax8azhUDnWRumKVUr1VYATVoqAuqv3qKsb8WJXjxei4wei2p4vnMG9RnpKnen2kmgdhvZUmug2NnHNsr'})
         v = w.resolve_next(v.view, d)
-        self._set_password_and_check_address(v=v, w=w, recv_addr="bc1qq2tmmcngng78nllq2pvrkchcdukemtj56uyue0")
+        self._set_password_and_check_address(v=v, w=w, recv_addr="blk1qq2tmmcngng78nllq2pvrkchcdukemtj5cjf9ue")
 
     async def test_create_standard_wallet_haveseed_bip39(self):
         w = self._wizard_for(wallet_type='standard')
@@ -697,7 +697,7 @@ class WalletWizardTestCase(WizardTestCase):
 
         d.update({'script_type': 'p2wpkh', 'derivation_path': 'm/84h/0h/0h'})
         v = w.resolve_next(v.view, d)
-        self._set_password_and_check_address(v=v, w=w, recv_addr="bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu")
+        self._set_password_and_check_address(v=v, w=w, recv_addr="blk1qcr8te4kr609gcawutmrza0j4xv80jy8znphsp2")
 
     async def test_create_standard_wallet_haveseed_bip39_passphrase(self):
         w = self._wizard_for(wallet_type='standard')
@@ -720,7 +720,7 @@ class WalletWizardTestCase(WizardTestCase):
 
         d.update({'script_type': 'p2wpkh', 'derivation_path': 'm/84h/0h/0h'})
         v = w.resolve_next(v.view, d)
-        self._set_password_and_check_address(v=v, w=w, recv_addr="bc1qjc3dsy5wxaksae6zqmr3nwjsmuckwqca8flql3")
+        self._set_password_and_check_address(v=v, w=w, recv_addr="blk1qjc3dsy5wxaksae6zqmr3nwjsmuckwqca98je68")
 
     async def test_create_standard_wallet_haveseed_slip39(self):
         w = self._wizard_for(wallet_type='standard')
@@ -749,7 +749,7 @@ class WalletWizardTestCase(WizardTestCase):
             'script_type': 'p2wpkh', 'derivation_path': 'm/84h/0h/0h',
             'multisig_master_pubkey': 'zpub6riQosasrLdM1rmmohyUHtseLYeCBKP55Xe1LTT7jyKFM6dMMZPYVx5ug6zH2gZ6XFGcUYubjbm43vXHecTzNmoMS3yfp6oeZT3GetsGFt4'})
         v = w.resolve_next(v.view, d)
-        self._set_password_and_check_address(v=v, w=w, recv_addr="bc1q40ksvkl7wvc2l999ppl48swgt3rsl45ykyyrjn")
+        self._set_password_and_check_address(v=v, w=w, recv_addr="blk1q40ksvkl7wvc2l999ppl48swgt3rsl45y52f6h9")
 
     async def test_create_standard_wallet_haveseed_slip39_passphrase(self):
         w = self._wizard_for(wallet_type='standard')
@@ -782,7 +782,7 @@ class WalletWizardTestCase(WizardTestCase):
             'script_type': 'p2wpkh', 'derivation_path': 'm/84h/0h/0h',
             'multisig_master_pubkey': 'zpub6s6A9ynh7TT1sPXmQyu8S6g7kxMF6iSZkM3NmgF4w7CtpsGgg56aouYSWHgAoMy186a8FRT8zkmhcwV5SWKFFQfMpvV8C9Ft4woWSzD5sXz'})
         v = w.resolve_next(v.view, d)
-        self._set_password_and_check_address(v=v, w=w, recv_addr="bc1qs2svwhfz47qv9qju2waa6prxzv5f522fc4p06t")
+        self._set_password_and_check_address(v=v, w=w, recv_addr="blk1qs2svwhfz47qv9qju2waa6prxzv5f522f6mvkla")
 
     async def test_2fa_createseed(self):
         self.assertTrue(self.config.get('enable_plugin_trustedcoin'))
@@ -806,7 +806,7 @@ class WalletWizardTestCase(WizardTestCase):
         v = w.resolve_next(v.view, d)
         self.assertEqual('trustedcoin_show_confirm_otp', v.view)
         v = w.resolve_next(v.view, d)
-        wallet = self._set_password_and_check_address(v=v, w=w, recv_addr="bc1qnf5qafvpx0afk47433j3tt30pqkxp5wa263m77wt0pvyqq67rmfs522m94")
+        wallet = self._set_password_and_check_address(v=v, w=w, recv_addr="blk1qnf5qafvpx0afk47433j3tt30pqkxp5wa263m77wt0pvyqq67rmfswghkx7")
 
         with self.subTest(msg="2fa wallet cannot enable/disable keystore"):
             for ks in wallet.get_keystores():
@@ -842,7 +842,7 @@ class WalletWizardTestCase(WizardTestCase):
         v = w.resolve_next(v.view, d)
         self.assertEqual('trustedcoin_show_confirm_otp', v.view)
         v = w.resolve_next(v.view, d)
-        self._set_password_and_check_address(v=v, w=w, recv_addr="bc1qnf5qafvpx0afk47433j3tt30pqkxp5wa263m77wt0pvyqq67rmfs522m94")
+        self._set_password_and_check_address(v=v, w=w, recv_addr="blk1qnf5qafvpx0afk47433j3tt30pqkxp5wa263m77wt0pvyqq67rmfswghkx7")
 
     async def test_2fa_haveseed_disable2FA(self):
         self.assertTrue(self.config.get('enable_plugin_trustedcoin'))
@@ -864,7 +864,7 @@ class WalletWizardTestCase(WizardTestCase):
         self.assertEqual('trustedcoin_keep_disable', v.view)
         d.update({'trustedcoin_keepordisable': 'disable'})
         v = w.resolve_next(v.view, d)
-        self._set_password_and_check_address(v=v, w=w, recv_addr="bc1qnf5qafvpx0afk47433j3tt30pqkxp5wa263m77wt0pvyqq67rmfs522m94")
+        self._set_password_and_check_address(v=v, w=w, recv_addr="blk1qnf5qafvpx0afk47433j3tt30pqkxp5wa263m77wt0pvyqq67rmfswghkx7")
 
     async def test_2fa_haveseed_passphrase(self):
         self.assertTrue(self.config.get('enable_plugin_trustedcoin'))
@@ -893,7 +893,7 @@ class WalletWizardTestCase(WizardTestCase):
         v = w.resolve_next(v.view, d)
         self.assertEqual('trustedcoin_show_confirm_otp', v.view)
         v = w.resolve_next(v.view, d)
-        self._set_password_and_check_address(v=v, w=w, recv_addr="bc1qcnu9ay4v3w0tawuxe6wlh6mh33rrpauqnufdgkxx7we8vpx3e6wqa25qud")
+        self._set_password_and_check_address(v=v, w=w, recv_addr="blk1qcnu9ay4v3w0tawuxe6wlh6mh33rrpauqnufdgkxx7we8vpx3e6wq8gfdlx")
 
     async def test_create_standard_wallet_trezor(self):
         # bip39 seed for trezor: "history six okay anchor sheriff flock atom tomorrow foster aerobic eternal foam"
@@ -935,7 +935,7 @@ class WalletWizardTestCase(WizardTestCase):
 
         self.assertTrue(os.path.exists(wallet_path))
         wallet = Daemon._load_wallet(wallet_path, password=d['password'], config=self.config)
-        self.assertEqual("bc1q7ltf4aq95rj695fu5aaa5mx5m9p55xyr2fy6y0", wallet.get_receiving_addresses()[0])
+        self.assertEqual("blk1q7ltf4aq95rj695fu5aaa5mx5m9p55xyrg8frpe", wallet.get_receiving_addresses()[0])
         self.assertTrue(wallet.has_password())
         self.assertTrue(wallet.has_storage_encryption())
 
@@ -997,7 +997,7 @@ class WalletWizardTestCase(WizardTestCase):
 
         d['multisig_cosigner_data']['2'].update({'master_key': 'Zpub6y4evsU8HJw2d7ZH8QNyC6UKWHyxinAuQKkD6btsEZMbamy96UnefnM4sZp2K38rdiUssEhNq9TBpJ8Bh1GZCGTFpnYz8jM9pAdS6vk5VQs'})
         v = w.resolve_next(v.view, d)
-        self._set_password_and_check_address(v=v, w=w, recv_addr="bc1qg39tkymxwq4tn2ly6c3lmnyvsy94jyw52rdvfqkzdv2slvlj9xcsfy63vc")
+        self._set_password_and_check_address(v=v, w=w, recv_addr="blk1qg39tkymxwq4tn2ly6c3lmnyvsy94jyw52rdvfqkzdv2slvlj9xcsnx8u0n")
 
     async def test_create_multisig_wallet_3of6_haveseed_passphrase__cs2hasbip39__cs3zpub__cs4trezor__cs5seedandpassphrase__cs6zprv(self):
         w = self._wizard_for(wallet_type='multisig')
@@ -1110,7 +1110,7 @@ class WalletWizardTestCase(WizardTestCase):
         d['multisig_cosigner_data']['6'].update({
             'master_key': 'ZprvAjWENdvYc1Ctvppxm4Z67U4EoiDy5VXKNvWmVAZshy7UjgKggu1UcAH7MqRqTaHVunuEPZ7o51wCrsZnJXPJtzHnAoxNmMLWFMHC7uvUN5P'})
         v = w.resolve_next(v.view, d)
-        self._set_password_and_check_address(v=v, w=w, recv_addr="bc1qtuzp7rectyjquax5c3p80eletswhp6cxslye749l47h4m9x92hzs6cmymy")
+        self._set_password_and_check_address(v=v, w=w, recv_addr="blk1qtuzp7rectyjquax5c3p80eletswhp6cxslye749l47h4m9x92hzsq6xfc0")
 
     async def test_create_imported_wallet_from_addresses(self):
         w = self._wizard_for(wallet_type='imported')
@@ -1120,19 +1120,19 @@ class WalletWizardTestCase(WizardTestCase):
 
         d.update({
             'address_list':
-                '14gcRovpkCoGkCNBivQBvw7eso7eiNAbxG\n'
-                '35ZqQJcBQMZ1rsv8aSuJ2wkC7ohUCQMJbT\n'
-                'BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4\n'
-                'bc1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7kt5nd6y\n'})
+                'B88h3XP2ViPBC2rMLQjA44vKcQZEU2fBL7\n'
+                'bGc6AzTECnd7HZ54Y1YnpyX8UAJw4EBkue\n'
+                'BLK1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KWFYGWR\n'
+                'blk1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7klkq6z0\n'})
         v = w.resolve_next(v.view, d)
         wallet = self._set_password_and_check_address(v=v, w=w, recv_addr=None)
         self.assertEqual(
             set(wallet.get_receiving_addresses()),
             {
-                "14gcRovpkCoGkCNBivQBvw7eso7eiNAbxG",
-                "35ZqQJcBQMZ1rsv8aSuJ2wkC7ohUCQMJbT",
-                "BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4",  # TODO normalize to lowercase?
-                "bc1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7kt5nd6y",
+                "B88h3XP2ViPBC2rMLQjA44vKcQZEU2fBL7",
+                "bGc6AzTECnd7HZ54Y1YnpyX8UAJw4EBkue",
+                "BLK1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KWFYGWR",  # TODO normalize to lowercase?
+                "blk1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7klkq6z0",
             },
         )
 
@@ -1145,7 +1145,7 @@ class WalletWizardTestCase(WizardTestCase):
         d.update({
             'address_list':
                 'garbagegarbage\n'
-                '35ZqQJcBQMZ1rsv8aSuJ2wkC7ohUCQMJbT\n'
+                'bGc6AzTECnd7HZ54Y1YnpyX8UAJw4EBkue\n'
         })
         v = w.resolve_next(v.view, d)
         with self.assertRaises(AssertionError) as ctx:
@@ -1160,13 +1160,13 @@ class WalletWizardTestCase(WizardTestCase):
 
         d.update({
             'private_key_list':
-                'p2wpkh:L1cgMEnShp73r9iCukoPE3MogLeueNYRD9JVsfT1zVHyPBR3KqBY\n'
-                'p2pkh:KyQ2voUQj71P6E9KyDFqQoYMMm3yKKAPMKbfqZccib6xWxbWHCex\n'
-                'p2pkh:5JuecQZ1nH4VCQRQJTQjB4yu93BU6NmnAkDoGRdHX2PyH2E8QVX\n'})
+                'p2wpkh:Pi7SeGnw5f1VD63Qjefi8PiyuCgDWqKbHBsks27PGT8mRTShqPcs\n'
+                'p2pkh:PftoDqUu6wupTAUXo78AK9uXad5HBmwZRNAvpvGyzYwkZEXTjT73\n'
+                'p2pkh:69WG2Cmp5uy9Zux2xwvi25yG2taRLyqfqizVNAphNQZfcUVA3ZM\n'})
         v = w.resolve_next(v.view, d)
         wallet = self._set_password_and_check_address(v=v, w=w, recv_addr=None)
         self.assertEqual(
             set(wallet.get_receiving_addresses()),
-            {"bc1qq2tmmcngng78nllq2pvrkchcdukemtj56uyue0", "1LNvv5h6QHoYv1nJcqrp13T2TBkD2sUGn1", "1FJEEB8ihPMbzs2SkLmr37dHyRFzakqUmo"},
+            {"blk1qq2tmmcngng78nllq2pvrkchcdukemtj5cjf9ue", "BPq1Xo9J9oPTMrGUELBn8BFhBoBnqUfjVR", "BJkJqtavStwWShWcMq6pAFRxi2haLsAmxY"},
         )
         self.assertFalse(wallet.can_enable_disable_keystore(wallet.keystore))

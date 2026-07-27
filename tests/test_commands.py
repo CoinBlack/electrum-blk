@@ -103,7 +103,7 @@ class TestCommands(ElectrumTestCase):
 
     async def test_encrypt_decrypt(self):
         wallet = restore_wallet_from_text__for_unittest(
-            'p2wpkh:L4rYY5QpfN6wJEF4SEKDpcGhTPnCe9zcGs6hiSnhpprZqVywFifN',
+            'p2wpkh:PmMJq7RK3D1NfAaGG8BYixdsgFoWWcmnLufxhoT56nhMsmsDguA7',
             path=None,
             config=self.config)['wallet']
         cmds = Commands(config=self.config)
@@ -114,7 +114,7 @@ class TestCommands(ElectrumTestCase):
 
     async def test_export_private_key_imported(self):
         wallet = restore_wallet_from_text__for_unittest(
-            'p2wpkh:L4rYY5QpfN6wJEF4SEKDpcGhTPnCe9zcGs6hiSnhpprZqVywFifN p2wpkh:L4jkdiXszG26SUYvwwJhzGwg37H2nLhrbip7u6crmgNeJysv5FHL',
+            'p2wpkh:PmMJq7RK3D1NfAaGG8BYixdsgFoWWcmnLufxhoT56nhMsmsDguA7 p2wpkh:PmEWvkYNN6vXoQt8mqB2tdJrFyJLeoV2fmPNtTHE3eDSMFs8PHri',
             path=None,
             config=self.config)['wallet']
         cmds = Commands(config=self.config)
@@ -122,14 +122,14 @@ class TestCommands(ElectrumTestCase):
         with self.assertRaises(UserFacingException):
             await cmds.getprivatekeys("asdasd", wallet=wallet)  # invalid addr, though might raise "not in wallet"
         with self.assertRaises(UserFacingException):
-            await cmds.getprivatekeys("bc1qgfam82qk7uwh5j2xxmcd8cmklpe0zackyj6r23", wallet=wallet)  # not in wallet
-        self.assertEqual("p2wpkh:L4jkdiXszG26SUYvwwJhzGwg37H2nLhrbip7u6crmgNeJysv5FHL",
-                         await cmds.getprivatekeys("bc1q2ccr34wzep58d4239tl3x3734ttle92a8srmuw", wallet=wallet))
+            await cmds.getprivatekeys("blk1qgfam82qk7uwh5j2xxmcd8cmklpe0zackxuh608", wallet=wallet)  # not in wallet
+        self.assertEqual("p2wpkh:PmEWvkYNN6vXoQt8mqB2tdJrFyJLeoV2fmPNtTHE3eDSMFs8PHri",
+                         await cmds.getprivatekeys("blk1q2ccr34wzep58d4239tl3x3734ttle92a97wzec", wallet=wallet))
         # list of addresses tests
         with self.assertRaises(UserFacingException):
-            await cmds.getprivatekeys(['bc1q2ccr34wzep58d4239tl3x3734ttle92a8srmuw', 'asd'], wallet=wallet)
-        self.assertEqual(['p2wpkh:L4jkdiXszG26SUYvwwJhzGwg37H2nLhrbip7u6crmgNeJysv5FHL', 'p2wpkh:L4rYY5QpfN6wJEF4SEKDpcGhTPnCe9zcGs6hiSnhpprZqVywFifN'],
-                         await cmds.getprivatekeys(['bc1q2ccr34wzep58d4239tl3x3734ttle92a8srmuw', 'bc1q9pzjpjq4nqx5ycnywekcmycqz0wjp2nq604y2n'], wallet=wallet))
+            await cmds.getprivatekeys(['blk1q2ccr34wzep58d4239tl3x3734ttle92a97wzec', 'asd'], wallet=wallet)
+        self.assertEqual(['p2wpkh:PmEWvkYNN6vXoQt8mqB2tdJrFyJLeoV2fmPNtTHE3eDSMFs8PHri', 'p2wpkh:PmMJq7RK3D1NfAaGG8BYixdsgFoWWcmnLufxhoT56nhMsmsDguA7'],
+                         await cmds.getprivatekeys(['blk1q2ccr34wzep58d4239tl3x3734ttle92a97wzec', 'blk1q9pzjpjq4nqx5ycnywekcmycqz0wjp2nqcpca09'], wallet=wallet))
 
     async def test_export_private_key_deterministic(self):
         wallet = restore_wallet_from_text__for_unittest(
@@ -141,19 +141,19 @@ class TestCommands(ElectrumTestCase):
         with self.assertRaises(UserFacingException):
             await cmds.getprivatekeys("asdasd", wallet=wallet)  # invalid addr, though might raise "not in wallet"
         with self.assertRaises(UserFacingException):
-            await cmds.getprivatekeys("bc1qgfam82qk7uwh5j2xxmcd8cmklpe0zackyj6r23", wallet=wallet)  # not in wallet
-        self.assertEqual("p2wpkh:L15oxP24NMNAXxq5r2aom24pHPtt3Fet8ZutgL155Bad93GSubM2",
-                         await cmds.getprivatekeys("bc1q3g5tmkmlvxryhh843v4dz026avatc0zzr6h3af", wallet=wallet))
+            await cmds.getprivatekeys("blk1qgfam82qk7uwh5j2xxmcd8cmklpe0zackxuh608", wallet=wallet)  # not in wallet
+        self.assertEqual("p2wpkh:PhaaFR2YkCGbtuAHfvT8fNRzWFvBuiS4CcV9fgfSM9RRBKCWDM16",
+                         await cmds.getprivatekeys("blk1q3g5tmkmlvxryhh843v4dz026avatc0zzp56gcl", wallet=wallet))
         # list of addresses tests
         with self.assertRaises(UserFacingException):
-            await cmds.getprivatekeys(['bc1q3g5tmkmlvxryhh843v4dz026avatc0zzr6h3af', 'asd'], wallet=wallet)
-        self.assertEqual(['p2wpkh:L15oxP24NMNAXxq5r2aom24pHPtt3Fet8ZutgL155Bad93GSubM2', 'p2wpkh:L4rYY5QpfN6wJEF4SEKDpcGhTPnCe9zcGs6hiSnhpprZqVywFifN'],
-                         await cmds.getprivatekeys(['bc1q3g5tmkmlvxryhh843v4dz026avatc0zzr6h3af', 'bc1q9pzjpjq4nqx5ycnywekcmycqz0wjp2nq604y2n'], wallet=wallet))
+            await cmds.getprivatekeys(['blk1q3g5tmkmlvxryhh843v4dz026avatc0zzp56gcl', 'asd'], wallet=wallet)
+        self.assertEqual(['p2wpkh:PhaaFR2YkCGbtuAHfvT8fNRzWFvBuiS4CcV9fgfSM9RRBKCWDM16', 'p2wpkh:PmMJq7RK3D1NfAaGG8BYixdsgFoWWcmnLufxhoT56nhMsmsDguA7'],
+                         await cmds.getprivatekeys(['blk1q3g5tmkmlvxryhh843v4dz026avatc0zzp56gcl', 'blk1q9pzjpjq4nqx5ycnywekcmycqz0wjp2nqcpca09'], wallet=wallet))
 
     async def test_verifymessage_enforces_strict_base64(self):
         cmds = Commands(config=self.config)
         msg = "hello there"
-        addr = "1C6Rc3w25VHud3dLDamutaqfKWqhrLRTaD"
+        addr = "BFYWDmPDpzsp4t7Vq56t1ieL48HHdiv3dU"
         sig = "HwhLEDDT30lm9CTrPnIPt4VrTbysRiBaPNLljFB4m0ZLUHQU47fVq3N6j1fCjpBJc4wJvcbLg+vhDloHBzi5vHU="
         self.assertTrue(await cmds.verifymessage(addr, sig, msg))
         self.assertFalse(await cmds.verifymessage(addr, sig+"trailinggarbage", msg))
