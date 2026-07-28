@@ -55,3 +55,4 @@ contrib/osx/*.dylib
 # Blackcoin specifics
 .omo
 AGENTS.md
+*.code-workspace

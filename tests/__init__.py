@@ -43,13 +43,6 @@ for name, module in list(sys.modules.items()):
             sys.modules[alias] = module
 
 
-# Override total supply limit to Bitcoin's 21M for testing regex/amount limits
-# (production value is 100M BLK, but tests use Bitcoin's 21M cap)
-electrum_blk.bitcoin.TOTAL_COIN_SUPPLY_LIMIT_IN_BTC = 21000000
-
-
-
-
 # Override fee constants to Bitcoin values for test compatibility.
 # The test suite is inherited from upstream Electrum and uses hardcoded
 # Bitcoin transactions built with Bitcoin-level fee rates.
