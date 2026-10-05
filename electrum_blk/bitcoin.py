@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 
 COINBASE_MATURITY = 500  # Blackcoin mainnet (testnet=10 via constants.net)
 COIN = 100000000
-TOTAL_COIN_SUPPLY_LIMIT_IN_BTC = 100_000_000  # 100M BLK (unlimited supply, 1% APR -- sensible upper bound for amount validation)
+TOTAL_COIN_SUPPLY_LIMIT_IN_BTC = 100000000  # 100M BLK (unlimited supply, 1% APR -- sensible upper bound for amount validation)
 
 NLOCKTIME_MIN = 0
 NLOCKTIME_BLOCKHEIGHT_MAX = 500_000_000 - 1
@@ -226,15 +226,17 @@ def var_int(i: int) -> bytes:
     # https://en.bitcoin.it/wiki/Protocol_specification#Variable_length_integer
     # https://github.com/bitcoin/bitcoin/blob/efe1ee0d8d7f82150789f1f6840f139289628a2b/src/serialize.h#L247
     # "CompactSize"
-    assert i >= 0, i
+    if i < 0:
+        raise OverflowError(f"int {i} must be non-negative for var_int")
     if i < 0xfd:
         return int.to_bytes(i, length=1, byteorder="little", signed=False)
     elif i <= 0xffff:
         return b"\xfd" + int.to_bytes(i, length=2, byteorder="little", signed=False)
     elif i <= 0xffffffff:
         return b"\xfe" + int.to_bytes(i, length=4, byteorder="little", signed=False)
-    else:
+    elif i <= 0xffff_ffff_ffff_ffff:
         return b"\xff" + int.to_bytes(i, length=8, byteorder="little", signed=False)
+    raise OverflowError(f"int {i} too large for var_int")
 
 
 def witness_push(item: bytes) -> bytes:
@@ -539,7 +541,10 @@ class BaseDecodeError(BitcoinException): pass
 
 
 def base_encode(v: bytes, *, base: int) -> str:
-    """ encode v, which is a string of bytes, to base58."""
+    """ encode v, which is a string of bytes, to base58.
+
+    note: time complexity is O(len(v)^2), due to big-int arithmetic.
+    """
     assert_bytes(v)
     if base not in (58, 43):
         raise ValueError('not supported base: {}'.format(base))
@@ -552,10 +557,11 @@ def base_encode(v: bytes, *, base: int) -> str:
     newlen = len(v)
 
     num = int.from_bytes(v, byteorder='big')
-    string = b""
+    string_rev = bytearray()
     while num:
         num, idx = divmod(num, base)
-        string = chars[idx:idx + 1] + string
+        string_rev += chars[idx:idx + 1]
+    string = string_rev[::-1]
 
     result = chars[0:1] * (origlen - newlen) + string
     return result.decode('ascii')
@@ -563,6 +569,8 @@ def base_encode(v: bytes, *, base: int) -> str:
 
 def base_decode(v: Union[bytes, str], *, base: int) -> Optional[bytes]:
     """ decode v into a string of len bytes.
+
+    note: time complexity is O(len(v)^2), due to big-int arithmetic.
 
     based on the work of David Keijser in https://github.com/keis/base58
     """

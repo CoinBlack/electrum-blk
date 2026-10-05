@@ -62,7 +62,7 @@ def topologically_sort_subgraph(
 @dataclass(kw_only=True, slots=True, frozen=True)
 class FakeBlock:
     header: bytes
-    txids: Sequence[str] = None  # FIXME needs OrderedSet with index-based lookup? >.<
+    txids: Sequence[str] | None = None  # FIXME needs OrderedSet with index-based lookup? >.<
 
     def __post_init__(self):
         if self.txids is None:
@@ -457,12 +457,14 @@ class ToyServerSession(aiorpcx.RPCSession, Logger):
         self.subbed_scripthashes = set()  # type: set[str]
         self._method_counts = collections.defaultdict(int)  # type: dict[str, int]
         self.client_name = None
+        self.got_disconnected = asyncio.Event()
         self.svr.sessions.add(self)
 
     async def connection_lost(self):
         await super().connection_lost()
         self.logger.debug(f'{self.remote_address()} disconnected')
         self.svr.sessions.discard(self)
+        self.got_disconnected.set()
 
     async def handle_request(self, request):
         handlers = {

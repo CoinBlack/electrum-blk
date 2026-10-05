@@ -1,19 +1,38 @@
 import queue
 import sys
+from contextlib import contextmanager
 from functools import wraps
-from typing import Optional, NamedTuple, Callable
+from typing import Optional, NamedTuple, Callable, Iterator
 import os.path
 
-from PyQt6 import QtGui
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6 import QtGui, sip
+from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal
 from PyQt6.QtGui import QColor, QPen, QPaintDevice, QFontDatabase, QImage
 import qrcode
 
 from electrum_blk.i18n import _
-from electrum_blk.logging import Logger
+from electrum_blk.logging import Logger, get_logger
 from electrum_blk.util import EventListener, event_listener
 
+_logger = get_logger(__name__)
+
 _cached_font_ids: dict[str, int] = {}
+
+
+@contextmanager
+def ignore_if_destroyed(qobj: QObject) -> Iterator[None]:
+    """
+    Objects owned by qt (e.g. a child of a dialog) or by QML are destroyed as soon as the user
+    closes the dialog, while threads and tasks may still hold a reference to the python wrapper,
+    and writing a property or emitting a signal on it then raises RuntimeError.
+    Any other RuntimeError is re-raised.
+    """
+    try:
+        yield
+    except RuntimeError:
+        if not sip.isdeleted(qobj):
+            raise
+        _logger.debug(f'{type(qobj).__name__} has been destroyed, ignoring')
 
 
 def get_font_id(filename: str) -> int:
@@ -222,3 +241,27 @@ def qt_event_listener(func):
     def decorator(self, *args):
         self.qt_callback_signal.emit((func,) + args)
     return decorator
+
+
+def break_qt_network() -> None:
+    """Poor man's attempt at disabling Qt's networking functionality at runtime.
+
+    If Qt managed to make network requests, those would use its own SSL cert store,
+    would not go through the user-configured proxy, etc.
+    """
+    try:
+        import PyQt6.QtNetwork
+    except ImportError as e:
+        _logger.debug("QtNetwork module not available? No need to runtime-disable it then.")
+        return
+    from PyQt6.QtNetwork import QNetworkProxy
+    proxy = QNetworkProxy()
+    # FIXME localhost as destination seems to be exempt from the proxy, so this approach still
+    #  lets through network requests to localhost. This is not intended but accepted for now.
+    proxy.setType(QNetworkProxy.ProxyType.Socks5Proxy)
+    proxy.setHostName("127.0.0.1")
+    proxy.setPort(1)
+    # Remove all proxy capabilities, so QtNetwork requests
+    # fail back before even trying to connect to the proxy:
+    proxy.setCapabilities(QNetworkProxy.Capability(0))
+    QNetworkProxy.setApplicationProxy(proxy)

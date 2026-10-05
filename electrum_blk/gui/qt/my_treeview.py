@@ -86,7 +86,7 @@ class QMenuWithConfig(QMenu):
             checked = bool(configvar.get())
         tooltip = None
         if (long_desc := configvar.get_long_desc()) is not None:
-            tooltip = messages.to_rtf(long_desc)
+            tooltip = messages.wrap_multi_paragraph_text(long_desc)
         return self.addToggle(
             short_desc,
             lambda: self._do_toggle_config(configvar, callback=callback),
@@ -481,7 +481,7 @@ class MyTreeView(QTreeView):
                          self.place_text_on_clipboard(text, title=title))
         return cc
 
-    def place_text_on_clipboard(self, text: str, *, title: str = None) -> None:
+    def place_text_on_clipboard(self, text: str, *, title: str | None = None) -> None:
         self.main_window.do_copy(text, title=title)
 
     def showEvent(self, e: 'QShowEvent'):

@@ -102,8 +102,8 @@ ElDialog {
         return page
     }
 
-    ColumnLayout {
-        anchors.fill: parent
+    // make layout contentItem so ElDialog TapHandler can focus on it and the Keys hook stays active
+    contentItem: ColumnLayout {
         spacing: 0
 
         // root Item in Wizard, capture back button here and delegate to main
@@ -155,6 +155,7 @@ ElDialog {
             Binding {
                 target: AppController
                 property: 'secureWindow'
+                when: pages.visible  // enables stacking multiple secureWindow dialogs
                 value: pages.contentChildren[pages.currentIndex].securePage
             }
         }

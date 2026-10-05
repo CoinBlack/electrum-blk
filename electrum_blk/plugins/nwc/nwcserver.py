@@ -79,17 +79,24 @@ class NWCServerPlugin(BasePlugin):
         self.initialized = True
 
     @hook
-    def close_wallet(self, *args, **kwargs):
+    def close_wallet(self, wallet: 'Abstract_Wallet', *args, **kwargs):
+        if self.nwc_server is None or self.nwc_server.wallet is not wallet:
+            return
+        nwc_server, self.nwc_server = self.nwc_server, None
+        self.connections = None
+        self.initialized = False
+        nwc_server.unregister_callbacks()
+
         async def close():
-            if self.nwc_server and self.nwc_server.manager:
-                self.nwc_server.do_stop = True
-                await self.nwc_server.manager.close()
-            await self.taskgroup.cancel_remaining()
-        asyncio.run_coroutine_threadsafe(
-            close(),
-            get_asyncio_loop()
-        )
-        self.logger.debug(f"NWCServerPlugin closed, stopping taskgroup")
+            try:
+                await self.taskgroup.cancel_remaining()
+                if nwc_server.manager:
+                    await nwc_server.manager.close()
+            except Exception as e:
+                self.logger.exception(f"error stopping NWCServer: {e}")
+
+        asyncio.run_coroutine_threadsafe(close(), get_asyncio_loop())
+        self.logger.debug("NWCServerPlugin closed, stopping taskgroup")
 
     def delete_expired_connections(self):
         if self.connections is None:
@@ -197,7 +204,6 @@ class NWCServer(Logger, EventListener):
         self.wallet = wallet  # type: 'Abstract_Wallet'
         self.connections = connection_storage  # type: dict[str, dict]  # client hex pubkey -> connection data
         self.relays = config.NOSTR_RELAYS.split(",") or []  # type: List[str]
-        self.do_stop = False
         self.taskgroup = None  # type: Optional[OldTaskGroup]
         self.ssl_context = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH, cafile=ca_path)
         self.manager = None  # type: Optional[aionostr.Manager]
@@ -241,10 +247,6 @@ class NWCServer(Logger, EventListener):
                     self.taskgroup = tg
                     await tg.spawn(self.publish_info_event_loop())
                     await tg.spawn(self.handle_requests())
-            except asyncio.CancelledError:
-                if self.do_stop:
-                    return
-                self.logger.debug("Restarting nwc event handler")
             except Exception as e:
                 self.logger.exception(f"Restarting nwc event handler after exception: {e}")
                 if self.manager:  # close the manager so refresh_manager() will recreate it
@@ -253,6 +255,7 @@ class NWCServer(Logger, EventListener):
                 await asyncio.sleep(60)
             finally:
                 self.taskgroup = None
+                self.logger.debug("nwc taskgroup exited")
 
     async def refresh_manager(self) -> bool:
         """Checks if manager is still connected to relays, if not recreates it and reconnects"""
@@ -301,82 +304,86 @@ class NWCServer(Logger, EventListener):
             "since": int(time.time())
         }
         async for event in self.manager.get_events(query, single_event=False, only_stored=False):
-            if event.pubkey not in self.connections.keys():
-                continue
+            await self._handle_single_request(event)
 
-            # check if the connection is expired, if so we delete it and send an error
-            valid_until: Optional[int] = self.connections[event.pubkey].get('valid_until')
-            if valid_until and valid_until <= int(time.time()):
-                await self.send_error(event, "UNAUTHORIZED", "Connection expired")
-                del self.connections[event.pubkey]
-                self.logger.info(f"Deleting expired NWC connection: {event.pubkey}")
-                self.restart_event_handler()
-                continue
+    async def _handle_single_request(self, event: nEvent) -> None:
+        if event.pubkey not in self.connections.keys():
+            return
 
-            if event.kind != self.REQUEST_EVENT_KIND:
-                self.logger.debug(f"Unknown nwc request event kind: {event.kind}")
-                await self.send_error(event, "NOT_IMPLEMENTED")
-                continue
+        # check if the connection is expired, if so we delete it and send an error
+        valid_until: Optional[int] = self.connections[event.pubkey].get('valid_until')
+        if valid_until and valid_until <= int(time.time()):
+            await self.send_error(event, "UNAUTHORIZED", "Connection expired")
+            del self.connections[event.pubkey]
+            self.logger.info(f"Deleting expired NWC connection: {event.pubkey}")
+            self.restart_event_handler()
+            return
 
-            # if the request has an explicitly set expiration tag, ignore it if it is expired
-            # otherwise ignore requests older than 30 sec to not handle requests the user may
-            # already expect to have timed out
-            if event.expires_at() is not None:
-                if event.is_expired():
-                    self.logger.debug(f"expired nwc request event: {event.content}")
-                    continue
-            elif event.created_at < int(time.time()) - 30:
-                self.logger.debug(f"old nwc request event: {event.content}")
-                await self.send_error(event, "OTHER", f"not handling too old request")
-                continue
+        if event.kind != self.REQUEST_EVENT_KIND:
+            self.logger.debug(f"Unknown nwc request event kind: {event.kind}")
+            await self.send_error(event, "NOT_IMPLEMENTED")
+            return
 
-            # check encryption scheme
-            for tag in event.tags:
-                if len(tag) == 2 and tag[0] == 'encryption':
-                    if tag[1] not in self.SUPPORTED_ENCRYPTION_SCHEMES:
-                        await self.send_error(event, "UNSUPPORTED_ENCRYPTION", " ".join(self.SUPPORTED_ENCRYPTION_SCHEMES))
-                    break
+        # if the request has an explicitly set expiration tag, ignore it if it is expired
+        # otherwise ignore requests older than 30 sec to not handle requests the user may
+        # already expect to have timed out
+        if event.expires_at() is not None:
+            if event.is_expired():
+                self.logger.debug(f"expired nwc request event: {event.content}")
+                return
+        elif event.created_at < int(time.time()) - 30:
+            self.logger.debug(f"old nwc request event: {event.content}")
+            await self.send_error(event, "OTHER", f"not handling too old request")
+            return
 
-            # decrypt the requests content
-            our_secret: str = self.connections[event.pubkey]['our_secret']
-            our_connection_secret = PrivateKey(raw_secret=bytes.fromhex(our_secret))
-            try:
-                content = our_connection_secret.decrypt_message(event.content, event.pubkey)
-                content = json.loads(content)
-                if not isinstance(content, dict):
-                    raise Exception("malformed content, not dict")
-                params: dict = content.get('params') or {}  # some clients send 'params: null' or no params key at all
-                if not isinstance(params, dict):
-                    raise Exception(f"malformed params, not dict: {content=}")
-            except Exception:
-                self.logger.debug(f"Invalid request event content: {event.content}", exc_info=True)
-                continue
+        # check encryption scheme
+        for tag in event.tags:
+            if len(tag) == 2 and tag[0] == 'encryption':
+                if tag[1] not in self.SUPPORTED_ENCRYPTION_SCHEMES:
+                    await self.send_error(event, "UNSUPPORTED_ENCRYPTION", " ".join(self.SUPPORTED_ENCRYPTION_SCHEMES))
+                    return
+                break
 
-            # run the according method
-            method: str = content.get('method')
-            self.logger.debug(f"got request: {method=}, {params=}")
-            task: Optional[Awaitable] = None
-            if method == "pay_invoice" and not self.is_receive_only(event.pubkey):
-                task = self.handle_pay_invoice(event, params)
-            elif method == "make_invoice":
-                task = self.handle_make_invoice(event, params)
-            elif method == "lookup_invoice":
-                task = self.handle_lookup_invoice(event, params)
-            elif method == "get_balance":
-                task = self.handle_get_balance(event)
-            elif method == "get_info":
-                task = self.handle_get_info(event)
-            elif method == "list_transactions":
-                task = self.handle_list_transactions(event, params)
-            else:
-                self.logger.debug(f"Unsupported nwc method requested: {method}")
-                await self.send_error(event, "NOT_IMPLEMENTED", f"{method} not supported", error_restype=method)
-                continue
+        # decrypt the requests content
+        our_secret: str = self.connections[event.pubkey]['our_secret']
+        our_connection_secret = PrivateKey(raw_secret=bytes.fromhex(our_secret))
+        try:
+            content = our_connection_secret.decrypt_message(event.content, event.pubkey)
+            content = json.loads(content)
+            if not isinstance(content, dict):
+                raise Exception("malformed content, not dict")
+            params: dict = content.get('params') or {}  # some clients send 'params: null' or no params key at all
+            if not isinstance(params, dict):
+                raise Exception(f"malformed params, not dict: {content=}")
+        except Exception:
+            self.logger.debug(f"Invalid request event content: {event.content}", exc_info=True)
+            return
 
-            if task:
-                await self.taskgroup.spawn(self.run_request_task(task, request_event=event, request_method=method))
+        # run the according method
+        method: str = content.get('method')
+        self.logger.debug(f"got request: {method=}, {params=}")
+        task: Optional[Awaitable] = None
+        if method == "pay_invoice" and not self.is_receive_only(event.pubkey):
+            task = self.handle_pay_invoice(event, params)
+        elif method == "make_invoice":
+            task = self.handle_make_invoice(event, params)
+        elif method == "lookup_invoice":
+            task = self.handle_lookup_invoice(event, params)
+        elif method == "get_balance":
+            task = self.handle_get_balance(event)
+        elif method == "get_info":
+            task = self.handle_get_info(event)
+        elif method == "list_transactions":
+            task = self.handle_list_transactions(event, params)
+        else:
+            self.logger.debug(f"Unsupported nwc method requested: {method}")
+            await self.send_error(event, "NOT_IMPLEMENTED", f"{method} not supported", error_restype=method)
+            return
 
-    async def run_request_task(self, task: Awaitable, *, request_event: nEvent, request_method: str = None) -> None:
+        if task:
+            await self.taskgroup.spawn(self.run_request_task(task, request_event=event, request_method=method))
+
+    async def run_request_task(self, task: Awaitable, *, request_event: nEvent, request_method: str | None = None) -> None:
         """Catches request handling exceptions and send an error response"""
         try:
             await task
@@ -393,7 +400,7 @@ class NWCServer(Logger, EventListener):
         error_type: str,
         error_msg: str = "",
         *,
-        error_restype: str = None,
+        error_restype: str | None = None,
     ) -> None:
         """Sends an error as response to the passed nEvent, containing the error type and message"""
         to_pubkey_hex = causing_event.pubkey
@@ -583,10 +590,7 @@ class NWCServer(Logger, EventListener):
         https://github.com/nostr-protocol/nips/blob/75f246ed987c23c99d77bfa6aeeb1afb669e23f7/47.md#get_info
         """
         height = self.wallet.lnworker.network.blockchain().height()
-        try:
-            blockhash = self.wallet.lnworker.network.blockchain().get_hash(height)
-        except Exception:
-            blockhash = constants.net.GENESIS
+        blockhash = self.wallet.lnworker.network.blockchain().get_hash(height)
         supported_methods = self.SUPPORTED_METHODS.copy()
         if self.is_receive_only(request_event.pubkey):
             supported_methods -= self.SUPPORTED_SPENDING_METHODS

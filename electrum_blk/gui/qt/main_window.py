@@ -92,7 +92,8 @@ from .util import (read_QIcon, ColorScheme, text_dialog, icon_path, WaitingDialo
                    CloseButton, MessageBoxMixin, EnterButton, import_meta_gui, export_meta_gui,
                    filename_field, address_field, char_width_in_lineedit, webopen,
                    TRANSACTION_FILE_EXTENSION_FILTER_ANY, MONOSPACE_FONT,
-                   getOpenFileName, getSaveFileName, ShowQRLineEdit, scan_qr_from_screenshot)
+                   getOpenFileName, getSaveFileName, ShowQRLineEdit, scan_qr_from_screenshot,
+                   ButtonsTextEdit)
 from .wizard.wallet import WIF_HELP_TEXT
 from .history_list import HistoryList, HistoryModel
 from .update_checker import UpdateCheck, UpdateCheckThread
@@ -182,7 +183,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
 
         Exception_Hook.maybe_setup(config=self.config, wallet=self.wallet)
 
-        self.network = gui_object.daemon.network  # type: Network
+        self.network = gui_object.daemon.network  # type: Network | None
         self.fx = gui_object.daemon.fx  # type: FxThread
         self.contacts = wallet.contacts
         self.tray = gui_object.tray
@@ -672,6 +673,11 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         if cb_checked:
             self.config.DONT_SHOW_TESTNET_WARNING = True
 
+    def show_startup_warnings(self):
+        for warning in self.wallet.get_startup_warnings():
+            self.show_warning(warning.message, title=warning.title)
+            self.wallet.acknowledge_warning(warning.key)
+
     def open_wallet(self):
         try:
             wallet_folder = self.get_wallet_folder()
@@ -963,7 +969,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
             add_thousands_sep=add_thousands_sep,
         )
 
-    def format_amount_and_units(self, amount_sat, *, timestamp: int = None) -> str:
+    def format_amount_and_units(self, amount_sat, *, timestamp: int | None = None) -> str:
         """Returns string with both bitcoin and fiat amounts, in desired units.
         E.g. 500_000 -> '0.005 BTC (191.42 EUR)'
         """
@@ -1199,7 +1205,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         from .receive_tab import ReceiveTab
         return ReceiveTab(self)
 
-    def do_copy(self, text: str, *, title: str = None) -> None:
+    def do_copy(self, text: str, *, title: str | None = None) -> None:
         self.gui_object.do_copy(text, title=title)
 
     def show_tooltip_after_delay(self, message):
@@ -1656,9 +1662,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         grid.addWidget(QLabel(amount_str), 1, 1)
         if len(invoice.outputs) == 1:
             grid.addWidget(QLabel(_("Address") + ':'), 2, 0)
-            grid.addWidget(QLabel(invoice.get_address()), 2, 1)
+            grid.addWidget(QLabel(invoice.outputs[0].get_ui_address_str()), 2, 1)
         else:
-            outputs_str = '\n'.join(map(lambda x: x.address + ' : ' + self.format_amount(x.value)+ self.base_unit(), invoice.outputs))
+            outputs_str = '\n'.join(map(lambda x: x.get_ui_address_str() + ' : ' + self.format_amount(x.value) + self.base_unit(), invoice.outputs))
             grid.addWidget(QLabel(_("Outputs") + ':'), 2, 0)
             grid.addWidget(QLabel(outputs_str), 2, 1)
         grid.addWidget(QLabel(_("Description") + ':'), 3, 0)
@@ -1707,7 +1713,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         invoice_e.setText(invoice.lightning_invoice)
         grid.addWidget(QLabel(_('Text') + ':'), 8, 0)
         grid.addWidget(invoice_e, 8, 1)
-        r_tags = lnaddr.get_routing_info('r')
+        r_tags = lnaddr.get_routing_info()
         r_tags = '\n'.join(repr(r) for r in BOLT11Addr.format_bolt11_routing_info_as_human_readable(r_tags))
         routing_e = QTextEdit(str(r_tags))
         routing_e.setReadOnly(True)
@@ -2119,59 +2125,54 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         d.setLayout(vbox)
         d.exec()
 
-    msg_sign = _("Signing with an address actually means signing with the corresponding "
-                "private key, and verifying with the corresponding public key. The "
-                "address you have entered does not have a unique public key, so these "
-                "operations cannot be performed.") + '\n\n' + \
-               _('The operation is undefined. Not just in Electrum, but in general.')
-
     @protected
-    def do_sign(self, address, message, signature, password):
-        address  = address.text().strip()
-        message = message.toPlainText().strip()
-        if not bitcoin.is_address(address):
-            self.show_message(_('Invalid Blackcoin address.'))
-            return
-        if self.wallet.is_watching_only():
-            self.show_message(_('This is a watching-only wallet.'))
-            return
-        if not self.wallet.is_mine(address):
-            self.show_message(_('Address not in wallet.'))
-            return
-        txin_type = self.wallet.get_txin_type(address)
-        if txin_type not in ['p2pkh', 'p2wpkh', 'p2wpkh-p2sh']:
-            self.show_message(_('Cannot sign messages with this type of address:') + \
-                              ' ' + txin_type + '\n\n' + self.msg_sign)
-            return
-        task = partial(self.wallet.sign_message, address, message, password)
+    def do_sign(
+        self,
+        *,
+        address_e: QLineEdit,
+        message_e: QTextEdit,
+        signature_e: ButtonsTextEdit,
+        password,
+    ) -> None:
+        task = partial(
+            self.wallet.sign_message,
+            address=address_e.text(),
+            message=message_e.toPlainText(),
+            password=password,
+        )
 
         def show_signed_message(sig):
             try:
-                signature.setText(base64.b64encode(sig).decode('ascii'))
+                signature_e.setText(base64.b64encode(sig).decode('ascii'))
             except RuntimeError:
-                # (signature) wrapped C/C++ object has been deleted
+                # (signature_e) wrapped C/C++ object has been deleted
                 pass
 
         self.thread.add(task, on_success=show_signed_message)
 
-    def do_verify(self, address, message, signature):
-        address  = address.text().strip()
-        message = message.toPlainText().strip().encode('utf-8')
-        if not bitcoin.is_address(address):
-            self.show_message(_('Invalid Blackcoin address.'))
-            return
-        try:
-            # This can throw on invalid base64
-            sig = base64.b64decode(str(signature.toPlainText()), validate=True)
-            verified = bitcoin.verify_usermessage_with_address(address, sig, message)
-        except Exception as e:
-            verified = False
-        if verified:
-            self.show_message(_("Signature verified"))
-        else:
-            self.show_error(_("Wrong signature"))
+    def do_verify(
+        self,
+        *,
+        address_e: QLineEdit,
+        message_e: QTextEdit,
+        signature_e: ButtonsTextEdit,
+    ) -> None:
+        task = partial(
+            self.wallet.verify_message,
+            address=address_e.text(),
+            signature=str(signature_e.toPlainText()),
+            message=message_e.toPlainText(),
+        )
 
-    def sign_verify_message(self, address=''):
+        def on_result(verified):
+            if verified:
+                self.show_message(_("Signature verified"))
+            else:
+                self.show_error(_("Wrong signature"))
+
+        self.thread.add(task, on_success=on_result)
+
+    def sign_verify_message(self, address: str = "") -> None:
         d = WindowModalDialog(self, _('Sign/verify Message'))
         d.setMinimumSize(610, 290)
 
@@ -2196,11 +2197,11 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         hbox = QHBoxLayout()
 
         b = QPushButton(_("Sign"))
-        b.clicked.connect(lambda: self.do_sign(address_e, message_e, signature_e))
+        b.clicked.connect(lambda: self.do_sign(address_e=address_e, message_e=message_e, signature_e=signature_e))
         hbox.addWidget(b)
 
         b = QPushButton(_("Verify"))
-        b.clicked.connect(lambda: self.do_verify(address_e, message_e, signature_e))
+        b.clicked.connect(lambda: self.do_verify(address_e=address_e, message_e=message_e, signature_e=signature_e))
         hbox.addWidget(b)
 
         b = QPushButton(_("Close"))
@@ -2210,12 +2211,21 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         d.exec()
 
     @protected
-    def do_decrypt(self, message_e, pubkey_e, encrypted_e, password):
-        if self.wallet.is_watching_only():
-            self.show_message(_('This is a watching-only wallet.'))
-            return
+    def do_decrypt(
+        self,
+        *,
+        message_e: QTextEdit,
+        pubkey_e: QLineEdit,
+        encrypted_e: QTextEdit,
+        password,
+    ) -> None:
         ciphertext = encrypted_e.toPlainText()
-        task = partial(self.wallet.decrypt_message, pubkey_e.text(), ciphertext, password)
+        task = partial(
+            self.wallet.decrypt_message,
+            pubkey=pubkey_e.text(),
+            message=ciphertext,
+            password=password,
+        )
 
         def setText(text):
             try:
@@ -2226,20 +2236,30 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
 
         self.thread.add(task, on_success=setText)
 
-    def do_encrypt(self, message_e, pubkey_e, encrypted_e):
-        from electrum_blk import crypto
+    def do_encrypt(
+        self,
+        *,
+        message_e: QTextEdit,
+        pubkey_e: QLineEdit,
+        encrypted_e: QTextEdit,
+    ) -> None:
         message = message_e.toPlainText()
-        message = message.encode('utf-8')
-        try:
-            public_key = ecc.ECPubkey(bfh(pubkey_e.text()))
-        except BaseException as e:
-            self.logger.exception('Invalid Public key')
-            self.show_warning(_('Invalid Public key'))
-            return
-        encrypted = crypto.ecies_encrypt_message(public_key, message)
-        encrypted_e.setText(encrypted.decode('ascii'))
+        task = partial(
+            self.wallet.encrypt_message,
+            pubkey=pubkey_e.text(),
+            message=message,
+        )
 
-    def encrypt_message(self, address=''):
+        def setText(text):
+            try:
+                encrypted_e.setText(text)
+            except RuntimeError:
+                # (encrypted_e) wrapped C/C++ object has been deleted
+                pass
+
+        self.thread.add(task, on_success=setText)
+
+    def encrypt_message(self, address: str = "") -> None:
         d = WindowModalDialog(self, _('Encrypt/decrypt Message'))
         d.setMinimumSize(610, 490)
 
@@ -2266,11 +2286,11 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
 
         hbox = QHBoxLayout()
         b = QPushButton(_("Encrypt"))
-        b.clicked.connect(lambda: self.do_encrypt(message_e, pubkey_e, encrypted_e))
+        b.clicked.connect(lambda: self.do_encrypt(message_e=message_e, pubkey_e=pubkey_e, encrypted_e=encrypted_e))
         hbox.addWidget(b)
 
         b = QPushButton(_("Decrypt"))
-        b.clicked.connect(lambda: self.do_decrypt(message_e, pubkey_e, encrypted_e))
+        b.clicked.connect(lambda: self.do_decrypt(message_e=message_e, pubkey_e=pubkey_e, encrypted_e=encrypted_e))
         hbox.addWidget(b)
 
         b = QPushButton(_("Close"))
@@ -2296,6 +2316,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
             return
         try:
             self.wallet.lnworker.import_channel_backup(encrypted)
+        except UserFacingException as e:
+            self.show_warning(str(e))
         except Exception as e:
             self.show_error("failed to import backup" + '\n' + str(e))
             return
@@ -2386,7 +2408,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         if tx:
             self.show_transaction(tx)
 
-    def do_process_from_txid(self, *, parent: QWidget = None, txid: str = None):
+    def do_process_from_txid(self, *, parent: QWidget = None, txid: str | None = None):
         if parent is None:
             parent = self
         from electrum_blk import transaction
@@ -2714,7 +2736,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
             warning = ''.join([
                 _("Are you sure you want to close Electrum?"),
                 '\n\n',
-                _("An ongoing operation requires you to stay online."),
+                _("An ongoing operation requires you to stay online:"),
                 '\n',
                 warning
             ])
@@ -2746,7 +2768,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         self.closing_warning_callbacks.append(warning_callback)
 
     def _check_ongoing_force_closures(self) -> Optional[str]:
-        from electrum_blk.lnutil import MIN_FINAL_CLTV_DELTA_ACCEPTED
         if not self.wallet.has_lightning():
             return None
         if not self.network:
@@ -2754,8 +2775,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         force_closes = self.wallet.lnworker.lnwatcher.get_pending_force_closes()
         if not force_closes:
             return
-        # fixme: this is inaccurate, we need local_height - cltv_of_htlc
-        cltv_delta = MIN_FINAL_CLTV_DELTA_ACCEPTED
+        # the htlc that expires first determines how long we can stay offline
+        cltv = min(force_closes.values())
+        cltv_delta = max(cltv - self.wallet.adb.get_local_height(), 0)
         msg = '\n\n'.join([
             _("Pending channel force-close"),
             messages.MSG_FORCE_CLOSE_WARNING.format(cltv_delta),

@@ -50,7 +50,8 @@ def checkbox_from_configvar(cv: 'ConfigVarWithConfig') -> QCheckBox:
     assert short_desc is not None, f"short_desc missing for {cv}"
     cb = QCheckBox(short_desc)
     if (long_desc := cv.get_long_desc()) is not None:
-        cb.setToolTip(messages.to_rtf(long_desc))
+        long_desc = messages.wrap_multi_paragraph_text(long_desc)
+        cb.setToolTip(long_desc)
     return cb
 
 
@@ -112,6 +113,32 @@ class SettingsDialog(QDialog, QtEventListener):
                 self.app.update_status_signal.emit()
         nz.valueChanged.connect(on_nz)
 
+        # lightning
+        trampoline_cb = checkbox_from_configvar(self.config.cv.LIGHTNING_USE_GOSSIP)
+        trampoline_cb.setChecked(not self.config.LIGHTNING_USE_GOSSIP)
+
+        def on_trampoline_checked(_x):
+            use_trampoline = trampoline_cb.isChecked()
+            if not use_trampoline:
+                if not window.question('\n'.join([
+                        _("Are you sure you want to disable trampoline?"),
+                        _("Without this option, Electrum will need to sync with the Lightning network on every start."),
+                        _("This may impact the reliability of your payments."),
+                ]), parent=self):
+                    trampoline_cb.setCheckState(Qt.CheckState.Checked)
+                    return
+            self.config.LIGHTNING_USE_GOSSIP = not use_trampoline
+            if self.network:
+                if not use_trampoline:
+                    self.network.start_gossip()
+                else:
+                    self.network.run_from_another_thread(
+                        self.network.stop_gossip())
+            util.trigger_callback('ln_gossip_sync_progress')
+            # FIXME: update all wallet windows
+            util.trigger_callback('channels_updated', self.wallet)
+        trampoline_cb.stateChanged.connect(on_trampoline_checked)
+
 
         alias_label = HelpLabel.from_configvar(self.config.cv.OPENALIAS_ID)
         alias = self.config.OPENALIAS_ID
@@ -119,6 +146,18 @@ class SettingsDialog(QDialog, QtEventListener):
         self.set_alias_color()
         self.alias_e.editingFinished.connect(self.on_alias_edit)
 
+
+        msat_cb = checkbox_from_configvar(self.config.cv.BTC_AMOUNTS_PREC_POST_SAT)
+        msat_cb.setChecked(self.config.BTC_AMOUNTS_PREC_POST_SAT > 0)
+
+        def on_msat_checked(_x):
+            prec = 3 if msat_cb.isChecked() else 0
+            if self.config.amt_precision_post_satoshi != prec:
+                self.config.amt_precision_post_satoshi = prec
+                self.config.BTC_AMOUNTS_PREC_POST_SAT = prec
+                self.app.refresh_tabs_signal.emit()
+
+        msat_cb.stateChanged.connect(on_msat_checked)
 
         # units
         units = base_units_list
@@ -167,8 +206,8 @@ class SettingsDialog(QDialog, QtEventListener):
         qr_combo.currentIndexChanged.connect(on_video_device)
 
         colortheme_combo = QComboBox()
-        colortheme_combo.addItem(_('Light'), 'default')
-        colortheme_combo.addItem(_('Dark'), 'dark')
+        colortheme_combo.addItem(_("System"), "default")
+        colortheme_combo.addItem("qdarkstyle", "dark")
         index = colortheme_combo.findData(self.config.GUI_QT_COLOR_THEME)
         colortheme_combo.setCurrentIndex(index)
         colortheme_label = QLabel(self.config.cv.GUI_QT_COLOR_THEME.get_short_desc() + ':')
@@ -316,8 +355,10 @@ class SettingsDialog(QDialog, QtEventListener):
         units_widgets = []
         units_widgets.append((unit_label, unit_combo))
         units_widgets.append((nz_label, nz))
-
+        units_widgets.append((msat_cb, None))
         units_widgets.append((thousandsep_cb, None))
+        lightning_widgets = []
+        lightning_widgets.append((trampoline_cb, None))
         fiat_widgets = []
         fiat_widgets.append((QLabel(_('Fiat currency')), ccy_combo))
         fiat_widgets.append((QLabel(_('Source')), ex_combo))
@@ -333,6 +374,7 @@ class SettingsDialog(QDialog, QtEventListener):
             (gui_widgets, _('Appearance')),
             (units_widgets, _('Units')),
             (fiat_widgets, _('Fiat')),
+            (lightning_widgets, _('Lightning')),
             (misc_widgets, _('Misc')),
         ]
         for widgets, name in tabs_info:

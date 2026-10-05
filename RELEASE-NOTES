@@ -1,4 +1,142 @@
-# Release 4.8.0 - Artisanal Handwritten Code (July 8, 2026)
+# Release 4.8.2 (September 11, 2026) (security update)
+ * Security fixes for reports received from:
+   - l0rinc
+   - "Bitcoin Red Team"
+   - calle
+   - haoxucu
+   - m0wer
+ * General:
+   - new: miscellaneous security hardening across the codebase (e.g. #10885)
+   - fix: channel backups (#10851, #10852)
+       > Existing Lightning channel backups and full wallet backups,
+         (1) exported from wallets with non-deterministic lightning keys, AND (&&)
+         (2) specifically for anchor channels,
+         were missing a critical key needed to sweep the coins onchain after requesting a remote-force-close.
+         Affected wallets warn on startup: Users must export new backups for these channels: older backups
+         can't request a force close anymore as they miss information required to claim funds.
+         - Context for (1): Lightning keys are deterministic for Electrum seed based wallets where the wallet file
+           was created in version 4.1 (2021 March) or later (but not in 4.0.x).
+           bip39 seed- or imported xprv-based LN wallets always have non-deterministic keys.
+           In Qt (Desktop), the "wallet information" dialog shows "Lightning: Enabled, non-recoverable channels",
+           in qml (Android), the "Open Lightning Channel" dialog shows "Your channel cannot be recovered from seed [...]",
+           if your wallet has non-deterministic LN keys.
+ * Onchain / Wallet:
+   - fix: ensure a change address exists for automated sweeps when 'use_change' is disabled (#10922)
+   - fix: sweeping a privkey whose address is in an imported-address wallet (#10893)
+   - fix: add missing cache invalidation to fix stale balance and utxo caches after reorgs (#10945)
+   - fix: bip32: reject malformed xprv/xpub that were previously silently accepted (#10880, #10881)
+   - fix: descriptor: wrong error message when rejecting too many pubkeys (#10947)
+ * Qt GUI (desktop):
+   - fix: editing and viewing saved multiline payment identifiers (#10930)
+   - fix: send tab: Send button could get enabled for LN invoices in non-lightning wallets (#10944)
+   - fix: don't offer to open a new channel in wallets that cannot open channels (#10943)
+   - fix: qr code reader: fix slow or freezing camera (#10932)
+   - fix: fix 'stay online' warning popup during a pending force-close (#10890)
+ * QML GUI & Android:
+   - changed: wizard: hide the passphrase input field unless the checkbox is enabled (#10845)
+   - changed: protect the QR scanner view from screenshots (#10815)
+   - fix: automatically remove paid invoices from the invoice list, as in qt gui (#10919)
+   - fix: biometrics: prevent concurrent authentication requests (#10917)
+ * GUIs:
+   - fix: qt/qml: handle seemingly random crashes occurring through access of deleted objects (#10894)
+ * Lightning:
+   - changed: don't request or accept zeroconf channels if LN forwarding is enabled (#10929)
+   - changed: fail htlcs that need forwarding right away if forwarding is disabled (b952a6d)
+   - changed: disconnect on illegal update_*/commitsig/revack messages (#10897)
+   - changed: drop support for legacy closing fee negotiation, without fee_range (#10861)
+   - fix: stricter validation of incoming htlcs (#10899, #10929, #10938, #10939, e966470)
+   - fix: htlcs joining an expired mpp set were not failed with MPP_TIMEOUT (#10929)
+   - fix: fix wedged peer connections after system suspend / app backgrounding (#10909)
+   - fix: don't drop an incoming channel once its funding tx reached min depth (#10888)
+   - fix: fix crash during onchain sweeping of htlcs (#10906)
+   - fix: do not fail invoice until all htlcs are irrevocably resolved (#10962)
+ * Submarine swaps:
+   - fix: swapserver: nostr announcement PoW mining could discard freshly mined work (#10859)
+   - fix: swapserver: simplified lightning invoice payment logic, fixing db leak (#10877)
+   - fix: don't show the counterparties refund tx of a failed submarine payment in history (#10862)
+ * Electrum protocol:
+   - new: interface: validate response shape of server.peers.subscribe (#10834)
+   - fix: synchronizer: race during concurrent status updates caused disconnects (#10870)
+ * CLI/RPC:
+   - changed: stop quantizing transaction fee rates passed to tx construction (#10912)
+   - fix: swaps: fail early with a clear error if fees changed since the dryrun (#10840)
+   - fix: reverse_swap: don't include claim fee in onchain_amount for consistency with dryrun (#10840)
+ * Hardware wallets:
+   - new: bitbox01, safe-t: show a deprecation warning when creating or pairing a wallet (#10871)
+   - fix: trezor: fix handling of devices with passphrase_always_on_device option enabled (#10872)
+   - fix: trezor: settings dialog: fix crash after disabling passphrase protection (#10872)
+
+
+# Release 4.8.1 (August 10, 2026) (security update)
+ * Security fixes for reports received from:
+   - l0rinc
+   - "Bitcoin Red Team"
+   - rdymac
+   - svanstaa
+   - m0wer
+ * Qt GUI (desktop):
+   - changed: rename color themes for clarity (#10768)
+ * QML GUI & Android:
+   - new: wallets with a name prefixed by "." are now considered "hidden wallets" (#10688)
+     - such wallets are not shown in the wallet list, and can only be opened "by exact name"
+   - changed: bump Android target SDK version to 36 (#10806)
+   - changed: improve UI responsiveness during sync (#10750)
+   - fix: update ConfirmTxDialog onValidChanged (#10754)
+   - fix: strip whitespace from message before signing, as in qt gui (#10787, #10791)
+   - fix: protect WIF keys from screenshots in more places (#10799)
+   - fix: biometrics: avoid ConcurrentModificationException in _on_activity_result (#10812)
+   - changed: trustedcoin: reduce excessive logging (#10818)
+ * General:
+   - changed: transaction: cap max tx size we allow for base43 to 30k chars (#10798)
+   - fix: wallet_db: register onion_keys converter (#10763)
+   - fix: json_db: escape '\' and '~' in json patch pointer (#10764)
+   - fix: json_db: set_modified after removing incomplete data (#10765)
+   - fix: json_db: handle structural json characters in data during recovery (#10775)
+   - fix: json_db: sanitize logging of unserializable values (#10807)
+   - fix: wallet: check_sighash: handle unknown sighash gracefully (#10808)
+   - fix: trustedcoin: billing_index: mitigate against CPU DOS from malicious server (#10822)
+ * Lightning:
+   - new: log warnings if using *experimental* LN forwarding on mainnet (#10837)
+     - you really should not be doing that, yet.
+   - new: lnutil: RevocationStore: add type hints, asserts, sanity checks (#10796)
+   - changed: lnutil: tolerate higher dust_limit_sat for channels (1000->5000 sat) (#10824)
+   - changed: lnrouter: liquidity hints: add extra penalty if amount near cannot_send (#10782)
+   - fix: lnrouter: fee budgets were only partially enforced due to a regression (#10773)
+   - fix: lnrouter: move liquidity hint update to lnworker htlc removal callbacks (#10774)
+   - fix: lnrouter: use split config channel for single channel MPP (#10776)
+   - fix: lnrouter: use separate timestamp per liquidity hint value (#10779)
+   - fix: lnrouter: don't blacklist chans on missing/unchanged channel_update in htlc fail (#10780)
+   - fix: if we are accepting channels, check for channel_id collisions (#10819)
+   - fix: lnurl: restrict lightning address to the LUD-16 charset (#10828)
+   - fix: lnutil: don't trim htlcs equal to dust level. off-by-one. (#10820)
+ * Submarine swaps:
+   - new: introduce unittest suite for submarine swaps (#10827)
+   - fix: destroy swap transport on failed initialization (#10753)
+   - fix: re-bundle_payments on startup (#10811)
+   - fix: nostr: check_dms: duplicate replies from server could crash transport (#10833)
+   - fix: reverse swaps: lower acceptable cltv_delta value (#10836)
+ * Electrum protocol:
+   - new: interface: hardening against resource exhaustion (#10821)
+ * Hardware wallets:
+   - changed: qt: reuse message dialog to fix lag between device prompts, for performance (#10718)
+   - fix: trezor: drop session after closing it (#10781)
+   - fix: coldcard: fix get_soft_device_id() discarding its return value (#10789)
+   - docs: coldcard: add seed-entropy security notice to plugin README (#10805, #10829)
+ * Plugins:
+   - nwc (Nostr Wallet Connect):
+     - fix: don't try to decrypt event with "UNSUPPORTED_ENCRYPTION" (#10831)
+ * Contrib:
+   - changed: android build: cache p4a recipe downloads even for FRESH_CLONE builds (#10744)
+   - changed: android build: don't download unused unpinned platform-tools (#10832)
+ * Dependencies:
+   - drop protobuf from base requirements (#10835)
+     - it is now only needed for hw wallet support (bitbox02, keepkey)
+
+
+# Release 4.8.0 - Artisanal Handwritten Code (July 8, 2026) (security update)
+ * Security fixes for reports received from:
+    - Evelynkaz
+    - ch1nhpd
  * Security fixes and disclosures:
     - (sev-low) SPV verification: fix CVE-2012-2459: reject left-sibling duplicates (#10568)
  * General:
@@ -75,7 +213,7 @@
     - new: implement a minimal Electrum server for more advanced unittests (#10629)
 
 
-# Release 4.7.2 (April 1, 2026)
+# Release 4.7.2 (April 1, 2026) (security update)
  * security fixes and disclosures:
    - (sev-medium) External Plugin authorization bypass: local code execution
      - see https://github.com/spesmilo/electrum/security/advisories/GHSA-vw94-r84p-66qf
@@ -112,7 +250,7 @@
      - fix: checksum calculation to follow corresponding BIP-0128 (#10524)
 
 
-# Release 4.7.1 (Feb 26, 2026)
+# Release 4.7.1 (Feb 26, 2026) (security update)
  * Qt GUI (desktop):
    - new: changelog website accessible from "Help" toolbar menu (#10433)
    - new: show translation completion percentage in language names (#10479)
@@ -167,7 +305,7 @@
     -- just prove being a human and being well-intentioned).
     (see https://github.com/spesmilo/electrum-locale/issues/47#issuecomment-3914866337)
 
-# Release 4.7.0 (Jan 22, 2026)
+# Release 4.7.0 (Jan 22, 2026) (security update)
  * Qt GUI (desktop):
    - new: "Submarine Payments": support reverse swaps to external address (#10303)
           Allows doing onchain payments from the wallet's lightning balance.
@@ -244,7 +382,7 @@
      - changed: migrate AppImage build to use modern/maintained appimagetool (#10019)
 
 
-# Release 4.6.2 (Aug 25, 2025)
+# Release 4.6.2 (Aug 25, 2025) (security update)
  * General:
    - changed: minrelayfee clamps from [1, 50] to [0.1, 50] sat/vbyte (#10096)
    - new: add support for "mutinynet" signet test network (#10134)

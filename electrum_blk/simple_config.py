@@ -225,6 +225,7 @@ class SimpleConfig(Logger):
         self.amt_precision_post_satoshi = self.BTC_AMOUNTS_PREC_POST_SAT
         self.amt_add_thousands_sep = self.BTC_AMOUNTS_ADD_THOUSANDS_SEP
 
+        self.warn_on_experimental_features()
         self._init_done = True
 
     def list_config_vars(self) -> Sequence[str]:
@@ -294,7 +295,8 @@ class SimpleConfig(Logger):
             json.dumps(key)
             json.dumps(value)
         except Exception:
-            self.logger.info(f"json error: cannot save {repr(key)} ({repr(value)})")
+            # note: "value" might be secret material, should probably not log it
+            self.logger.info(f"json error: cannot save {key=!r} ({type(value)})")
             return
         self._set_key_in_user_config(key, value, save=save)
 
@@ -585,6 +587,19 @@ class SimpleConfig(Logger):
             "Did you perhaps mistype a ConfigVar?"
         )
 
+    def warn_on_experimental_features(self):
+        chain = self.get_selected_chain()  # use this instead of constants.net, as the latter might not be set yet
+        if not chain.TESTNET:
+            # ln forwarding
+            if self.EXPERIMENTAL_LN_FORWARD_PAYMENTS or self.EXPERIMENTAL_LN_FORWARD_TRAMPOLINE_PAYMENTS:
+                if self.EXPERIMENTAL_LN_FORWARD_PAYMENTS:
+                    self.logger.warning(f"Found config setting {self.cv.EXPERIMENTAL_LN_FORWARD_PAYMENTS.key()!r}={self.EXPERIMENTAL_LN_FORWARD_PAYMENTS}")
+                if self.EXPERIMENTAL_LN_FORWARD_TRAMPOLINE_PAYMENTS:
+                    self.logger.warning(f"Found config setting {self.cv.EXPERIMENTAL_LN_FORWARD_TRAMPOLINE_PAYMENTS.key()!r}={self.EXPERIMENTAL_LN_FORWARD_TRAMPOLINE_PAYMENTS}")
+                self.logger.warning(
+                    f"Lightning payment forwarding is an experimental feature that still has known bugs. "
+                    f"You really SHOULD NOT be running it on mainnet!!!")
+
     @cached_property
     def cv(config):
         """Allows getting a reference to a config variable without dereferencing it.
@@ -688,7 +703,8 @@ class SimpleConfig(Logger):
     WALLET_SEND_CHANGE_TO_LIGHTNING = ConfigVar(
         'send_change_to_lightning', default=False, type_=bool,
         short_desc=lambda: _('Send change to Lightning'),
-        long_desc=lambda: _('If possible, send the change of this transaction to your channels, with a submarine swap'),
+        long_desc=lambda: _('When possible, send transaction change to your Lightning balance using a swap. '
+                            'Swap fees apply. Otherwise, change stays on-chain.'),
     )
     WALLET_ENABLE_SUBMARINE_PAYMENTS = ConfigVar(
         'enable_submarine_payments', default=False, type_=bool,
@@ -778,7 +794,6 @@ Warning: setting this to too low will result in lots of payment failures."""),
     TEST_FORCE_DISABLE_MPP = ConfigVar('test_force_disable_mpp', default=False, type_=bool)
     TEST_SHUTDOWN_FEE = ConfigVar('test_shutdown_fee', default=None, type_=int)
     TEST_SHUTDOWN_FEE_RANGE = ConfigVar('test_shutdown_fee_range', default=None)
-    TEST_SHUTDOWN_LEGACY = ConfigVar('test_shutdown_legacy', default=False, type_=bool)
     TEST_LN_OPEN_SRK_CHANNELS = ConfigVar('test_ln_open_srk_channels', default=False, type_=bool)
 
     # fee_policy is a dict: fee_policy_name -> fee_policy_descriptor
@@ -797,7 +812,10 @@ Warning: setting this to too low will result in lots of payment failures."""),
     DISABLE_MEMORY_HARDENING_LINUX = ConfigVar('nohardening', default=None, type_=bool) # default is False in add_global_options
 
     GUI_NAME = ConfigVar('gui', default='qt', type_=str)
-    CURRENT_WALLET = ConfigVar('current_wallet', default=None, type_=str)
+    CURRENT_WALLET = ConfigVar(
+        'current_wallet', default=None, type_=str,
+        convert_setter=lambda v: None if util.is_hidden_wallet_path(v) else v,  # don't save "hidden wallet" paths
+    )
 
     GUI_QT_COLOR_THEME = ConfigVar(
         'qt_gui_color_theme', default='default', type_=str,

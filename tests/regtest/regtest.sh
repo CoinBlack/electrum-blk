@@ -82,14 +82,14 @@ function wait_until_channel_open()
     printf "\n"
 }
 
-function wait_until_channel_closed()
+function wait_until_channel_state()
 {
-    msg="wait until $1 sees channel closed"
+    msg="wait until $1 sees channel in state $2"
     cmd="./run_electrum --regtest -D /tmp/$1"
     declare -i timeout_sec=120
     declare -i elapsed_sec=0
 
-    while [[ $($cmd list_channels | jq '.[0].state' | tr -d '"') != "CLOSED" ]]; do
+    while [[ $($cmd list_channels | jq '.[0].state' | tr -d '"') != "$2" ]]; do
         if ((elapsed_sec > timeout_sec)); then
             printf "Timeout of %i s exceeded\n" "$elapsed_sec"
             exit 1
@@ -244,68 +244,10 @@ if [[ $1 == "breach" ]]; then
     echo "alice broadcasts old ctx"
     $bitcoin_cli sendrawtransaction $ctx
     new_blocks 1
-    wait_until_channel_closed bob
+    wait_until_channel_state bob CLOSED
     new_blocks 1
     wait_for_balance bob 1.14
     $bob getbalance
-fi
-
-
-if [[ $1 == "backup" ]]; then
-    # Alice has two channels with Bob.
-    # - chan1 has on-chain op_return backups,
-    # - chan2 has an imported backup.
-    # Alice restores from seed, and also imports backup for chan2.
-    # Test "request_force_close" works for both channels.
-    wait_for_balance alice 1
-    echo "alice opens channel"
-    bob_node=$($bob nodeid)
-    channel1=$($alice open_channel $bob_node 0.15 --password='')
-    new_blocks 1  # cannot open multiple chans with same node in same block
-    $alice setconfig use_recoverable_channels False
-    channel2=$($alice open_channel $bob_node 0.15 --password='')
-    new_blocks 3
-    wait_until_channel_open alice  # FIXME wait for *both* channels?
-    backup=$($alice export_channel_backup $channel2)
-    seed=$($alice getseed --password='')
-    $alice stop
-    mv /tmp/alice/regtest/wallets/default_wallet /tmp/alice/regtest/wallets/default_wallet.old
-    $alice -o restore "$seed"
-    $alice daemon -d
-    $alice load_wallet
-    $alice import_channel_backup $backup
-    $alice wait_for_sync
-    echo "request force close $channel1"
-    $alice request_force_close $channel1
-    echo "request force close $channel2"
-    $alice request_force_close $channel2
-    new_blocks 1
-    wait_for_balance alice 0.997
-fi
-
-
-if [[ $1 == "backup_local_forceclose" ]]; then
-    # Alice does a local-force-close, and then restores from seed before sweeping CSV-locked coins
-    wait_for_balance alice 1
-    echo "alice opens channel"
-    bob_node=$($bob nodeid)
-    $alice setconfig use_recoverable_channels False
-    channel=$($alice open_channel $bob_node 0.15 --password='')
-    new_blocks 3
-    wait_until_channel_open alice
-    backup=$($alice export_channel_backup $channel)
-    echo "local force close $channel"
-    $alice close_channel $channel --force
-    sleep 0.5
-    seed=$($alice getseed --password='')
-    $alice stop
-    mv /tmp/alice/regtest/wallets/default_wallet /tmp/alice/regtest/wallets/default_wallet.old
-    new_blocks 150
-    $alice -o restore "$seed"
-    $alice daemon -d
-    $alice load_wallet
-    $alice import_channel_backup $backup
-    wait_for_balance alice 0.998
 fi
 
 
@@ -424,9 +366,11 @@ if [[ $1 == "swapserver_refund" ]]; then
     swap=$($alice reverse_swap 0.02 $onchain_amount --prepayment $prepayment)
     echo $swap | jq
     funding_txid=$(echo $swap| jq -r ".funding_txid")
-    new_blocks 140
+    # mine past LOCKTIME_DELTA_REFUND (70), so that bob can refund
+    new_blocks 75
     wait_until_spent $funding_txid 0
-    new_blocks 1
+    # bob only fails the hold-HTLCs once his refund tx is final (SPENDER_FINALITY_DELAY)
+    new_blocks 8
     wait_until_htlcs_settled alice
 fi
 
@@ -467,7 +411,7 @@ if [[ $1 == "lnwatcher_waits_until_fees_go_down" ]]; then
     wait_until_spent $chan_funding_txid $chan_funding_outidx
     $bob stop  # bob closes and then disappears. FIXME this is a hack to prevent Bob claiming the fake-hold-invoice-htlc onchain
     new_blocks 1
-    wait_until_channel_closed alice
+    wait_until_channel_state alice CLOSED
     ctx_id=$($alice list_channels | jq -r ".[0].closing_txid")
     if [ $TEST_SRK_CHANNELS != True ] ; then  # anchors
         htlc_output_index1=2
@@ -673,6 +617,10 @@ if [[ $1 == "breach_with_unspent_htlc" ]]; then
     $bitcoin_cli sendrawtransaction $ctx
     new_blocks 1
     wait_for_balance bob 1.14
+    # bob has now spent the htlc output with a justice tx. He must keep processing the
+    # outputs of the ctx after seeing it, else the channel never gets marked as redeemed.
+    new_blocks 25
+    wait_until_channel_state bob REDEEMED
 fi
 
 

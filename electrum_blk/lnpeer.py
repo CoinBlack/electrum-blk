@@ -53,7 +53,9 @@ from .lntransport import LNTransport, LNTransportBase, LightningPeerConnectionCl
 from .lnmsg import encode_msg, decode_msg, UnknownOptionalMsgType, FailedToParseMsg
 from .interface import GracefulDisconnect
 from .invoices import PR_PAID
-from .fee_policy import FEE_LN_ETA_TARGET, FEERATE_PER_KW_MIN_RELAY_LIGHTNING
+from .fee_policy import (
+    FEE_LN_ETA_TARGET, FEERATE_PER_KW_MIN_RELAY_LIGHTNING, FEERATE_MAX_DYNAMIC, FEE_LN_MINIMUM_ETA_TARGET, FEERATE_DEFAULT_RELAY,
+)
 from .channel_db import FLAG_DIRECTION
 
 if TYPE_CHECKING:
@@ -64,6 +66,9 @@ if TYPE_CHECKING:
 
 
 LN_P2P_NETWORK_TIMEOUT = 20
+
+
+class CoopCloseFailure(Exception): pass
 
 
 class Peer(Logger, EventListener):
@@ -101,11 +106,13 @@ class Peer(Logger, EventListener):
         self.pubkey = pubkey  # remote pubkey
         self.privkey = self.transport.privkey  # local privkey
         self.features = self.lnworker.features  # type: LnFeatures
-        if lnworker == lnworker.network.lngossip or \
-            self.config.ZEROCONF_TRUSTED_NODE and pubkey != lnworker.trusted_zeroconf_node_id:
-            # don't signal zeroconf support if we are client (a trusted node is configured),
-            # and Peer is not our trusted node
-            self.features &= ~LnFeatures.OPTION_ZEROCONF_OPT
+        forwarding = self.config.EXPERIMENTAL_LN_FORWARD_PAYMENTS or self.config.EXPERIMENTAL_LN_FORWARD_TRAMPOLINE_PAYMENTS
+        if lnworker == lnworker.network.lngossip \
+                or self.config.ZEROCONF_TRUSTED_NODE \
+                and pubkey != lnworker.trusted_zeroconf_node_id \
+                and not forwarding:
+            # clients signal to their trusted provider only, forwarding wallets also need to signal to peers they might fund
+            self.features &= ~(LnFeatures.OPTION_ZEROCONF_OPT | LnFeatures.OPTION_ZEROCONF_REQ)
         self.their_features = LnFeatures(0)  # type: LnFeatures
         self.node_ids = [self.pubkey, privkey_to_pubkey(self.privkey)]
         assert self.node_ids[0] != self.node_ids[1]
@@ -184,7 +191,7 @@ class Peer(Logger, EventListener):
             await self.transport.handshake()
         self.logger.info(f"handshake done for {self.transport.peer_addr or self.pubkey.hex()}")
         features = self.features.for_init_message()
-        flen = features.min_len()
+        flen = lnutil.int_min_byte_len(features)
         self.send_message(
             "init", gflen=0, flen=flen,
             features=features,
@@ -220,7 +227,10 @@ class Peer(Logger, EventListener):
         if time.time() - self.last_message_time > 30:
             self.send_message('ping', num_pong_bytes=4, byteslen=4)
             self.pong_event.clear()
-            await self.pong_event.wait()
+            try:
+                await util.wait_for2(self.pong_event.wait(), LN_P2P_NETWORK_TIMEOUT)
+            except asyncio.TimeoutError as e:
+                raise GracefulDisconnect("pong timed out") from e
 
     async def _process_message(self, message: bytes) -> None:
         try:
@@ -322,7 +332,7 @@ class Peer(Logger, EventListener):
             return
         raise GracefulDisconnect
 
-    def send_warning(self, channel_id: bytes, message: str = None, *, close_connection=False):
+    def send_warning(self, channel_id: bytes, message: str | None = None, *, close_connection=False):
         """Sends a warning and disconnects if close_connection.
 
         Note:
@@ -341,7 +351,7 @@ class Peer(Logger, EventListener):
         if close_connection:
             raise GracefulDisconnect
 
-    def send_error(self, channel_id: bytes, message: str = None, *, force_close_channel=False):
+    def send_error(self, channel_id: bytes, message: str | None = None, *, force_close_channel=False):
         """Sends an error message and force closes the channel.
 
         Note:
@@ -561,12 +571,20 @@ class Peer(Logger, EventListener):
                 await util.wait_for2(self.initialized, LN_P2P_NETWORK_TIMEOUT)
             except Exception as e:
                 raise GracefulDisconnect(f"Failed to initialize: {e!r}") from e
+            await group.spawn(self._monitor_connection())
             await group.spawn(self._query_gossip())
             await group.spawn(self._process_gossip())
             await group.spawn(self._send_own_gossip())
             await group.spawn(self._forward_gossip())
             if self.network.lngossip != self.lnworker:
                 await group.spawn(self.htlc_switch())
+
+    async def _monitor_connection(self):
+        # this mirrors Interface.monitor_connection.
+        while True:
+            await asyncio.sleep(1)
+            if self.transport.is_closing():
+                raise GracefulDisconnect('transport was closed')
 
     async def _process_gossip(self):
         while True:
@@ -977,7 +995,7 @@ class Peer(Logger, EventListener):
             public: bool,
             zeroconf: bool = False,
             temp_channel_id: bytes,
-            opening_fee: int = None,
+            opening_fee: int | None = None,
     ) -> Tuple[Channel, 'PartialTransaction']:
         """Implements the channel opening flow.
 
@@ -1025,7 +1043,7 @@ class Peer(Logger, EventListener):
         # if option_channel_type is negotiated: MUST set channel_type
         # if it includes channel_type: MUST set it to a defined type representing the type it wants.
         open_channel_tlvs['channel_type'] = {
-            'type': our_channel_type.to_bytes_minimal()
+            'type': lnutil.int_to_bytes_minimal(our_channel_type)
         }
 
         if our_channel_type & ChannelType.OPTION_ANCHORS:
@@ -1163,7 +1181,7 @@ class Peer(Logger, EventListener):
                 raise Exception('op_return output not found in funding tx')
         # must not be malleable
         funding_tx.set_rbf(False)
-        if not funding_tx.is_segwit():
+        if not funding_tx.is_all_segwit():
             raise Exception('Funding transaction is not segwit')
         funding_txid = funding_tx.txid()
         assert funding_txid
@@ -1285,8 +1303,11 @@ class Peer(Logger, EventListener):
                 raise Exception("refusing to open new static_remotekey channel")
 
         is_zeroconf = bool(channel_type & ChannelType.OPTION_ZEROCONF)
-        if is_zeroconf and not self.config.ZEROCONF_TRUSTED_NODE.startswith(self.pubkey.hex()):
-            raise Exception(f"not accepting zeroconf from node {self.pubkey}")
+        if is_zeroconf:
+            if self.pubkey != self.lnworker.trusted_zeroconf_node_id:
+                raise Exception(f"not accepting zeroconf from node {self.pubkey}")
+            if self.config.EXPERIMENTAL_LN_FORWARD_PAYMENTS or self.config.EXPERIMENTAL_LN_FORWARD_TRAMPOLINE_PAYMENTS:
+                raise Exception(f"not accepting zeroconf as a forwarding node")
 
         if self.lnworker.has_recoverable_channels() and not is_zeroconf:
             # FIXME: we might want to keep the connection open
@@ -1382,7 +1403,7 @@ class Peer(Logger, EventListener):
                 'shutdown_scriptpubkey': local_config.upfront_shutdown_script
             },
             'channel_type': {
-                'type': channel_type.to_bytes_minimal(),
+                'type': lnutil.int_to_bytes_minimal(channel_type),
             },
         }
 
@@ -1412,6 +1433,10 @@ class Peer(Logger, EventListener):
         funding_idx = funding_created['funding_output_index']
         funding_txid = funding_created['funding_txid'][::-1].hex()
         channel_id, funding_txid_bytes = channel_id_from_funding_tx(funding_txid, funding_idx)
+
+        if channel_id in self.lnworker._channels or channel_id in self.lnworker._channel_backups:
+            raise Exception('cannot add new channel: channel_id collision')
+
         constraints = ChannelConstraints(
             flags=channel_flags,
             capacity=funding_sat,
@@ -1456,6 +1481,7 @@ class Peer(Logger, EventListener):
         if is_zeroconf:
             # FIXME shouldn't we wait until funding_tx is at least in the mempool?!
             #   We haven't even validated funding_tx really contains the multisig funding output!
+            #   (TODO also check funding_tx.is_all_segwit())
             #   This is unsafe. MUST be reworked before mainnet usage.
             chan.set_state(ChannelState.FUNDED)
             self.send_channel_ready(chan)
@@ -1511,6 +1537,19 @@ class Peer(Logger, EventListener):
         #       until this msg is processed. If we are behind (lost state), and send chan_reest to the remote,
         #       when the remote realizes we are behind, they might send an "error" message - but the spec mandates
         #       they send chan_reest first. If we processed the error first, we might force-close and lose money!
+        # note: if we are genuinely behind (e.g. user restored an old backup), the remote peer is able to steal
+        #       the channel funds. We are at their mercy. Unfortunately we have to accept this,
+        #       it seems fundamentally unfixable with the current penalty-based Lightning protocol.
+        #       A node, Mallory, who wants to try to steal money from Alice would:
+        #       - always try to go second (wait for Alice to send channel_reestablish first)
+        #       - after receiving channel_reestablish, Mallory can tell if Alice has lost state
+        #         - if so, Mallory, triggers Alice to force-close in any number of ways, e.g.
+        #           by sending channel_reestablish for an even older state
+        #           (or ctn==0, receiving which the spec explicitly says triggers a force-close),
+        #           or by sending an "error" message
+        #         - if Alice has not lost state, Mallory proceeds as usual, and they keep using the channel
+        # design goal: if we have lost state but the other node is well-behaving/honest, we SHOULD not lose money.
+        # design goal: if we have NOT lost state, the other node MUST not be able to steal money.
         # FIXME there are a lot of "SHOULD send an error and fail the channel" BOLT-02 cases here
         #       where we don't send the error, but directly fail the channel
         their_next_local_ctn = msg["next_commitment_number"]
@@ -1529,6 +1568,11 @@ class Peer(Logger, EventListener):
         # sanity checks of received values
         assert their_next_local_ctn >= 0  # already done by lnmsg, as type is u64
         assert their_oldest_unrevoked_remote_ctn >= 0
+        if max(their_next_local_ctn, their_oldest_unrevoked_remote_ctn) >= 2**48:
+            # TODO: upstream this check to lightning/bolts spec
+            self.logger.error(f"channel_reestablish ({chan.get_id_for_log()}): ctn overflow")
+            self.schedule_force_closing(chan.channel_id)
+            raise RemoteMisbehaving("channel_reestablish: ctn overflow")
         # ctns
         oldest_unrevoked_local_ctn = chan.get_oldest_unrevoked_ctn(LOCAL)
         latest_remote_ctn = chan.get_latest_ctn(REMOTE)
@@ -1587,6 +1631,9 @@ class Peer(Logger, EventListener):
             self.schedule_force_closing(chan.channel_id)
             raise RemoteMisbehaving("channel_reestablish: data loss protect fields invalid")
         fut = self.channel_reestablish_msg[chan.channel_id]
+        def _fail_fut(exc):
+            fut.set_exception(exc)
+            fut.exception()  # mark as retrieved, so it doesn't pollute log output with "was never retrieved" warnings
         if they_are_ahead_with_proof:  # order matters, WE_ARE_TOXIC case must be checked first.
             self.logger.warning(
                 f"channel_reestablish ({chan.get_id_for_log()}): "
@@ -1598,19 +1645,19 @@ class Peer(Logger, EventListener):
             chan.peer_state = PeerState.BAD
             # raise after we send channel_reestablish, so the remote can realize they are ahead
             # FIXME what if we have multiple chans with peer? timing...
-            fut.set_exception(GracefulDisconnect("remote ahead of us (with proof)"))
+            _fail_fut(GracefulDisconnect("remote ahead of us (with proof)"))
         elif they_are_ahead_without_proof:
             self.logger.warning(
                 f"channel_reestablish ({chan.get_id_for_log()}): "
                 f"remote is ahead of us (without proof)! trying to force-close.")
             self.schedule_force_closing(chan.channel_id)
             # FIXME what if we have multiple chans with peer? timing...
-            fut.set_exception(GracefulDisconnect("remote ahead of us (without proof)"))
+            _fail_fut(GracefulDisconnect("remote ahead of us (without proof)"))
         elif we_are_ahead:
             self.logger.warning(f"channel_reestablish ({chan.get_id_for_log()}): we are ahead of remote! trying to force-close.")
             self.schedule_force_closing(chan.channel_id)
             # FIXME what if we have multiple chans with peer? timing...
-            fut.set_exception(GracefulDisconnect("we are ahead of remote"))
+            _fail_fut(GracefulDisconnect("we are ahead of remote"))
         else:
             # all good
             fut.set_result((we_must_resend_revoke_and_ack, their_next_local_ctn))
@@ -1810,7 +1857,7 @@ class Peer(Logger, EventListener):
         timestamp = int(time.time())
         node_id = privkey_to_pubkey(self.privkey)
         features = self.features.for_node_announcement()
-        flen = features.min_len()
+        flen = lnutil.int_min_byte_len(features)
         rgb_color = bytes.fromhex(color_hex)
         alias = bytes(alias, 'utf8')
         alias += bytes(32 - len(alias))
@@ -1922,16 +1969,16 @@ class Peer(Logger, EventListener):
         htlc_id = payload["id"]
         reason = payload["reason"]
         self.logger.info(f"on_update_fail_htlc. chan {chan.short_channel_id}. htlc_id {htlc_id}")
-        if not chan.can_update_ctx(proposer=REMOTE):
+        if not chan.can_progress_ctx():
             self.logger.warning(
-                f"on_update_fail_htlc. dropping message. illegal action. "
+                f"on_update_fail_htlc. illegal action. "
                 f"chan={chan.get_id_for_log()}. {htlc_id=}. {chan.get_state()=!r}. {chan.peer_state=!r}")
-            return
+            raise RemoteMisbehaving("received update_fail_htlc when not allowed")
         chan.receive_fail_htlc(htlc_id, error_bytes=reason)  # TODO handle exc and maybe fail channel (e.g. bad htlc_id)
 
     def maybe_send_commitment(self, chan: Channel) -> bool:
         assert util.get_running_loop() == util.get_asyncio_loop(), f"this must be run on the asyncio thread!"
-        if not chan.can_update_ctx(proposer=LOCAL):
+        if not chan.can_progress_ctx():
             return False
         # REMOTE should revoke first before we can sign a new ctx
         if chan.hm.is_revack_pending(REMOTE):
@@ -2012,8 +2059,7 @@ class Peer(Logger, EventListener):
         return htlc
 
     def send_revoke_and_ack(self, chan: Channel) -> None:
-        if not chan.can_update_ctx(proposer=LOCAL):
-            return
+        assert chan.can_progress_ctx(), chan.get_state()
         self.logger.info(f'send_revoke_and_ack. chan {chan.short_channel_id}. ctn: {chan.get_oldest_unrevoked_ctn(LOCAL)}')
         rev = chan.revoke_current_commitment()
         self.lnworker.save_channel(chan)
@@ -2025,11 +2071,11 @@ class Peer(Logger, EventListener):
 
     def on_commitment_signed(self, chan: Channel, payload) -> None:
         self.logger.info(f'on_commitment_signed. chan {chan.short_channel_id}. ctn: {chan.get_next_ctn(LOCAL)}.')
-        if not chan.can_update_ctx(proposer=REMOTE):
+        if not chan.can_progress_ctx():
             self.logger.warning(
-                f"on_commitment_signed. dropping message. illegal action. "
+                f"on_commitment_signed. illegal action. "
                 f"chan={chan.get_id_for_log()}. {chan.get_state()=!r}. {chan.peer_state=!r}")
-            return
+            raise RemoteMisbehaving("received commitment_signed when not allowed")
         # make sure there were changes to the ctx, otherwise the remote peer is misbehaving
         if not chan.has_pending_changes(LOCAL):
             # TODO if feerate changed A->B->A; so there were updates but the value is identical,
@@ -2051,11 +2097,11 @@ class Peer(Logger, EventListener):
         payment_hash = sha256(preimage)
         htlc_id = payload["id"]
         self.logger.info(f"on_update_fulfill_htlc. chan {chan.short_channel_id}. htlc_id {htlc_id}")
-        if not chan.can_update_ctx(proposer=REMOTE):
+        if not chan.can_progress_ctx():
             self.logger.warning(
-                f"on_update_fulfill_htlc. dropping message. illegal action. "
+                f"on_update_fulfill_htlc. illegal action. "
                 f"chan={chan.get_id_for_log()}. {htlc_id=}. {chan.get_state()=!r}. {chan.peer_state=!r}")
-            return
+            raise RemoteMisbehaving("received update_fulfill_htlc when not allowed")
         chan.receive_htlc_settle(preimage, htlc_id)  # TODO handle exc and maybe fail channel (e.g. bad htlc_id)
 
     def on_update_fail_malformed_htlc(self, chan: Channel, payload):
@@ -2063,11 +2109,11 @@ class Peer(Logger, EventListener):
         failure_code = payload["failure_code"]
         self.logger.info(f"on_update_fail_malformed_htlc. chan {chan.get_id_for_log()}. "
                          f"htlc_id {htlc_id}. failure_code={failure_code}")
-        if not chan.can_update_ctx(proposer=REMOTE):
+        if not chan.can_progress_ctx():
             self.logger.warning(
-                f"on_update_fail_malformed_htlc. dropping message. illegal action. "
+                f"on_update_fail_malformed_htlc. illegal action. "
                 f"chan={chan.get_id_for_log()}. {htlc_id=}. {chan.get_state()=!r}. {chan.peer_state=!r}")
-            return
+            raise RemoteMisbehaving("received update_fail_malformed_htlc when not allowed")
         if failure_code & OnionFailureCodeMetaFlag.BADONION == 0:
             self.schedule_force_closing(chan.channel_id)
             raise RemoteMisbehaving(f"received update_fail_malformed_htlc with unexpected failure code: {failure_code}")
@@ -2089,11 +2135,11 @@ class Peer(Logger, EventListener):
         self.logger.info(f"on_update_add_htlc. chan {chan.short_channel_id}. htlc={str(htlc)}")
         if chan.get_state() != ChannelState.OPEN:
             raise RemoteMisbehaving(f"received update_add_htlc while chan.get_state() != OPEN. state was {chan.get_state()!r}")
-        if not chan.can_update_ctx(proposer=REMOTE):
+        if not chan.can_progress_ctx():
             self.logger.warning(
-                f"on_update_add_htlc. dropping message. illegal action. "
+                f"on_update_add_htlc. illegal action. "
                 f"chan={chan.get_id_for_log()}. {htlc_id=}. {chan.get_state()=!r}. {chan.peer_state=!r}")
-            return
+            raise RemoteMisbehaving("received update_add_htlc when not allowed")
         if cltv_abs > bitcoin.NLOCKTIME_BLOCKHEIGHT_MAX:
             self.schedule_force_closing(chan.channel_id)
             raise RemoteMisbehaving(f"received update_add_htlc with {cltv_abs=} > BLOCKHEIGHT_MAX")
@@ -2160,7 +2206,7 @@ class Peer(Logger, EventListener):
         chan: Channel,
         htlc: UpdateAddHtlc,
         processed_onion: ProcessedOnionPacket,
-        outer_onion_payment_secret: bytes = None,  # used to group trampoline htlcs for forwarding
+        outer_onion_payment_secret: bytes | None = None,  # used to group trampoline htlcs for forwarding
     ) -> str:
         """
         Does additional checks on the incoming htlc and return the payment key if the tests pass,
@@ -2180,6 +2226,20 @@ class Peer(Logger, EventListener):
 
         payment_hash = htlc.payment_hash
         if not processed_onion.are_we_final:
+            # check that forwarding is enabled in config.
+            fw_enabled = self.config.EXPERIMENTAL_LN_FORWARD_PAYMENTS
+            if outer_onion_payment_secret:
+                fw_enabled = fw_enabled and self.config.EXPERIMENTAL_LN_FORWARD_TRAMPOLINE_PAYMENTS
+            if not fw_enabled:
+                _log_fail_reason("forwarding is disabled")
+                raise OnionRoutingFailure(code=OnionFailureCode.PERMANENT_CHANNEL_FAILURE, data=b'')
+            # we must not forward an htlc whose payment_hash matches a payment request we created
+            if self.lnworker.maybe_refuse_to_forward_htlc_that_corresponds_to_payreq_we_created(payment_hash):
+                _log_fail_reason(f"RHASH corresponds to payreq we created")
+                raise OnionRoutingFailure(code=OnionFailureCode.TEMPORARY_NODE_FAILURE, data=b'')
+            if processed_onion.trampoline_onion_packet is not None:
+                _log_fail_reason(f"found trampoline onion in non-final onion")
+                raise OnionRoutingFailure(code=OnionFailureCode.INVALID_ONION_PAYLOAD, data=b'')
             if outer_onion_payment_secret:
                 # this is a trampoline forwarding htlc, multiple incoming trampoline htlcs can be collected
                 payment_key = (payment_hash + outer_onion_payment_secret).hex()
@@ -2221,17 +2281,20 @@ class Peer(Logger, EventListener):
 
             # compare trampoline onion against outer onion according to:
             # https://github.com/lightning/bolts/blob/9938ab3d6160a3ba91f3b0e132858ab14bfe4f81/04-onion-routing.md?plain=1#L547-L553
-            if trampoline_onion.are_we_final:
-                try:
-                    assert not processed_onion.outgoing_cltv_value < trampoline_onion.outgoing_cltv_value
-                    is_mpp = processed_onion.total_msat > processed_onion.amt_to_forward
-                    if is_mpp:
-                        assert not processed_onion.total_msat < trampoline_onion.amt_to_forward
-                    else:
-                        assert not processed_onion.amt_to_forward < trampoline_onion.amt_to_forward
-                except AssertionError:
-                    _log_fail_reason(f'incorrect trampoline onion {processed_onion=}\n{trampoline_onion=}')
-                    raise OnionRoutingFailure(code=OnionFailureCode.INVALID_ONION_PAYLOAD, data=b'\x00\x00\x00')
+            # note: The spec splits the amount check into an mpp and a non-mpp case, but the two are
+            #       the same comparison: a sender not using mpp must set total_msat equal to
+            #       amt_to_forward (L406). The spec also states the cltv/amount requirements
+            #       for the final node only, but we apply them when we are asked to forward as well.
+            try:
+                # note: the inner payload is attacker-chosen, these might be missing (None)
+                assert (inner_amt_to_forward := trampoline_onion.amt_to_forward) is not None
+                assert (inner_cltv_abs := trampoline_onion.outgoing_cltv_value) is not None
+                assert processed_onion.total_msat >= processed_onion.amt_to_forward  # equal in case of non-mpp
+                assert processed_onion.total_msat >= inner_amt_to_forward
+                assert processed_onion.outgoing_cltv_value >= inner_cltv_abs
+            except AssertionError:
+                _log_fail_reason(f'incorrect trampoline onion {processed_onion=}\n{trampoline_onion=}')
+                raise OnionRoutingFailure(code=OnionFailureCode.INVALID_ONION_PAYLOAD, data=b'\x00\x00\x00')
 
             return self._check_unfulfilled_htlc(
                 chan=chan,
@@ -2293,10 +2356,10 @@ class Peer(Logger, EventListener):
             if chan is None:
                 # this htlc belongs to another peer and has to be settled in their htlc_switch
                 continue
-            if not chan.can_update_ctx(proposer=LOCAL):
+            if not chan.can_send_ctx_updates():
                 continue
             self.logger.info(f"fulfill htlc: {chan.short_channel_id}. {htlc_id=}. {payment_hash.hex()=}")
-            if chan.hm.was_htlc_preimage_released(htlc_id=htlc_id, htlc_proposer=REMOTE):
+            if chan.hm.was_htlc_settled(htlc_id=htlc_id, htlc_proposer=REMOTE):
                 # this check is intended to gracefully handle stale htlcs in the set, e.g. after a crash
                 self.logger.debug(f"{mpp_htlc=} was already settled before, dropping it.")
                 htlc_set = htlc_set._replace(htlcs=htlc_set.htlcs - {mpp_htlc})
@@ -2336,7 +2399,7 @@ class Peer(Logger, EventListener):
             if chan is None:
                 # this htlc belongs to another peer and has to be settled in their htlc_switch
                 continue
-            if not chan.can_update_ctx(proposer=LOCAL):
+            if not chan.can_send_ctx_updates():
                 continue
             assert chan.hm.is_htlc_irrevocably_added_yet(htlc_proposer=REMOTE, htlc_id=htlc_id)
             if chan.hm.was_htlc_failed(htlc_id=htlc_id, htlc_proposer=REMOTE):
@@ -2379,7 +2442,7 @@ class Peer(Logger, EventListener):
 
     def fail_htlc(self, *, chan: Channel, htlc_id: int, error_bytes: bytes):
         self.logger.info(f"fail_htlc. chan {chan.short_channel_id}. htlc_id {htlc_id}.")
-        assert chan.can_update_ctx(proposer=LOCAL), f"cannot send updates: {chan.short_channel_id}"
+        assert chan.can_send_ctx_updates(), f"cannot send updates: {chan.short_channel_id}"
         self.received_htlcs_pending_removal.add((chan, htlc_id))
         chan.fail_htlc(htlc_id)
         self.send_message(
@@ -2392,7 +2455,7 @@ class Peer(Logger, EventListener):
 
     def fail_malformed_htlc(self, *, chan: Channel, htlc_id: int, reason: OnionParsingError):
         self.logger.info(f"fail_malformed_htlc. chan {chan.short_channel_id}. htlc_id {htlc_id}.")
-        assert chan.can_update_ctx(proposer=LOCAL), f"cannot send updates: {chan.short_channel_id}"
+        assert chan.can_send_ctx_updates(), f"cannot send updates: {chan.short_channel_id}"
         if not (reason.code & OnionFailureCodeMetaFlag.BADONION and len(reason.data) == 32):
             raise Exception(f"unexpected reason when sending 'update_fail_malformed_htlc': {reason!r}")
         self.received_htlcs_pending_removal.add((chan, htlc_id))
@@ -2407,11 +2470,11 @@ class Peer(Logger, EventListener):
 
     def on_revoke_and_ack(self, chan: Channel, payload) -> None:
         self.logger.info(f'on_revoke_and_ack. chan {chan.short_channel_id}. ctn: {chan.get_oldest_unrevoked_ctn(REMOTE)}')
-        if not chan.can_update_ctx(proposer=REMOTE):
+        if not chan.can_progress_ctx():
             self.logger.warning(
-                f"on_revoke_and_ack. dropping message. illegal action. "
+                f"on_revoke_and_ack. illegal action. "
                 f"chan={chan.get_id_for_log()}. {chan.get_state()=!r}. {chan.peer_state=!r}")
-            return
+            raise RemoteMisbehaving("received revack when not allowed")
         rev = RevokeAndAck(payload["per_commitment_secret"], payload["next_per_commitment_point"])
         chan.receive_revocation(rev)
         self.lnworker.save_channel(chan)
@@ -2426,11 +2489,11 @@ class Peer(Logger, EventListener):
         await self.taskgroup.spawn(async_wrapper)
 
     def on_update_fee(self, chan: Channel, payload):
-        if not chan.can_update_ctx(proposer=REMOTE):
+        if not chan.can_progress_ctx():
             self.logger.warning(
-                f"on_update_fee. dropping message. illegal action. "
+                f"on_update_fee. illegal action. "
                 f"chan={chan.get_id_for_log()}. {chan.get_state()=!r}. {chan.peer_state=!r}")
-            return
+            raise RemoteMisbehaving("received update_fee when not allowed")
         feerate = payload["feerate_per_kw"]
         chan.update_fee(feerate, False)
 
@@ -2438,7 +2501,7 @@ class Peer(Logger, EventListener):
         """
         called when our fee estimates change
         """
-        if not chan.can_update_ctx(proposer=LOCAL):
+        if not chan.can_send_ctx_updates():
             return
         if chan.get_state() != ChannelState.OPEN:
             return
@@ -2462,7 +2525,7 @@ class Peer(Logger, EventListener):
             else:
                 # We raise fees more aggressively than we lower them. Overpaying is not too bad,
                 # but lowballing can be fatal if we can't even get into the mempool...
-                high_fee = 2 * current_feerate_per_kw  # type: # Union[float, int]
+                high_fee = 2 * current_feerate_per_kw  # type: Union[float, int]
                 low_fee = self.lnworker.current_low_feerate_per_kw_srk_channel()  # type: Optional[Union[float, int]]
                 if low_fee is None:
                     return None
@@ -2595,34 +2658,49 @@ class Peer(Logger, EventListener):
         # can fulfill or fail htlcs. cannot add htlcs, because state != OPEN
         chan.set_can_send_ctx_updates(True)
 
-    def get_shutdown_fee_range(self, chan, closing_tx, is_local):
-        """ return the closing fee and fee range we initially try to enforce """
+    def get_shutdown_fee_range(self, chan, closing_tx, is_local) -> Tuple[int, dict]:
+        """ return our closing fee, and the fee range we initially want to enforce. """
+        # Note: A malicious Electrum server can make us pay high closing fees, capped only by FEERATE_MAX_DYNAMIC
+        # The same issue exists with commitment transactions; we only make sure it is not worse here.
         config = self.config
+        is_initiator = chan.constraints.is_initiator
         our_fee = None
-        if config.TEST_SHUTDOWN_FEE:
+        if config.TEST_SHUTDOWN_FEE is not None:
             our_fee = config.TEST_SHUTDOWN_FEE
         else:
             fee_rate_per_kb = self.network.fee_estimates.eta_target_to_fee(FEE_LN_ETA_TARGET)
             if fee_rate_per_kb is None:  # fallback
                 from .fee_policy import FeePolicy
                 fee_rate_per_kb = FeePolicy(config.FEE_POLICY).fee_per_kb(self.network)
-            if fee_rate_per_kb is not None:
-                our_fee = fee_rate_per_kb * closing_tx.estimated_size() // 1000
-            # TODO: anchors: remove this, as commitment fee rate can be below chain head fee rate?
-            # BOLT2: The sending node MUST set fee less than or equal to the base fee of the final ctx
-            max_fee = chan.get_latest_fee(LOCAL if is_local else REMOTE)
-            if our_fee is None:  # fallback
+            if fee_rate_per_kb is None:  # fallback
                 self.logger.warning(f"got no fee estimates for co-op close! falling back to chan.get_latest_fee")
-                our_fee = max_fee
-            our_fee = min(our_fee, max_fee)
-        # config modern_fee_negotiation can be set in tests
-        if config.TEST_SHUTDOWN_LEGACY:
-            our_fee_range = None
-        elif config.TEST_SHUTDOWN_FEE_RANGE:
+                feerate_per_kw = chan.get_latest_feerate(LOCAL if is_local else REMOTE)
+                fee_rate_per_kb = 4 * feerate_per_kw
+            our_fee = fee_rate_per_kb * closing_tx.estimated_size() // 1000
+        # max value
+        max_fee = min(our_fee * 2, FEERATE_MAX_DYNAMIC * closing_tx.estimated_size() // 1000)
+        # make sure fee is payable by initiator
+        affordable = chan.balance(LOCAL if is_initiator else REMOTE) // 1000
+        max_fee = min(max_fee, affordable)
+        # min value. We aim at a fee between next block inclusion and some lower value.
+        fee_rate_per_kb = self.network.fee_estimates.eta_target_to_fee(FEE_LN_MINIMUM_ETA_TARGET) or FEERATE_DEFAULT_RELAY
+        superlow_min_fee = fee_rate_per_kb * closing_tx.estimated_size() // 1000
+        if is_initiator:
+            min_fee = our_fee // 2
+            min_fee = max(min_fee, superlow_min_fee)
+        else:
+            # The sending node, if it is not the funder:
+            # SHOULD set min_fee_satoshis to a fairly low value
+            min_fee = superlow_min_fee
+        # ensure order
+        min_fee = min(min_fee, max_fee)  # note: if min_fee was > max_fee, the tx might not relay... unclear what to do.
+        our_fee = max(min_fee, our_fee)
+        our_fee = min(our_fee, max_fee)
+        assert min_fee <= our_fee <= max_fee
+        if config.TEST_SHUTDOWN_FEE_RANGE:
             our_fee_range = config.TEST_SHUTDOWN_FEE_RANGE
         else:
-            # we aim at a fee between next block inclusion and some lower value
-            our_fee_range = {'min_fee_satoshis': our_fee // 2, 'max_fee_satoshis': our_fee * 2}
+            our_fee_range = {'min_fee_satoshis': min_fee, 'max_fee_satoshis': max_fee}
         self.logger.info(f"Our fee range: {our_fee_range} and fee: {our_fee}")
         return our_fee, our_fee_range
 
@@ -2649,10 +2727,7 @@ class Peer(Logger, EventListener):
 
         def send_closing_signed(our_fee, our_fee_range, drop_remote):
             nonlocal our_sig, closing_tx
-            if our_fee_range:
-                closing_signed_tlvs = {'fee_range': our_fee_range}
-            else:
-                closing_signed_tlvs = {}
+            closing_signed_tlvs = {'fee_range': our_fee_range}
             our_sig, closing_tx = chan.make_closing_tx(our_scriptpubkey, their_scriptpubkey, fee_sat=our_fee, drop_remote=drop_remote)
             self.logger.info(f"Sending fee range: {closing_signed_tlvs} and fee: {our_fee}")
             self.send_message(
@@ -2675,10 +2750,14 @@ class Peer(Logger, EventListener):
                 cs_payload = await self.wait_for_message('closing_signed', chan.channel_id)
             except asyncio.exceptions.TimeoutError:
                 self.schedule_force_closing(chan.channel_id)
-                raise Exception("closing_signed not received, force closing.")
+                raise CoopCloseFailure("closing_signed not received, force closing.")
             their_fee = cs_payload['fee_satoshis']
             their_fee_range = cs_payload['closing_signed_tlvs'].get('fee_range')
             their_sig = cs_payload['signature']
+            # legacy negotiation is no longer supported
+            if their_fee_range is None:
+                self.schedule_force_closing(chan.channel_id)
+                raise CoopCloseFailure(f"Their fee range missing, force closing.")
             # perform checks
             our_sig, closing_tx = chan.make_closing_tx(our_scriptpubkey, their_scriptpubkey, fee_sat=their_fee, drop_remote=False)
             if verify_signature(closing_tx, their_sig):
@@ -2690,7 +2769,7 @@ class Peer(Logger, EventListener):
                 else:
                     # this can happen if we consider our output too valuable to drop,
                     # but the remote drops it because it violates their dust limit
-                    raise Exception('failed to verify their signature')
+                    raise CoopCloseFailure('failed to verify their signature')
             # at this point we know how the closing tx looks like
             # check that their output is above their scriptpubkey's network dust limit
             to_remote_set = closing_tx.get_output_idxs_from_scriptpubkey(their_scriptpubkey)
@@ -2705,13 +2784,12 @@ class Peer(Logger, EventListener):
             fee_range_sent = our_fee_range and (is_initiator or (their_previous_fee is not None))
 
             # The sending node, if it is not the funder:
-            if our_fee_range and their_fee_range and not is_initiator and not self.config.TEST_SHUTDOWN_FEE_RANGE:
+            if not is_initiator:
                 # SHOULD set max_fee_satoshis to at least the max_fee_satoshis received
+                # note: we are submissive with the "max" but not with the "min" value.
                 our_fee_range['max_fee_satoshis'] = max(their_fee_range['max_fee_satoshis'], our_fee_range['max_fee_satoshis'])
-                # SHOULD set min_fee_satoshis to a fairly low value
-                our_fee_range['min_fee_satoshis'] = min(their_fee_range['min_fee_satoshis'], our_fee_range['min_fee_satoshis'])
                 # Note: the BOLT describes what the sending node SHOULD do.
-                # However, this assumes that we have decided to send 'funding_signed' in response to their fee_range.
+                # However, this assumes that we have decided to send 'closing_signed' in response to their fee_range.
                 # In practice, we might prefer to fail the channel in some cases (TODO)
 
             # the receiving node, if fee_satoshis matches its previously sent fee_range,
@@ -2720,7 +2798,7 @@ class Peer(Logger, EventListener):
                 our_fee = their_fee
 
             # the receiving node, if the message contains a fee_range
-            elif our_fee_range and their_fee_range:
+            else:
                 overlap_min = max(our_fee_range['min_fee_satoshis'], their_fee_range['min_fee_satoshis'])
                 overlap_max = min(our_fee_range['max_fee_satoshis'], their_fee_range['max_fee_satoshis'])
                 # if there is no overlap between that and its own fee_range
@@ -2728,14 +2806,14 @@ class Peer(Logger, EventListener):
                     # TODO: the receiving node should first send a warning, and fail the channel
                     # only if it doesn't receive a satisfying fee_range after a reasonable amount of time
                     self.schedule_force_closing(chan.channel_id)
-                    raise Exception("There is no overlap between between their and our fee range.")
+                    raise CoopCloseFailure("There is no overlap between their and our fee range.")
                 # otherwise, if it is the funder
                 if is_initiator:
                     # if fee_satoshis is not in the overlap between the sent and received fee_range:
                     if not (overlap_min <= their_fee <= overlap_max):
                         # MUST fail the channel
                         self.schedule_force_closing(chan.channel_id)
-                        raise Exception("Their fee is not in the overlap region, we force closed.")
+                        raise CoopCloseFailure("Their fee is not in the overlap region, we force closed.")
                     # otherwise, MUST reply with the same fee_satoshis.
                     our_fee = their_fee
                 # otherwise (it is not the funder):
@@ -2744,26 +2822,14 @@ class Peer(Logger, EventListener):
                     if fee_range_sent:
                         # fee_satoshis is not the same as the value we sent, we MUST fail the channel
                         self.schedule_force_closing(chan.channel_id)
-                        raise Exception("Expected the same fee as ours, we force closed.")
+                        raise CoopCloseFailure("Expected the same fee as ours, we force closed.")
                     # otherwise:
                     # MUST propose a fee_satoshis in the overlap between received and (about-to-be) sent fee_range.
                     our_fee = (overlap_min + overlap_max) // 2
-            else:
-                # otherwise, if fee_satoshis is not strictly between its last-sent fee_satoshis
-                # and its previously-received fee_satoshis, UNLESS it has since reconnected:
-                if their_previous_fee and not (min(our_fee, their_previous_fee) < their_fee < max(our_fee, their_previous_fee)):
-                    # SHOULD fail the connection.
-                    raise Exception('Their fee is not between our last sent and their last sent fee.')
-                # accept their fee if they are very close
-                if abs(their_fee - our_fee) < 2:
-                    our_fee = their_fee
-                else:
-                    # this will be "strictly between" (as in BOLT2) previous values because of the above
-                    our_fee = (our_fee + their_fee) // 2
 
             return our_fee, our_fee_range
 
-        # Fee negotiation: both parties exchange 'funding_signed' messages.
+        # Fee negotiation: both parties exchange 'closing_signed' messages.
         # The funder sends the first message, the non-funder sends the last message.
         # In the 'modern' case, at most 3 messages are exchanged, because choose_new_fee of the funder either returns their_fee or fails
         their_fee = None
@@ -2845,7 +2911,7 @@ class Peer(Logger, EventListener):
         #    and not added to any set.
         #    Each htlc is only supposed to go through this first loop once when being received.
         for chan_id, chan in self.channels.items():
-            if not chan.can_update_ctx(proposer=LOCAL):
+            if not chan.can_send_ctx_updates():
                 continue
             self.maybe_send_commitment(chan)
             unfulfilled = chan.unfulfilled_htlcs
@@ -2923,6 +2989,10 @@ class Peer(Logger, EventListener):
             if preimage:
                 if self.lnworker.enable_htlc_settle:
                     self.lnworker.set_request_status(htlc_set.get_payment_hash(), PR_PAID)
+                    # FIXME maybe race here: if the peer *now* goes offline, and we are the ultimate receiver of this payment,
+                    #       and then they come back online *after* fulfillment deadline (even after cltv_expiry!),
+                    #       we might still send update_fulfill_htlc.
+                    #       Maybe we should only do that if `lnworker.is_preimage_public(payment_hash)`?
                     self._fulfill_htlc_set(payment_key, preimage)
             if callback:
                 task = asyncio.create_task(callback())
@@ -3000,6 +3070,13 @@ class Peer(Logger, EventListener):
         Optional[Callable[[], Coroutine[Any, Any, None]]],  # callback
     ]:
         """
+        There are 5 types of htlc sets:
+            * non-trampoline, final
+            * non-trampoline, to be forwarded (cannot be MPP)
+            * trampoline, final, first stage
+            * trampoline, final, second stage
+            * trampoline, to be forwarded
+
         Returns what to do next with the given set of htlcs:
             * Fail whole set -> returns error code
             * Settle whole set -> Returns preimage
@@ -3019,37 +3096,35 @@ class Peer(Logger, EventListener):
             return OnionFailureCode.TEMPORARY_NODE_FAILURE, None, None
 
         amount_msat: int = 0  # sum(amount_msat of each htlc)
-        total_msat = None  # type: Optional[int]
+        total_msat_inner_onion = None  # type: Optional[int]
+        total_msat_outer_onion = None  # type: Optional[int]
+        payment_secrets = set()
         payment_hash = mpp_set.get_payment_hash()
         closest_cltv_abs = mpp_set.get_closest_cltv_abs()
         first_htlc_timestamp = mpp_set.get_first_htlc_timestamp()
         processed_onions = {}  # type: dict[ReceivedMPPHtlc, Tuple[ProcessedOnionPacket, Optional[ProcessedOnionPacket]]]
         for mpp_htlc in mpp_set.htlcs:
-            processed_onion = self._process_incoming_onion_packet(
+            outer_onion = self._process_incoming_onion_packet(
                 onion_packet=self._parse_onion_packet(mpp_htlc.unprocessed_onion),
                 payment_hash=payment_hash,
                 is_trampoline=False,  # this is always the outer onion
             )
-            processed_onions[mpp_htlc] = (processed_onion, None)
-            inner_onion = None
-            if processed_onion.trampoline_onion_packet:
-                inner_onion = self._process_incoming_onion_packet(
-                    onion_packet=processed_onion.trampoline_onion_packet,
-                    payment_hash=payment_hash,
-                    is_trampoline=True,
-                )
-                processed_onions[mpp_htlc] = (processed_onion, inner_onion)
-
-            total_msat_outer_onion = processed_onion.total_msat
-            total_msat_inner_onion = inner_onion.total_msat if inner_onion else None
-            if total_msat is None:
-                total_msat = total_msat_inner_onion or total_msat_outer_onion
-
+            inner_onion = self._process_incoming_onion_packet(
+                onion_packet=outer_onion.trampoline_onion_packet,
+                payment_hash=payment_hash,
+                is_trampoline=True,
+            ) if outer_onion.trampoline_onion_packet else None
+            processed_onions[mpp_htlc] = (outer_onion, inner_onion)
+            payment_secrets.add(outer_onion.payment_secret)
             # check total_msat is equal for all htlcs of the set
-            if total_msat != (total_msat_inner_onion or total_msat_outer_onion):
-                _log_fail_reason(f"total_msat is not uniform: {total_msat=} != {processed_onion.total_msat=}")
-                return OnionFailureCode.INCORRECT_OR_UNKNOWN_PAYMENT_DETAILS, None, None
-
+            if total_msat_outer_onion is None:
+                total_msat_outer_onion = outer_onion.total_msat
+            elif total_msat_outer_onion != outer_onion.total_msat:
+                if len(payment_secrets) == 1:
+                    _log_fail_reason(f"total_msat is inconsistent across outer_onions: {total_msat_outer_onion=} {outer_onion.total_msat=}")
+                    return OnionFailureCode.INCORRECT_OR_UNKNOWN_PAYMENT_DETAILS, None, None
+            # total_msat of inner onions will be compared below (compare_trampoline_onions)
+            total_msat_inner_onion = inner_onion.total_msat if inner_onion else None
             amount_msat += mpp_htlc.htlc.amount_msat
 
         # If the set contains outer onions with different payment secrets, the set's payment_key is
@@ -3058,8 +3133,7 @@ class Peer(Logger, EventListener):
         # In this case the amt_to_forward cannot be compared as it may differ between the trampoline parts.
         # However, amt_to_forward should be similar for all onions of a single trampoline part and gets
         # compared in the first stage where the htlc set represents a single trampoline part.
-        outer_onions = [onions[0] for onions in processed_onions.values()]
-        can_have_different_amt_to_fwd = not all(o.payment_secret == outer_onions[0].payment_secret for o in outer_onions)
+        can_have_different_amt_to_fwd = len(payment_secrets) > 1
         trampoline_onions = iter(onions[1] for onions in processed_onions.values())
         if not lnonion.compare_trampoline_onions(trampoline_onions, exclude_amt_to_fwd=can_have_different_amt_to_fwd):
             _log_fail_reason(f"got inconsistent {trampoline_onions=}")
@@ -3077,7 +3151,7 @@ class Peer(Logger, EventListener):
                 fwd_cb = lambda: self.lnworker.maybe_forward_htlc_set(payment_key, processed_htlc_set=processed_onions)
                 return None, None, fwd_cb
 
-        assert payment_hash is not None and total_msat is not None
+        assert payment_hash is not None and total_msat_outer_onion is not None
         # check for expiry over time and potentially fail the whole set if any
         # htlc's cltv becomes too close
         blocks_to_expiry = max(0, closest_cltv_abs - local_height)
@@ -3132,12 +3206,27 @@ class Peer(Logger, EventListener):
                     self.lnworker.received_mpp_htlcs[payment_key] = mpp_set._replace(
                         parent_set_key=trampoline_payment_key,
                     )
-            elif amount_msat >= (total_msat - jit_opening_fees_msat):  # regular mpp or 2nd stage trampoline
-                # set mpp_set as completed as we have received the full total_msat
-                mpp_set = self.lnworker.set_mpp_resolution(
-                    payment_key=payment_key,
-                    new_resolution=RecvMPPResolution.COMPLETE,
-                )
+            else:
+                if not any_trampoline_onion:
+                    # regular mpp
+                    total_msat = total_msat_outer_onion
+                elif not any_trampoline_onion.are_we_final:
+                    # trampoline forwarding
+                    if jit_opening_fees_msat != 0:
+                        _log_fail_reason("not accepting zeroconf channels if forwarding is enabled")
+                        return OnionFailureCode.TEMPORARY_NODE_FAILURE, None, None
+                    total_msat = total_msat_outer_onion
+                else:
+                    # 2nd stage trampoline
+                    assert trampoline_payment_key == payment_key
+                    total_msat = total_msat_inner_onion
+
+                if amount_msat >= (total_msat - jit_opening_fees_msat):
+                    # set mpp_set as completed as we have received the full total_msat
+                    mpp_set = self.lnworker.set_mpp_resolution(
+                        payment_key=payment_key,
+                        new_resolution=RecvMPPResolution.COMPLETE,
+                    )
 
         # check if this set is a trampoline forwarding and potentially return forwarding callback
         # note: all inner trampoline onions are equal (enforced above)

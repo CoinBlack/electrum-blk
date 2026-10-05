@@ -698,17 +698,43 @@ ApplicationWindow
         }
     }
 
+    function showStartupWarnings() {
+        if (!Daemon.currentWallet)
+            return
+        let warnings = Daemon.currentWallet.startupWarnings
+        // show the warnings one after another, as the dialogs are not modal
+        function showWarning(i) {
+            if (i >= warnings.length)
+                return
+            let dialog = app.messageDialog.createObject(app, {
+                title: warnings[i].title,
+                iconSource: Qt.resolvedUrl('../../icons/warning.png'),
+                text: warnings[i].message
+            })
+            dialog.accepted.connect(function() {
+                Daemon.currentWallet.acknowledgeWarning(warnings[i].key)
+            })
+            dialog.closed.connect(function() {
+                showWarning(i + 1)
+            })
+            dialog.open()
+        }
+        showWarning(0)
+    }
+
     Connections {
         target: Daemon
         function onWalletRequiresPassword(name, path) {
             console.log('wallet requires password')
             if (Biometrics.isAvailable && Biometrics.isEnabled && !app._loadingWalletContext) {
-                app._pendingBiometricAuth = {
-                    action: 'load_wallet',
-                    name: name,
-                    path: path
+                if (!app._pendingBiometricAuth) {
+                    app._pendingBiometricAuth = {
+                        action: 'load_wallet',
+                        name: name,
+                        path: path
+                    }
+                    Biometrics.unlock()
                 }
-                Biometrics.unlock()
             } else {
                 showOpenWalletDialog(name, path)
             }
@@ -734,6 +760,7 @@ ApplicationWindow
         }
         function onWalletLoaded() {
             app._loadingWalletContext = null  // either biometric auth or manual auth was successful
+            showStartupWarnings()
         }
     }
 
@@ -838,12 +865,14 @@ ApplicationWindow
 
         if (method !== 'wallet_password_only') {
             if (Biometrics.isAvailable && Biometrics.isEnabled) {
-                app._pendingBiometricAuth = {
-                    qtobject: qtobject,
-                    method: method,
-                    authMessage: authMessage
+                if (!app._pendingBiometricAuth) {
+                    app._pendingBiometricAuth = {
+                        qtobject: qtobject,
+                        method: method,
+                        authMessage: authMessage
+                    }
+                    Biometrics.unlock(authMessage)
                 }
-                Biometrics.unlock(authMessage)
                 return
             }
         }
@@ -899,5 +928,23 @@ ApplicationWindow
 
     property var _lastActive: 0 // record time of last activity
     property bool _lockDialogShown: false
+
+    // We want all Text/Label/etc components to use PlainText by default.
+    // Qt normally defaults to AutoText, which allows rich text.
+    // For our Android builds, we patch Qt at compile-time to change this.
+    // (see "qt-6-10-rich-text-should-be-opt-in.patch")
+    // FIXME other platforms? (e.g. running QML on desktop Linux / dev environment)
+    // This runtime check here aims to prevent regressions by hard-failing.
+    Label {
+        id: richtext_sanity_label
+        Component.onCompleted: {
+            if (richtext_sanity_label.textFormat !== 0 && AppController.isAndroid()) {
+                console.log(
+                    "richtext_sanity_label failed check: expected PlainText, "
+                    + "got " + richtext_sanity_label.textFormat + ". Exiting...")
+                Qt.callLater(Qt.quit)
+            }
+        }
+    }
 
 }

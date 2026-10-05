@@ -14,7 +14,8 @@ from electrum_blk.logging import get_logger
 from electrum_blk.network import TxBroadcastError, BestEffortRequestFailed
 from electrum_blk.transaction import PartialTransaction, Transaction
 from electrum_blk.util import (
-    InvalidPassword, event_listener, AddTransactionException, get_asyncio_loop, NotEnoughFunds, NoDynamicFeeEstimates
+    InvalidPassword, event_listener, AddTransactionException, get_asyncio_loop, NotEnoughFunds, NoDynamicFeeEstimates,
+    UserFacingException,
 )
 from electrum_blk.lnutil import MIN_FUNDING_SAT
 from electrum_blk.plugin import run_hook
@@ -81,6 +82,7 @@ class QEWallet(AuthMixin, QObject, QtEventListener):
     peersUpdated = pyqtSignal()
     seedRetrieved = pyqtSignal()
     messageSigned = pyqtSignal([str], arguments=['signature'])
+    signMessageError = pyqtSignal([str], arguments=['error'])
 
     _network_signal = pyqtSignal(str, object)
 
@@ -111,6 +113,8 @@ class QEWallet(AuthMixin, QObject, QtEventListener):
 
         self._seed = ''
         self._seed_passphrase = ''
+
+        self._otp_on_submit = None  # type: Callable[[str], None]
 
         self.tx_notification_queue = queue.Queue()
         self.tx_notification_last_time = 0
@@ -200,16 +204,20 @@ class QEWallet(AuthMixin, QObject, QtEventListener):
     @qt_event_listener
     def on_event_new_transaction(self, wallet: 'Abstract_Wallet', tx: Transaction):
         if wallet == self.wallet:
-            self._logger.info(f'new transaction {tx.txid()}')
+            self._logger.debug(f'new transaction {tx.txid()}')
             self.add_tx_notification(tx)
-            self.addressCoinModel.setDirty()
+            if self._addressCoinModel is not None:  # only setDirty if it was already initialized
+                self._addressCoinModel.setDirty()
             self.historyModel.setDirty()  # assuming wallet.is_up_to_date triggers after
-            self.balanceChanged.emit()
+            if self.wallet.is_up_to_date():
+                # don't update during sync as this recomputes the balance on each new tx, blocking the UI thread.
+                # on_event_wallet_updated emits balanceChanged once we are up-to-date.
+                self.balanceChanged.emit()
 
     @qt_event_listener
     def on_event_adb_tx_height_changed(self, adb, txid, old_height, new_height):
         if adb == self.wallet.adb:
-            self._logger.info(f'tx_height_changed {txid}. {old_height} -> {new_height}')
+            self._logger.debug(f'tx_height_changed {txid}. {old_height} -> {new_height}')
             self.historyModel.setDirty()  # assuming wallet.is_up_to_date triggers after
 
     @qt_event_listener
@@ -218,7 +226,8 @@ class QEWallet(AuthMixin, QObject, QtEventListener):
         # is deleted along with multiple associated txs
         if wallet == self.wallet:
             self._logger.info(f'removed transaction {tx.txid()}')
-            self.addressCoinModel.setDirty()
+            if self._addressCoinModel is not None:
+                self._addressCoinModel.setDirty()
             self.historyModel.setDirty()
             self.balanceChanged.emit()
 
@@ -519,6 +528,18 @@ class QEWallet(AuthMixin, QObject, QtEventListener):
             return self.wallet.lnworker.lnpeermgr.num_peers()
         return 0
 
+    @pyqtProperty('QVariantList', notify=dataChanged)
+    def startupWarnings(self):
+        return [{
+            'key': warning.key,
+            'title': warning.title,
+            'message': warning.message,
+        } for warning in self.wallet.get_startup_warnings()]
+
+    @pyqtSlot(str)
+    def acknowledgeWarning(self, key: str):
+        self.wallet.acknowledge_warning(key)
+
     @pyqtSlot()
     def enableLightning(self):
         self.wallet.init_lightning(password=self.password)
@@ -587,12 +608,12 @@ class QEWallet(AuthMixin, QObject, QtEventListener):
             self.broadcast(tx)
 
     # this assumes a 2fa wallet, but there are no other tc_sign_wrapper hooks, so that's ok
-    def on_sign_failed(self, cb: Callable[[], None] = None, error: str = None):
+    def on_sign_failed(self, cb: Callable[[], None] | None = None, error: str | None = None):
         self.otpFailed.emit('error', error)
         if cb:
             cb()
 
-    def request_otp(self, on_submit):
+    def request_otp(self, on_submit: Callable[[str], None]):
         self._otp_on_submit = on_submit
         self.otpRequested.emit()
 
@@ -649,7 +670,7 @@ class QEWallet(AuthMixin, QObject, QtEventListener):
         self.paymentAuthRejected.emit()
 
     @auth_protect(message=_('Pay lightning invoice?'), reject='ln_auth_rejected')
-    def pay_lightning_invoice(self, invoice: 'Invoice', amount_msat: int = None):
+    def pay_lightning_invoice(self, invoice: 'Invoice', amount_msat: int | None = None):
         # at this point, the user confirmed the payment, potentially with an override amount.
         # we save the invoice with the override amount if there was no amount defined in the invoice.
         # (this is similar to what the desktop client does)
@@ -784,6 +805,8 @@ class QEWallet(AuthMixin, QObject, QtEventListener):
     def importChannelBackup(self, backup_str):
         try:
             self.wallet.lnworker.import_channel_backup(backup_str)
+        except UserFacingException as e:
+            self.importChannelBackupFailed.emit(str(e))
         except Exception as e:
             self._logger.debug(f'could not import channel backup: {repr(e)}')
             self.importChannelBackupFailed.emit(f'Failed to import backup:\n\n{str(e)}')
@@ -841,7 +864,11 @@ class QEWallet(AuthMixin, QObject, QtEventListener):
     @pyqtSlot(str, str)
     @auth_protect(message=_("Sign message?"))
     def signMessage(self, address, message):
-        sig = self.wallet.sign_message(address, message, self.password)
+        try:
+            sig = self.wallet.sign_message(address=address, message=message, password=self.password)
+        except UserFacingException as e:
+            self.signMessageError.emit(str(e))
+            return
         result = base64.b64encode(sig).decode('ascii')
         self.messageSigned.emit(result)
 

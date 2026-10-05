@@ -47,7 +47,7 @@ from electrum_blk.i18n import _
 from electrum_blk.plugin import run_hook
 from electrum_blk.transaction import SerializationError, Transaction, PartialTransaction, TxOutpoint, TxinDataFetchProgress
 from electrum_blk.logging import get_logger
-from electrum_blk.util import (ShortID, get_asyncio_loop, UI_UNIT_NAME_TXSIZE_VBYTES, delta_time_str,
+from electrum_blk.util import (get_asyncio_loop, UI_UNIT_NAME_TXSIZE_VBYTES, delta_time_str,
                            UserCancelled)
 from electrum_blk.network import Network
 from electrum_blk.wallet import TxSighashRiskLevel, TxSighashDanger
@@ -278,16 +278,12 @@ class TxInOutWidget(QWidget):
         o_text.clear()
         o_text.setFont(QFont(MONOSPACE_FONT))
         o_text.setReadOnly(True)
-        tx_height, tx_pos = None, None
         tx_hash = self.tx.txid()
-        if tx_hash:
-            tx_mined_info = self.wallet.adb.get_tx_height(tx_hash)
-            tx_height = tx_mined_info.height()
-            tx_pos = tx_mined_info.txpos
+        tx_mined_info = self.wallet.adb.get_tx_height(tx_hash) if tx_hash else None
         cursor = o_text.textCursor()
         for txout_idx, o in enumerate(self.tx.outputs()):
-            if tx_height is not None and tx_pos is not None and tx_pos >= 0:
-                short_id = ShortID.from_components(tx_height, tx_pos, txout_idx)
+            if tx_mined_info and tx_mined_info.short_id():
+                short_id = f"{tx_mined_info.short_id()}x{txout_idx}"
             elif tx_hash:
                 short_id = TxOutpoint(bytes.fromhex(tx_hash), txout_idx).short_name()
             else:
@@ -1023,6 +1019,7 @@ class TxDialog(QDialog, MessageBoxMixin):
 
         fee_hbox = QHBoxLayout()
         self.fee_label = TxDetailLabel()
+        self.fee_label.setTextFormat(Qt.TextFormat.RichText)
         fee_hbox.addWidget(self.fee_label)
         self.fee_warning_icon = QLabel()
         pixmap = QPixmap(icon_path("warning"))
@@ -1125,6 +1122,7 @@ class TxOutputColoring:
         font.setPointSize(font.pointSize() - 1)
         self.legend_label.setFont(font)
         self.legend_label.setVisible(False)
+        self.legend_label.setTextFormat(Qt.TextFormat.RichText)
         self.text_char_format = QTextCharFormat()
         self.text_char_format.setBackground(QBrush(self.color))
         self.text_char_format.setToolTip(tooltip)

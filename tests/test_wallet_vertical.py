@@ -12,7 +12,7 @@ from electrum_blk.storage import WalletStorage
 from electrum_blk import SimpleConfig
 from electrum_blk import util
 from electrum_blk.address_synchronizer import TX_HEIGHT_UNCONFIRMED, TX_HEIGHT_UNCONF_PARENT, TX_HEIGHT_LOCAL, TX_HEIGHT_FUTURE
-from electrum_blk.wallet import (sweep, Multisig_Wallet, Standard_Wallet, Imported_Wallet,
+from electrum_blk.wallet import (sweep, sweep_preparations, Multisig_Wallet, Standard_Wallet, Imported_Wallet,
                              Abstract_Wallet, CannotBumpFee, BumpFeeStrategy,
                              TransactionPotentiallyDangerousException,
                              TransactionDangerousException,
@@ -879,7 +879,7 @@ class TestWalletSending(ElectrumTestCase):
         wallet1.sign_transaction(tx, password=None)
 
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
         tx_copy = tx_from_any(tx.serialize())
         self.assertTrue(wallet1.is_mine(wallet1.adb.get_txin_address(tx_copy.inputs()[0])))
@@ -895,7 +895,7 @@ class TestWalletSending(ElectrumTestCase):
         wallet2.sign_transaction(tx, password=None)
 
         self.assertTrue(tx.is_complete())
-        self.assertFalse(tx.is_segwit())
+        self.assertFalse(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
         tx_copy = tx_from_any(tx.serialize())
         self.assertTrue(wallet2.is_mine(wallet2.adb.get_txin_address(tx_copy.inputs()[0])))
@@ -946,7 +946,7 @@ class TestWalletSending(ElectrumTestCase):
         wallet1b.sign_transaction(tx, password=None)
 
         self.assertTrue(tx.is_complete())
-        self.assertFalse(tx.is_segwit())
+        self.assertFalse(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
         tx_copy = tx_from_any(tx.serialize())
         self.assertTrue(wallet1a.is_mine(wallet1a.adb.get_txin_address(tx_copy.inputs()[0])))
@@ -965,7 +965,7 @@ class TestWalletSending(ElectrumTestCase):
         wallet2.sign_transaction(tx, password=None)
 
         self.assertTrue(tx.is_complete())
-        self.assertFalse(tx.is_segwit())
+        self.assertFalse(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
         tx_copy = tx_from_any(tx.serialize())
         self.assertTrue(wallet2.is_mine(wallet2.adb.get_txin_address(tx_copy.inputs()[0])))
@@ -1040,7 +1040,7 @@ class TestWalletSending(ElectrumTestCase):
 
         self.assertTrue(tx.is_complete())
         self.assertEqual((2, 2), tx.signature_count())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
         tx_copy = tx_from_any(tx.serialize())
         self.assertTrue(wallet1a.is_mine(wallet1a.adb.get_txin_address(tx_copy.inputs()[0])))
@@ -1067,7 +1067,7 @@ class TestWalletSending(ElectrumTestCase):
 
         self.assertTrue(tx.is_complete())
         self.assertEqual((2, 2), tx.signature_count())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
         tx_copy = tx_from_any(tx.serialize())
         self.assertTrue(wallet2a.is_mine(wallet2a.adb.get_txin_address(tx_copy.inputs()[0])))
@@ -1110,7 +1110,7 @@ class TestWalletSending(ElectrumTestCase):
         wallet1a.sign_transaction(tx, password=None)
 
         self.assertTrue(tx.is_complete())
-        self.assertFalse(tx.is_segwit())
+        self.assertFalse(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
         tx_copy = tx_from_any(tx.serialize())
         self.assertTrue(wallet1a.is_mine(wallet1a.adb.get_txin_address(tx_copy.inputs()[0])))
@@ -1126,7 +1126,7 @@ class TestWalletSending(ElectrumTestCase):
         wallet2.sign_transaction(tx, password=None)
 
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
         tx_copy = tx_from_any(tx.serialize())
         self.assertTrue(wallet2.is_mine(wallet2.adb.get_txin_address(tx_copy.inputs()[0])))
@@ -1244,7 +1244,7 @@ class TestWalletSending(ElectrumTestCase):
         wallet.sign_transaction(tx, password=None)
 
         self.assertTrue(tx.is_complete())
-        self.assertFalse(tx.is_segwit())
+        self.assertFalse(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
         tx_copy = tx_from_any(tx.serialize())
         self.assertTrue(wallet.is_mine(wallet.adb.get_txin_address(tx_copy.inputs()[0])))
@@ -1265,7 +1265,7 @@ class TestWalletSending(ElectrumTestCase):
 
         wallet.sign_transaction(tx, password=None)
         self.assertTrue(tx.is_complete())
-        self.assertFalse(tx.is_segwit())
+        self.assertFalse(tx.is_any_segwit())
         tx_copy = tx_from_any(tx.serialize())
 
         wallet.adb.receive_tx_callback(tx, tx_height=TX_HEIGHT_UNCONFIRMED)
@@ -1298,7 +1298,7 @@ class TestWalletSending(ElectrumTestCase):
 
         wallet.sign_transaction(tx, password=None)
         self.assertTrue(tx.is_complete())
-        self.assertFalse(tx.is_segwit())
+        self.assertFalse(tx.is_any_segwit())
         tx_copy = tx_from_any(tx.serialize())
 
         wallet.adb.receive_tx_callback(tx, tx_height=TX_HEIGHT_UNCONFIRMED)
@@ -1331,7 +1331,7 @@ class TestWalletSending(ElectrumTestCase):
 
         wallet.sign_transaction(tx, password=None)
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         tx_copy = tx_from_any(tx.serialize())
 
         wallet.adb.receive_tx_callback(tx, tx_height=TX_HEIGHT_UNCONFIRMED)
@@ -1364,7 +1364,7 @@ class TestWalletSending(ElectrumTestCase):
 
         wallet.sign_transaction(tx, password=None)
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         tx_copy = tx_from_any(tx.serialize())
 
         wallet.adb.receive_tx_callback(tx, tx_height=TX_HEIGHT_UNCONFIRMED)
@@ -1445,7 +1445,7 @@ class TestWalletSending(ElectrumTestCase):
         wallet.adb.receive_tx_callback(tx_to_bump, tx_height=TX_HEIGHT_UNCONFIRMED)
 
         self.assertTrue(tx_to_bump.is_complete())
-        self.assertTrue(tx_to_bump.is_segwit())
+        self.assertTrue(tx_to_bump.is_any_segwit())
         self.assertEqual(2, len(tx_to_bump.inputs()))
         self.assertEqual(3, len(tx_to_bump.outputs()))
         self.assertTrue(wallet.can_rbf_tx(tx_to_bump))
@@ -1471,7 +1471,7 @@ class TestWalletSending(ElectrumTestCase):
         wallet.sign_transaction(tx, password=None)
 
         self.assertTrue(tx.is_complete())
-        self.assertFalse(tx.is_segwit())
+        self.assertFalse(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
         tx_copy = tx_from_any(tx.serialize())
 
@@ -1502,7 +1502,7 @@ class TestWalletSending(ElectrumTestCase):
         wallet.sign_transaction(tx, password=None)
 
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
         tx_copy = tx_from_any(tx.serialize())
         self.assertTrue(wallet.is_mine(wallet.adb.get_txin_address(tx_copy.inputs()[0])))
@@ -1523,7 +1523,7 @@ class TestWalletSending(ElectrumTestCase):
 
         wallet.sign_transaction(tx, password=None)
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         tx_copy = tx_from_any(tx.serialize())
 
         wallet.adb.receive_tx_callback(tx, tx_height=TX_HEIGHT_UNCONFIRMED)
@@ -1574,7 +1574,7 @@ class TestWalletSending(ElectrumTestCase):
 
         wallet.sign_transaction(tx, password=None)
         self.assertFalse(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         tx_copy = tx_from_any(tx.serialize())
 
     async def _bump_fee_when_not_all_inputs_are_ismine_subcase_all_outputs_are_ismine(self, *, simulate_moving_txs, config):
@@ -1625,7 +1625,7 @@ class TestWalletSending(ElectrumTestCase):
 
         wallet.sign_transaction(tx, password=None)
         self.assertFalse(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         tx_copy = tx_from_any(tx.serialize())
 
 
@@ -1650,7 +1650,7 @@ class TestWalletSending(ElectrumTestCase):
         wallet.sign_transaction(tx, password=None)
 
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
         tx_copy = tx_from_any(tx.serialize())
         self.assertTrue(wallet.is_mine(wallet.adb.get_txin_address(tx_copy.inputs()[0])))
@@ -1670,7 +1670,7 @@ class TestWalletSending(ElectrumTestCase):
 
         wallet.sign_transaction(tx, password=None)
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         tx_copy = tx_from_any(tx.serialize())
 
         wallet.adb.receive_tx_callback(tx, tx_height=TX_HEIGHT_UNCONFIRMED)
@@ -1697,7 +1697,7 @@ class TestWalletSending(ElectrumTestCase):
         wallet.sign_transaction(tx, password=None)
 
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
         tx_copy = tx_from_any(tx.serialize())
         self.assertTrue(wallet.is_mine(wallet.adb.get_txin_address(tx_copy.inputs()[0])))
@@ -1718,7 +1718,7 @@ class TestWalletSending(ElectrumTestCase):
 
         wallet.sign_transaction(tx, password=None)
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         tx_copy = tx_from_any(tx.serialize())
 
         wallet.adb.receive_tx_callback(tx, tx_height=TX_HEIGHT_UNCONFIRMED)
@@ -1746,7 +1746,7 @@ class TestWalletSending(ElectrumTestCase):
         wallet.sign_transaction(tx, password=None)
 
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
         tx_copy = tx_from_any(tx.serialize())
         self.assertTrue(wallet.is_mine(wallet.adb.get_txin_address(tx_copy.inputs()[0])))
@@ -1773,7 +1773,7 @@ class TestWalletSending(ElectrumTestCase):
 
         wallet.sign_transaction(tx, password=None)
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         tx_copy = tx_from_any(tx.serialize())
 
         wallet.adb.receive_tx_callback(tx, tx_height=TX_HEIGHT_UNCONFIRMED)
@@ -1800,7 +1800,7 @@ class TestWalletSending(ElectrumTestCase):
         wallet.sign_transaction(tx, password=None)
 
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
         tx_copy = tx_from_any(tx.serialize())
         self.assertTrue(wallet.is_mine(wallet.adb.get_txin_address(tx_copy.inputs()[0])))
@@ -1830,7 +1830,7 @@ class TestWalletSending(ElectrumTestCase):
         wallet.sign_transaction(tx, password=None)
 
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
         tx_copy = tx_from_any(tx.serialize())
         self.assertTrue(wallet.is_mine(wallet.adb.get_txin_address(tx_copy.inputs()[0])))
@@ -1854,7 +1854,7 @@ class TestWalletSending(ElectrumTestCase):
         wallet.sign_transaction(tx, password=None)
 
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         self.assertEqual(2, len(tx.inputs()))
         tx_copy = tx_from_any(tx.serialize())
         self.assertTrue(wallet.is_mine(wallet.adb.get_txin_address(tx_copy.inputs()[0])))
@@ -1892,7 +1892,7 @@ class TestWalletSending(ElectrumTestCase):
         wallet.adb.receive_tx_callback(tx1, tx_height=TX_HEIGHT_UNCONFIRMED)
 
         self.assertTrue(tx1.is_complete())
-        self.assertTrue(tx1.is_segwit())
+        self.assertTrue(tx1.is_any_segwit())
         self.assertEqual(2, len(tx1.inputs()))
         self.assertEqual(3, len(tx1.outputs()))
 
@@ -1911,7 +1911,7 @@ class TestWalletSending(ElectrumTestCase):
         wallet.sign_transaction(tx2, password=None)
 
         self.assertTrue(tx2.is_complete())
-        self.assertTrue(tx2.is_segwit())
+        self.assertTrue(tx2.is_any_segwit())
         self.assertEqual(3, len(tx2.inputs()))
         self.assertEqual(4, len(tx2.outputs()))
 
@@ -2206,7 +2206,7 @@ class TestWalletSending(ElectrumTestCase):
         wallet.sign_transaction(tx, password=None)
 
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
         tx_copy = tx_from_any(tx.serialize())
 
@@ -2336,10 +2336,34 @@ class TestWalletSending(ElectrumTestCase):
 
         privkeys = ['p2wpkh:cV2BvgtpLNX328m4QrhqycBGA6EkZUFfHM9kKjVXjfyD53uNfC4q',]
         network = NetworkMock()
-        dest_addr = 'tblk1qhuy2e45lrdcp9s4ezeptx5kwxcnahzgpzesn4h'
-        tx = await sweep(privkeys, network=network, to_address=dest_addr, fee_policy=FixedFeePolicy(500), locktime=2420010, tx_version=2)
+        dest_addr = 'tb1qhuy2e45lrdcp9s4ezeptx5kwxcnahzgpar9scc'
 
-        tx_copy = tx_from_any(tx.serialize())
+        with self.subTest(msg="simple sweep"):
+            tx = await sweep(privkeys, network=network, to_address=dest_addr, fee_policy=FixedFeePolicy(500), locktime=2420010, tx_version=2)
+
+            tx_copy = tx_from_any(tx.serialize())
+            self.assertEqual('02000000000101e328aeb4f9dc1b85a2709ce59b0478a15ed9fb5e7f84fb62422f99b8cd6ad7010000000000fdffffff01087e010000000000160014bf08acd69f1b7012c2b91642b352ce3627db89010247304402204993099c4663d92ef4c9a28b3f45a40a6585754fe22ecfdc0a76c43fda7c9d04022006a75e0fd3ad1862d8e81015a71d2a1489ec7a9264e6e63b8fe6bb90c27e799b0121038ca94e7c715152fd89803c2a40a934c7c4035fb87b3cba981cd1e407369cfe312aed2400',
+                             str(tx_copy))
+            self.assertEqual('e02641928e5394332eec0a36c196f1e30e2b8645ebbeef89d6cc27bf237ae548', tx_copy.txid())
+            self.assertEqual('b062d2e19880c66b36e80b823c2d00a2769658d1e574ff854dab15efd8fd7da8', tx_copy.wtxid())
+
+        with self.subTest(msg="watch-only wallet self-sweep"):
+            # a watch only wallet with imported address must still be able to self-sweep the address (though kind of pointless)
+            # (see https://github.com/spesmilo/electrum/issues/10891)
+            swept_addr = 'tb1q6vu7lmtu6hfg6vvetjh3pwyh82dp83jkm6rf05'
+            wallet = WalletIntegrityHelper.create_imported_wallet(config=self.config, privkeys=False)
+            wallet.import_addresses([swept_addr])
+            self.assertTrue(wallet.is_mine(swept_addr))
+            self.assertIsNone(wallet.get_script_descriptor_for_address(swept_addr))
+            coins, keypairs = await sweep_preparations(privkeys, network=network)
+            tx = wallet.make_unsigned_transaction(
+                coins=coins,
+                outputs=[PartialTxOutput.from_address_and_value(dest_addr, value='!')],
+                fee_policy=FixedFeePolicy(500),
+                is_sweep=True,
+            )
+            tx.sign(keypairs)
+            self.assertTrue(tx.is_complete())
 
     async def test_coinjoin_between_two_p2wpkh_electrum_seeds(self):
         wallet1 = WalletIntegrityHelper.create_standard_wallet(
@@ -2393,7 +2417,11 @@ class TestWalletSending(ElectrumTestCase):
         tx = tx_from_any(tx2.serialize_as_bytes().hex())  # simulates moving partial txn between cosigners
 
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
+        self.assertEqual("02000000000102e546bc0a7c9736e82a07df5c24fe6d05df58a310dc376cf09302842ca7264f930100000000fdffffffd5bd4f8ebe63f0521f94e2d174b95d4327757a7e74fda3c9ff5c08796318f8d80000000000fdffffff04988d07000000000016001453675a59be834aa6d139c3ebea56646a9b160c4cb82e0f0000000000160014250dbabd5761d7e0773d6147699938dd08ec2eb88096980000000000160014b93357242ad5a6fff8930ce9dadd8ba44a6c44498096980000000000160014e2672a59431c261903c9469aa082202f37a859a40247304402205106349e1644223b5128009376fc497477227172ac28a54942da58014869d4f502205aa60ba466f53b52c5933c39cfa1ab735c1722029039d7a5a7577789ae891389012102275b4fba18bb34e5198a9cfb3e940306658839079b3bda50d504a9cf2bae36f402473044022003010ece3471f7a23f31b2a0fd157f88f7d436c0c73ec408043c7f5dd2b7ccbb02204bd21f5829555c3f94fbd0b5295d1071f739c6b8f2682f8a688e34d0ad26c90101210205e8db1b1906219782fadb18e763c0874a3118a17ce931e01707cbde194e04156f851800",
+                         str(tx))
+        self.assertEqual('4a33546eeaed0e25f9e6a58968be92a804a7e70a5332360dabc79f93cd059752', tx.txid())
+        self.assertEqual('32584f78479a1b6f7aeff4f4d0e0323b67c36ce155d010f9b324b6189b91a540', tx.wtxid())
 
         wallet1.adb.receive_tx_callback(tx, tx_height=TX_HEIGHT_UNCONFIRMED)
         wallet2.adb.receive_tx_callback(tx, tx_height=TX_HEIGHT_UNCONFIRMED)
@@ -2436,7 +2464,8 @@ class TestWalletSending(ElectrumTestCase):
         tx = tx_from_any(partial_tx)  # simulates moving partial txn between cosigners
 
         self.assertFalse(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
+        self.assertEqual('652c1a903a659c9fabb9caf4a2281a9fbcc59cd598bf6edc88cd60f940c2352c', tx.txid())
 
         self.assertEqual('tblk1qxq5crk6yadw66rdt8xr3xj5ctvmq4c3z0fl85yx0ar8l6ga6ehyss2vw98', tx.inputs()[0].address)
         self.assertEqual('tblk1qfrlx5pza9vmez6vpx7swt8yp0nmgz3qapg843x',                     tx.outputs()[0].address)
@@ -2497,7 +2526,7 @@ class TestWalletSending(ElectrumTestCase):
         wallet.sign_transaction(tx, password=None)
 
         self.assertTrue(tx.is_complete())
-        self.assertFalse(tx.is_segwit())
+        self.assertFalse(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
         tx_copy = tx_from_any(tx.serialize())
         self.assertTrue(wallet.is_mine(wallet.adb.get_txin_address(tx_copy.inputs()[0])))
@@ -2533,7 +2562,7 @@ class TestWalletSending(ElectrumTestCase):
         wallet.sign_transaction(tx, password=None)
 
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
         tx_copy = tx_from_any(tx.serialize())
         self.assertTrue(wallet.is_mine(wallet.adb.get_txin_address(tx_copy.inputs()[0])))
@@ -2556,7 +2585,7 @@ class TestWalletSending(ElectrumTestCase):
 
         wallet.sign_transaction(tx, password=None)
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         tx_copy = tx_from_any(tx.serialize())
 
         wallet.adb.receive_tx_callback(tx, tx_height=TX_HEIGHT_UNCONFIRMED)
@@ -2583,7 +2612,7 @@ class TestWalletSending(ElectrumTestCase):
         wallet.sign_transaction(tx, password=None)
 
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
         tx_copy = tx_from_any(tx.serialize())
         self.assertTrue(wallet.is_mine(wallet.adb.get_txin_address(tx_copy.inputs()[0])))
@@ -2606,7 +2635,7 @@ class TestWalletSending(ElectrumTestCase):
 
         wallet.sign_transaction(tx, password=None)
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         tx_copy = tx_from_any(tx.serialize())
 
         wallet.adb.receive_tx_callback(tx, tx_height=TX_HEIGHT_UNCONFIRMED)
@@ -2657,7 +2686,7 @@ class TestWalletSending(ElectrumTestCase):
 
         wallet.sign_transaction(tx, password=None)
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         tx_copy = tx_from_any(tx.serialize())
 
     async def _dscancel_sufficient_fee_increase(self, *, simulate_moving_txs, config):
@@ -2677,7 +2706,7 @@ class TestWalletSending(ElectrumTestCase):
         wallet.adb.receive_tx_callback(tx_to_cancel, tx_height=TX_HEIGHT_UNCONFIRMED)
 
         self.assertTrue(tx_to_cancel.is_complete())
-        self.assertTrue(tx_to_cancel.is_segwit())
+        self.assertTrue(tx_to_cancel.is_any_segwit())
         self.assertEqual(2, len(tx_to_cancel.inputs()))
         self.assertEqual(3, len(tx_to_cancel.outputs()))
 
@@ -2704,7 +2733,7 @@ class TestWalletSending(ElectrumTestCase):
         tx.locktime = 1938861
         tx.version = 2
         self.assertFalse(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         wallet.adb.add_transaction(tx)
 
         # create tx2, which spends from unsigned tx1
@@ -2715,7 +2744,7 @@ class TestWalletSending(ElectrumTestCase):
         tx.locktime = 1938863
         tx.version = 2
         self.assertFalse(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         wallet.adb.add_transaction(tx)
 
         coins = wallet.get_spendable_coins(domain=None)
@@ -3124,7 +3153,7 @@ class TestWalletSending(ElectrumTestCase):
                     partial_tx = tx.serialize_as_bytes().hex()
                 # load tx into cosignerB's online wallet
                 tx = tx_from_any(partial_tx)
-                self.assertFalse(tx.is_segwit())
+                self.assertFalse(tx.is_any_segwit())
                 self.assertFalse(tx.is_complete())
                 tx.add_info_from_wallet(wallet1b)
 
@@ -3292,7 +3321,7 @@ class TestWalletOfflineSigning(ElectrumTestCase):
 
         self.assertFalse(tx.is_complete())
         self.assertEqual((0, 1), tx.signature_count())
-        self.assertFalse(tx.is_segwit())
+        self.assertFalse(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
         partial_tx = tx.serialize_as_bytes().hex()
         tx_copy = tx_from_any(partial_tx)  # simulates moving partial txn between cosigners
@@ -3303,7 +3332,11 @@ class TestWalletOfflineSigning(ElectrumTestCase):
         tx = wallet_offline.sign_transaction(tx_copy, password=None)
         self.assertTrue(tx.is_complete())
         self.assertEqual((1, 1), tx.signature_count())
-        self.assertFalse(tx.is_segwit())
+        self.assertFalse(tx.is_any_segwit())
+        self.assertEqual('01000000015608436ec7dc01c95ca1ca91519f2dc62b6613ac3d6304cb56462f6081059e3b020000008a47304402206bed3e02af8a38f6ba2fa3bf5908cb8c643aa62e78e8de6d9af2e19dec55fafc0220039cc1d81d4e5e0292bbc54ea92b8ec4ec016d4828eedc8975a66952cedf13a1014104e79eb77f2f3f989f5e9d090bc0af50afeb0d5bd6ec916f2022c5629ed022e84a87584ef647d69f073ea314a0f0c110ebe24ad64bc1922a10819ea264fc3f35f5fdffffff02a02526000000000016001423a3878d93d5acac68e7245a4433169d3d455087585d7200000000001976a914b6a6bbbc4cf9da58786a8acc58291e218d52130688acff121600',
+                         str(tx))
+        self.assertEqual('06032230d0bf6a277bc4f8c39e3311a712e0e614626d0dea7cc9f592abfae5d8', tx.txid())
+        self.assertEqual('06032230d0bf6a277bc4f8c39e3311a712e0e614626d0dea7cc9f592abfae5d8', tx.wtxid())
 
     async def test_sending_offline_xprv_online_xpub_p2pkh(self):
         wallet_offline = WalletIntegrityHelper.create_standard_wallet(
@@ -3329,7 +3362,7 @@ class TestWalletOfflineSigning(ElectrumTestCase):
         tx.version = 2
 
         self.assertFalse(tx.is_complete())
-        self.assertFalse(tx.is_segwit())
+        self.assertFalse(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
 
         orig_tx = tx
@@ -3348,7 +3381,9 @@ class TestWalletOfflineSigning(ElectrumTestCase):
                 # sign tx
                 tx = wallet_offline.sign_transaction(tx_copy, password=None, ignore_warnings=True)
                 self.assertTrue(tx.is_complete())
-                self.assertFalse(tx.is_segwit())
+                self.assertFalse(tx.is_any_segwit())
+                self.assertEqual('d9c21696eca80321933e7444ca928aaf25eeda81aaa2f4e5c085d4d0a9cf7aa7', tx.txid())
+                self.assertEqual('d9c21696eca80321933e7444ca928aaf25eeda81aaa2f4e5c085d4d0a9cf7aa7', tx.wtxid())
 
     async def test_sending_offline_xprv_online_xpub_p2wpkh_p2sh(self):
         wallet_offline = WalletIntegrityHelper.create_standard_wallet(
@@ -3374,7 +3409,7 @@ class TestWalletOfflineSigning(ElectrumTestCase):
         tx.version = 2
 
         self.assertFalse(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
         partial_tx = tx.serialize_as_bytes().hex()
         tx_copy = tx_from_any(partial_tx)  # simulates moving partial txn between cosigners
@@ -3384,7 +3419,9 @@ class TestWalletOfflineSigning(ElectrumTestCase):
         # sign tx
         tx = wallet_offline.sign_transaction(tx_copy, password=None)
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
+        self.assertEqual('3f0d188519237478258ad2bf881643618635d11c2bb95512e830fcf2eda3c522', tx.txid())
+        self.assertEqual('27b78ec072a403b0545258e7a1a8d494e4b6fd48bf77f4251a12160c92207cbc', tx.wtxid())
 
     async def test_sending_offline_xprv_online_xpub_p2wpkh(self):
         wallet_offline = WalletIntegrityHelper.create_standard_wallet(
@@ -3411,7 +3448,7 @@ class TestWalletOfflineSigning(ElectrumTestCase):
 
         self.assertFalse(tx.is_complete())
         self.assertEqual((0, 1), tx.signature_count())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
 
         orig_tx = tx
@@ -3431,7 +3468,9 @@ class TestWalletOfflineSigning(ElectrumTestCase):
                 tx = wallet_offline.sign_transaction(tx_copy, password=None)
                 self.assertTrue(tx.is_complete())
                 self.assertEqual((1, 1), tx.signature_count())
-                self.assertTrue(tx.is_segwit())
+                self.assertTrue(tx.is_any_segwit())
+                self.assertEqual('ee76c0c6da87f0eb5ab4d1ae05d3942512dcd3c4c42518f9d3619e74400cfc1f', tx.txid())
+                self.assertEqual('484e350beaa722a744bb3e2aa38de005baa8526d86536d6143e5814355acf775', tx.wtxid())
 
     async def test_offline_signing_beyond_gap_limit(self):
         wallet_offline = WalletIntegrityHelper.create_standard_wallet(
@@ -3457,7 +3496,7 @@ class TestWalletOfflineSigning(ElectrumTestCase):
         tx.version = 2
 
         self.assertFalse(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
         self.assertEqual(1, len(tx.inputs()))
         partial_tx = tx.serialize_as_bytes().hex()
         tx_copy = tx_from_any(partial_tx)  # simulates moving partial txn between cosigners
@@ -3467,7 +3506,9 @@ class TestWalletOfflineSigning(ElectrumTestCase):
         # sign tx
         tx = wallet_offline.sign_transaction(tx_copy, password=None)
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
+        self.assertEqual('ee76c0c6da87f0eb5ab4d1ae05d3942512dcd3c4c42518f9d3619e74400cfc1f', tx.txid())
+        self.assertEqual('484e350beaa722a744bb3e2aa38de005baa8526d86536d6143e5814355acf775', tx.wtxid())
 
     async def test_signing_where_offline_ks_does_not_have_keyorigin_but_psbt_contains_it(self):
         # keystore has intermediate xprv without root fp; tx contains root fp and full path.
@@ -3512,7 +3553,9 @@ class TestWalletOfflineSigning(ElectrumTestCase):
         # sign tx
         tx = wallet_offline.sign_transaction(tx_copy, password=None)
         self.assertTrue(tx.is_complete())
-        self.assertFalse(tx.is_segwit())
+        self.assertFalse(tx.is_any_segwit())
+        self.assertEqual('e56da664631b8c666c6df38ec80c954c4ac3c4f56f040faf0070e4681e937fc4', tx.txid())
+        self.assertEqual('e56da664631b8c666c6df38ec80c954c4ac3c4f56f040faf0070e4681e937fc4', tx.wtxid())
 
     async def test_sending_offline_wif_online_addr_p2wpkh_p2sh(self):
         wallet_offline = WalletIntegrityHelper.create_imported_wallet(privkeys=True, config=self.config)
@@ -3543,7 +3586,9 @@ class TestWalletOfflineSigning(ElectrumTestCase):
             "sh(wpkh(03845818239fe468a9e7c7ae1a3d3653a8333f89ff316a771a3acf6854b4d8c6db))",
             tx.inputs()[0].script_descriptor.to_string_no_checksum())
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
+        self.assertEqual('7642816d051aa3b333b6564bb6e44fe3a5885bfe7db9860dfbc9973a5c9a6562', tx.txid())
+        self.assertEqual('9bb9949974954613945756c48ca5525cd5cba1b667ccb10c7a53e1ed076a1117', tx.wtxid())
 
     async def test_sending_offline_wif_online_addr_p2wpkh(self):
         wallet_offline = WalletIntegrityHelper.create_imported_wallet(privkeys=True, config=self.config)
@@ -3571,7 +3616,9 @@ class TestWalletOfflineSigning(ElectrumTestCase):
         # sign tx
         tx = wallet_offline.sign_transaction(tx_copy, password=None)
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
+        self.assertEqual('f8039bd85279f2b5698f15d47f2e338d067d09af391bd8a19467aa94d03f280c', tx.txid())
+        self.assertEqual('3b7cc3c3352bbb43ddc086487ac696e09f2863c3d9e8636721851b8008a83ffa', tx.wtxid())
 
     async def test_signing_mixed_input_script_types(self):
         """Create a tx that spends mixed non-segwit and segwit UTXOs, and try to offline-sign that."""
@@ -3608,7 +3655,11 @@ class TestWalletOfflineSigning(ElectrumTestCase):
         # sign tx
         tx = wallet_offline.sign_transaction(tx_copy, password=None)
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
+        self.assertEqual('020000000001032079f96374ee9641d9a64f0d4bfc13c0f896e876eac6f7ffe1e6d01723b05a190100000000fdffffff94697ad8f540a9a93e2b7b11753289ed8a66c0a5bd5e09082c8d228b2e109b7201000000171600146bcf730f3a82c8a047b567ed2fff9beb945090c3fdffffff58b03491083d8ac03ee29b73622094ef38108bc4a52595a26b433064aadbce9e010000006a4730440220534c7119d920f9589d47ecd2b92d9fb7d23308e4a8f65540fad4e3b73970bb2b02201aeedb63c27844666539e72ec7afa587310027ac5c4f1cc17737195258ebe9730121038daf92580f95544335297532e782f2493c6b852d2e1382aa8816945d819c08acfdffffff015880040000000000160014912274ef7d2b24f5fea42f23793ff793e213e9f8024730440220248bb782cf19430981bf346dc397316ad28d693a55c3c5de0a1b9f5be958fe1802204a8d8b056c76e0e77db083b50db36e618857692407027f4e299baf5cc433aa410121034e22a0f8b13e2f5e91355b74bdc8e07b7ec6c5e2c31ff7daabdc167ad2d175390247304402206c7a8c33e13ae3dd84c0605a8380d98bf7f543f5ab6061678ddd851dda2ca3d302201868479f8b5d9b2045f039dfd9624432c4b40e62273d8920aede6a99bd5622dd012103e46ebd17af4cb7746dd6e190f85f34a855467346e11f34a2cc864fcf9c7d33c9006dfa4800',
+                         str(tx))
+        self.assertEqual('08b4283f230ffbb72b001eef01e267b310fa6f9d3800d2000474787e13c98ae7', tx.txid())
+        self.assertEqual('24c32d0a7370ca664023a9a1305ae1554731f400723f119e6f11b54332e950c9', tx.wtxid())
 
     async def test_sending_offline_xprv_online_addr_p2pkh(self):  # compressed pubkey
         wallet_offline = WalletIntegrityHelper.create_standard_wallet(
@@ -3643,7 +3694,9 @@ class TestWalletOfflineSigning(ElectrumTestCase):
             "pkh([233d2ae4]tpubDDMN69wQjDZxaJz9afZQGa48hZS7X5oSegF2hg67yddNvqfpuTN9DqvDEp7YyVf7AzXnqBqHdLhzTAStHvsoMDDb8WoJQzNrcHgDJHVYgQF/0/1)",
             tx.inputs()[0].script_descriptor.to_string_no_checksum())
         self.assertTrue(tx.is_complete())
-        self.assertFalse(tx.is_segwit())
+        self.assertFalse(tx.is_any_segwit())
+        self.assertEqual('e56da664631b8c666c6df38ec80c954c4ac3c4f56f040faf0070e4681e937fc4', tx.txid())
+        self.assertEqual('e56da664631b8c666c6df38ec80c954c4ac3c4f56f040faf0070e4681e937fc4', tx.wtxid())
 
     async def test_sending_offline_xprv_online_addr_p2wpkh_p2sh(self):
         wallet_offline = WalletIntegrityHelper.create_standard_wallet(
@@ -3675,7 +3728,9 @@ class TestWalletOfflineSigning(ElectrumTestCase):
         # sign tx
         tx = wallet_offline.sign_transaction(tx_copy, password=None)
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
+        self.assertEqual('7642816d051aa3b333b6564bb6e44fe3a5885bfe7db9860dfbc9973a5c9a6562', tx.txid())
+        self.assertEqual('9bb9949974954613945756c48ca5525cd5cba1b667ccb10c7a53e1ed076a1117', tx.wtxid())
 
     async def test_sending_offline_xprv_online_addr_p2wpkh(self):
         wallet_offline = WalletIntegrityHelper.create_standard_wallet(
@@ -3707,7 +3762,9 @@ class TestWalletOfflineSigning(ElectrumTestCase):
         # sign tx
         tx = wallet_offline.sign_transaction(tx_copy, password=None)
         self.assertTrue(tx.is_complete())
-        self.assertTrue(tx.is_segwit())
+        self.assertTrue(tx.is_any_segwit())
+        self.assertEqual('f8039bd85279f2b5698f15d47f2e338d067d09af391bd8a19467aa94d03f280c', tx.txid())
+        self.assertEqual('3b7cc3c3352bbb43ddc086487ac696e09f2863c3d9e8636721851b8008a83ffa', tx.wtxid())
 
     async def test_sending_offline_hd_multisig_online_addr_p2sh(self):
         # 2-of-3 legacy p2sh multisig
@@ -4189,6 +4246,87 @@ class TestWalletHistory_HelperFns(ElectrumTestCase):
         status = wallet1.get_tx_status(tx.txid(), TxMinedInfo(_height=TX_HEIGHT_LOCAL, conf=0))
         self.assertEqual(3, status[0])
         self.assertTrue('Local' in status[1])
+
+
+class TestWalletHistory_CacheInvalidation(ElectrumTestCase):
+    TESTNET = True
+    # funds tb1qwllx6238azrqcfudf5kdjzadw94mj5s653v5e7 (of the seed below) with 1_999_890 sat:
+    FUNDING_TX = "0200000000010132515e6aade1b79ec7dd3bac0896d8b32c56195d23d07d48e21659cef24301560100000000fdffffff0112841e000000000016001477fe6d2a27e8860c278d4d2cd90bad716bb9521a02473044022041ed68ef7ef122813ac6a5e996b8284f645c53fbe6823b8e430604a8915a867802203233f5f4d347a687eb19b2aa570829ab12aeeb29a24cc6d6d20b8b3d79e971ae012102bee0ee043817e50ac1bb31132770f7c41e35946ccdcb771750fb9696bdd1b307ad951d00"
+    FUNDING_TXID = "db949963c3787c90a40fb689ffdc3146c27a9874a970d1fd20921afbe79a7aa9"
+
+    def setUp(self):
+        super().setUp()
+        self.config = SimpleConfig({'electrum_path': self.electrum_path})
+
+    def create_wallet(self, *, tx_height: int) -> Abstract_Wallet:
+        w = restore_wallet_from_text__for_unittest(
+            "cross end slow expose giraffe fuel track awake turtle capital ranch pulp",
+            path=None, gap_limit=5, config=self.config)['wallet']
+        w.db.put('stored_height', 1010)
+        w.adb.receive_tx_callback(Transaction(self.FUNDING_TX), tx_height=tx_height)
+        return w
+
+    def create_wallet_with_mined_funding_tx(self) -> Abstract_Wallet:
+        w = self.create_wallet(tx_height=TX_HEIGHT_UNCONFIRMED)
+        w.adb.add_verified_tx(
+            self.FUNDING_TXID,
+            TxMinedInfo(_height=1001, timestamp=1700000001, txpos=7, header_hash="01"*32))
+        return w
+
+    async def test_caches_are_invalidated_when_mined_tx_goes_back_to_mempool(self):
+        w = self.create_wallet_with_mined_funding_tx()
+        self.assertEqual((1999890, 0, 0), w.get_balance())
+        self.assertEqual('1001x7x0', str(w.get_utxos()[0].short_id))
+        # the server tells us the tx is in the mempool again (e.g. after a reorg)
+        w.adb.add_unverified_or_unconfirmed_tx(self.FUNDING_TXID, TX_HEIGHT_UNCONF_PARENT)
+        self.assertEqual((0, 1999890, 0), w.get_balance())
+        utxo = w.get_utxos()[0]
+        self.assertEqual(TX_HEIGHT_UNCONF_PARENT, utxo.block_height)
+        self.assertFalse(utxo.has_short_id())
+
+    async def test_caches_are_invalidated_by_undo_verifications(self):
+        w = self.create_wallet_with_mined_funding_tx()
+        self.assertEqual((1999890, 0, 0), w.get_balance())
+        # reorg: the block that mined the tx is gone
+        blockchain = mock.Mock()
+        blockchain.read_header.return_value = None
+        self.assertEqual({self.FUNDING_TXID}, w.adb.undo_verifications(blockchain, above_height=1000))
+        self.assertEqual((0, 1999890, 0), w.get_balance())
+        utxo = w.get_utxos()[0]
+        self.assertEqual(0, utxo.block_height)  # unverified, so treated as unconfirmed
+        self.assertFalse(utxo.has_short_id())
+
+    async def test_caches_are_invalidated_when_unverified_tx_becomes_local(self):
+        w = self.create_wallet(tx_height=1001)  # mined, but not SPV-ed yet
+        self.assertEqual((0, 1999890, 0), w.get_balance())
+        self.assertEqual(0, w.get_utxos()[0].block_height)
+        w.adb.remove_unverified_tx(self.FUNDING_TXID, 1001)
+        self.assertEqual(TX_HEIGHT_LOCAL, w.get_utxos()[0].block_height)
+
+    async def test_caches_are_invalidated_when_mined_tx_disappears_from_server_history(self):
+        w = self.create_wallet_with_mined_funding_tx()
+        self.assertEqual((1999890, 0, 0), w.get_balance())
+        utxo = w.get_utxos()[0]
+        self.assertEqual(1001, utxo.block_height)
+        # the server no longer knows the tx at all (e.g. reorged out and evicted from the mempool)
+        w.adb.receive_history_callback(utxo.address, [], {})
+        self.assertEqual(TX_HEIGHT_LOCAL, w.adb.get_tx_height(self.FUNDING_TXID).height())
+        self.assertEqual((0, 1999890, 0), w.get_balance())
+        self.assertEqual(TX_HEIGHT_LOCAL, w.get_utxos()[0].block_height)
+
+    async def test_short_id_of_txin_of_tx_that_went_back_to_mempool(self):
+        # the coin is cached while its funding tx is mined, but by the time the
+        # tx is built, the funding tx is back in the mempool.
+        w = self.create_wallet_with_mined_funding_tx()
+        coins = w.get_spendable_coins(None)  # fills the utxo cache
+        w.adb.add_unverified_or_unconfirmed_tx(self.FUNDING_TXID, TX_HEIGHT_UNCONF_PARENT)
+        outputs = [PartialTxOutput.from_address_and_value("tb1qgh5c088he4d559wl0hw27hrdeg8p2z96pefn4q", 100_000)]
+        tx = w.make_unsigned_transaction(outputs=outputs, coins=coins, fee_policy=FixedFeePolicy(5000))
+        txin = tx.inputs()[0]
+        self.assertEqual(TX_HEIGHT_UNCONF_PARENT, txin.block_height)
+        self.assertIsNone(txin.block_txpos)
+        self.assertFalse(txin.has_short_id())
+        self.assertEqual("db949963c3:0", str(txin.short_id))
 
 
 class TestImportedWallet(ElectrumTestCase):

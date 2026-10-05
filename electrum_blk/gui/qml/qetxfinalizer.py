@@ -21,7 +21,7 @@ from electrum_blk.fee_policy import FeePolicy, FeeMethod
 from electrum_blk.network import NetworkException
 
 from electrum_blk.gui import messages
-from electrum_blk.gui.common_qt.util import QtEventListener
+from electrum_blk.gui.common_qt.util import QtEventListener, ignore_if_destroyed
 
 from .qewallet import QEWallet
 from .qetypes import QEAmount
@@ -585,7 +585,7 @@ class QETxFinalizer(TxFeeSlider):
                 self._logger.error('Could not save tx')
         self.finished.emit(True, saved, tx.is_complete())
 
-    def on_sign_failed(self, msg: str = None):
+    def on_sign_failed(self, msg: str | None = None):
         self._logger.debug('on_sign_failed')
         self.signError.emit(msg)
 
@@ -941,7 +941,7 @@ class QETxCpfpFeeBumper(TxFeeSlider, TxMonMixin):
         self._parent_tx = None
         self._new_tx = None
         self._parent_tx_size = 0
-        self._parent_fee = 0
+        self._parent_fee = 0  # type: int | None
         self._max_fee = 0
         self._txid = ''
         self._rbf = True
@@ -1161,6 +1161,7 @@ class QETxSweepFinalizer(QETxFinalizer):
     def update_privkeys(self):
         privkeys = keystore.get_private_keys(self._private_keys)
 
+        @ignore_if_destroyed(self)
         def fetch_privkeys_info():
             try:
                 self._txins = self._wallet.wallet.network.run_from_another_thread(sweep_preparations(privkeys, self._wallet.wallet.network))

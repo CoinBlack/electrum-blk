@@ -25,6 +25,7 @@ from electrum_blk import WalletStorage, mnemonic, keystore
 from electrum_blk.wallet_db import WalletDB
 from electrum_blk.wizard import NewWalletWizard, KeystoreWizard, WizardViewState
 
+from electrum_blk.gui.common_qt.util import ignore_if_destroyed
 from electrum_blk.gui.qt.bip39_recovery_dialog import Bip39RecoveryDialog
 from electrum_blk.gui.qt.password_dialog import PasswordLayout, PW_NEW, MSG_ENTER_PASSWORD, PasswordLayoutForHW
 from electrum_blk.gui.qt.seed_dialog import SeedWidget, MSG_PASSPHRASE_WARN_ISSUE4566, KeysWidget
@@ -37,7 +38,7 @@ if TYPE_CHECKING:
     from electrum_blk.plugin import Plugins, DeviceInfo
     from electrum_blk.gui.qt import QElectrumApplication
 
-WIF_HELP_TEXT = (_('WIF keys are typed in Electrum, based on script type.') + '\n\n' +
+WIF_HELP_TEXT = (_('WIF keys are typed in Electrum-BLK, based on script type.') + '\n\n' +
                  _('A few examples') + ':\n' +
                  'p2pkh:PxZcY47uGp9a...       \t-> BDckmggQM...\n' +
                  'p2wpkh-p2sh:PxZcY47uGp9a... \t-> bNhNeZQXF...\n' +
@@ -144,7 +145,7 @@ class QENewWalletWizard(NewWalletWizard, QEAbstractWizard, MessageBoxMixin):
         # not supported on desktop
         return False
 
-    def create_storage(self, single_password: str = None):
+    def create_storage(self, single_password: str | None = None):
         self._logger.info('Creating wallet from wizard data')
         data = self.get_wizard_data()
 
@@ -623,14 +624,8 @@ class WCHaveSeed(WalletWizardComponent, Logger):
 
     def is_seed(self, x):
         # really only used for electrum seeds. bip39 and slip39 are validated in SeedWidget
-        t = mnemonic.calc_seed_type(x)
-        if self.wizard_data['wallet_type'] == 'standard':
-            return mnemonic.is_seed(x) and not mnemonic.is_any_2fa_seed_type(t)
-        elif self.wizard_data['wallet_type'] == '2fa':
-            return mnemonic.is_any_2fa_seed_type(t)
-        else:
-            # multisig?  by default, only accept modern non-2fa electrum seeds
-            return t in ['standard', 'segwit']
+        assert self.seed_widget.seed_type == 'electrum', self.seed_widget.seed_type
+        return self.wizard.validate_seed(x, 'electrum', self.wizard_data['wallet_type'])[0]
 
     def validate(self):
         # precond: only call when SeedWidget deems seed a valid seed
@@ -1022,7 +1017,7 @@ class WCWalletPassword(WalletWizardComponent):
 
 
 class SeedExtensionEdit(QWidget):
-    def __init__(self, parent, *, message: str = None, warning: str = None, warn_issue4566: bool = False):
+    def __init__(self, parent, *, message: str | None = None, warning: str | None = None, warn_issue4566: bool = False):
         super().__init__(parent)
 
         self.warn_issue4566 = warn_issue4566
@@ -1179,6 +1174,7 @@ class WCChooseHWDevice(WalletWizardComponent, Logger):
         self.busy_msg = _('Scanning devices...')
         self.busy = True
 
+        @ignore_if_destroyed(self)
         def scan_task():
             # check available plugins
             supported_plugins = self.plugins.get_hardware_support()

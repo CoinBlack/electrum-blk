@@ -249,7 +249,7 @@ class TrezorPlugin(HW_PluginBase):
         return client
 
     def get_coin_name(self):
-        return "BlackCoin Testnet" if constants.net.TESTNET else "BlackCoin"
+        return "Blackcoin Testnet" if constants.net.TESTNET else "Blackcoin"
 
     @runs_in_hwd_thread
     def _initialize_device(self, settings: TrezorInitSettings, method, device_id, handler):

@@ -22,14 +22,17 @@
 # SOFTWARE.
 import concurrent.futures
 import copy
+import dataclasses
 from dataclasses import dataclass
 import logging
 import os
 import sys
 import re
+import subprocess
 from collections import defaultdict, OrderedDict
 from concurrent.futures.process import ProcessPoolExecutor
 import typing
+from pathlib import Path
 from typing import (
     NamedTuple, Union, TYPE_CHECKING, Tuple, Optional, Callable, Any, Sequence, Dict, Generic, TypeVar, List, Iterable,
     Set, Awaitable
@@ -50,7 +53,6 @@ import ssl
 import ipaddress
 from ipaddress import IPv4Address, IPv6Address
 import random
-import secrets
 import functools
 from functools import partial
 from abc import abstractmethod, ABC
@@ -70,6 +72,7 @@ import dns.asyncresolver
 
 from .i18n import _
 from .logging import get_logger, Logger
+from . import crandom
 
 if TYPE_CHECKING:
     from .network import Network, ProxySettings
@@ -233,7 +236,7 @@ class UserCancelled(Exception):
     pass
 
 
-def to_decimal(x: Union[str, float, int, Decimal]) -> Decimal:
+def to_decimal(x: str | float | int | Decimal | None) -> Decimal:
     # helper function mainly for float->Decimal conversion, i.e.:
     #   >>> Decimal(41754.681)
     #   Decimal('41754.680999999996856786310672760009765625')
@@ -243,6 +246,8 @@ def to_decimal(x: Union[str, float, int, Decimal]) -> Decimal:
         return x
     if isinstance(x, int):
         return Decimal(x)
+    if x is None:
+        return Decimal('NaN')
     return Decimal(str(x))
 
 
@@ -451,6 +456,21 @@ def json_decode(x):
         return x
 
 
+def repr_dataclass(obj, formatters: Dict[Union[str, type], Callable[[Any], str]]) -> str:
+    """repr of a dataclass instance, with a custom formatting of some fields (like the
+    'repr' parameter of attrs). formatters is keyed by field name, or by the type of a value.
+    None values are never formatted.
+    """
+    parts = []
+    for f in dataclasses.fields(obj):
+        if not f.repr:
+            continue
+        value = getattr(obj, f.name)
+        fmt = None if value is None else formatters.get(f.name) or formatters.get(type(value))
+        parts.append(f"{f.name}={fmt(value) if fmt else repr(value)}")
+    return f"{type(obj).__name__}({', '.join(parts)})"
+
+
 def json_normalize(x):
     # note: The return value of commands, when going through the JSON-RPC interface,
     #       is json-encoded. The encoder used there cannot handle some types, e.g. electrum.util.Satoshis.
@@ -549,14 +569,18 @@ def android_data_dir():
     return PythonActivity.mActivity.getFilesDir().getPath() + '/data'
 
 
-def ensure_sparse_file(filename):
+def ensure_sparse_file(file_path: str | Path):
     # On modern Linux, no need to do anything.
     # On Windows, need to explicitly mark file.
     if os.name == "nt":
         try:
-            os.system('fsutil sparse setflag "{}" 1'.format(filename))
-        except Exception as e:
-            _logger.info(f'error marking file {filename} as sparse: {e}')
+            subprocess.run(
+                ['fsutil', 'sparse', 'setflag', file_path, '1'],
+                check=True,
+                capture_output=True,
+            )
+        except (subprocess.CalledProcessError, OSError) as e:
+            _logger.warning(f'error marking file {file_path} as sparse: {e}')
 
 
 def get_headers_dir(config):
@@ -605,6 +629,13 @@ def get_new_wallet_name(wallet_folder: str) -> str:
         else:
             break
     return filename
+
+
+def is_hidden_wallet_path(wallet_path: Any) -> bool:
+    if not isinstance(wallet_path, str):
+        return False
+    fname = os.path.basename(wallet_path)
+    return fname.startswith(".")
 
 
 def is_android_debug_apk() -> bool:
@@ -656,7 +687,7 @@ def to_string(x, enc) -> str:
         raise TypeError("Not a string or bytes like object")
 
 
-def to_bytes(something, encoding='utf8') -> bytes:
+def to_bytes(something: str | bytes | bytearray, encoding='utf8') -> bytes:
     """
     cast string to bytes() like object, but for python2 support it's bytearray copy
     """
@@ -1220,8 +1251,8 @@ class TxMinedInfo:
             return h
 
     def short_id(self) -> Optional[str]:
-        if self.txpos is not None and self.txpos >= 0:
-            assert self.height() > 0
+        """'<height>x<txpos>' if mined and SPV-verified, else None."""
+        if self.height() > 0 and self.txpos is not None and self.txpos >= 0:
             return f"{self.height()}x{self.txpos}"
         return None
 
@@ -1942,16 +1973,6 @@ async def resolve_dns_srv(host: str):
     return [dict_from_srv_record(srv) for srv in srv_records]
 
 
-def randrange(bound: int) -> int:
-    """Return a random integer k such that 1 <= k < bound, uniformly
-    distributed across that range.
-    This is guaranteed to be cryptographically strong.
-    """
-    # secrets.randbelow(bound) returns a random int: 0 <= r < bound,
-    # hence transformations:
-    return secrets.randbelow(bound - 1) + 1
-
-
 class CallbackManager(Logger):
     # callbacks set by the GUI or any thread
     # guarantee: the callbacks will always get triggered from the asyncio thread.
@@ -2357,10 +2378,10 @@ def nostr_pow_worker(nonce, nostr_pubk, target_bits, hash_function, hash_len_bit
             digest = hash_function(hash_preimage + nonce.to_bytes(32, 'big')).digest()
             if int.from_bytes(digest, 'big') < (1 << (hash_len_bits - target_bits)):
                 shutdown.set()
-                return hash, nonce
+                return nonce
             nonce += 1
         if shutdown.is_set():
-            return None, None
+            return None
 
 
 async def gen_nostr_ann_pow(nostr_pubk: bytes, target_bits: int) -> Tuple[int, int]:
@@ -2393,16 +2414,21 @@ async def gen_nostr_ann_pow(nostr_pubk: bytes, target_bits: int) -> Tuple[int, i
             if start_nonce > max_nonce:  # make sure we don't go over the max_nonce
                 start_nonce = random.randint(0, int(max_nonce * 0.75))
 
-        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-        hash_res, nonce_res = done.pop().result()
+        # workers that observe the shutdown event return None; their results can be
+        # delivered before the winner's own result, so wait for all workers and
+        # collect the result that carries a nonce.
+        done, _pending = await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)
+        nonce_res = next((n for n in (fut.result() for fut in done) if n is not None), None)
         executor.shutdown(wait=False, cancel_futures=True)
 
+    if nonce_res is None:
+        raise Exception("nostr announcement PoW mining failed: no worker returned a nonce")
     return nonce_res, get_nostr_ann_pow_amount(nostr_pubk, nonce_res)
 
 
 def get_nostr_ann_pow_amount(nostr_pubk: bytes, nonce: Optional[int]) -> int:
     """Return the amount of leading zero bits for a nostr announcement PoW."""
-    if not nonce:
+    if nonce is None or nonce < 0:
         return 0
     hash_function = hashlib.sha256
     hash_len_bits = 256

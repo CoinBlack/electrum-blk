@@ -107,6 +107,15 @@ class TestValidPSBT(ElectrumTestCase):
         tx = tx_from_any(bytes.fromhex('70736274ff0100710200000001626bbbb7a4ad82dbf7f6bd64ac3f40d0e2695b606d7953f2802b9ea426ea080a0000000000fdffffff02a025260000000000160014e5bddbfee3883729b48fe3385216e64e6035f6eb585d720000000000160014dab37af8fefbbb31887a0a5f9b2698f4a7b45f6a1c3914000001011f8096980000000000160014dab37af8fefbbb31887a0a5f9b2698f4a7b45f6a000000'))
         self.assertEqual(1, len(tx.inputs()))
 
+    def test_valid_psbt__finalized_native_segwit_input_without_final_scriptsig(self):
+        # Case: PSBT with one P2WPKH input, finalized, empty scriptSig (Bitcoin Core does this). see #10986
+        raw_psbt = '70736274ff01005201000000010d350cefa29138de18a2d63a93cffda63721b07a6ecfa80a902f9514104b55ca0000000000fdffffff012a4a824a00000000160014b869999d342a5d42d6dc7af1efc28456da40297ac80100000001011f807c814a00000000160014460fc70f208bffa9abf3ae4abbd2f629d9cdcf5901086b024730440220475bb55814a52ea1036919e4408218c693b8bf93637b9f54c821b5baa3b846e102207276ed7a79493142c11fb01808a4142bbdd525ae7bdccdf8ecb7b8e3c856b4d90121024cdeaca7a53a7e23a1edbe9260794eaa83063534b5f111ee3c67d8b0cb88f0ee0000'
+        tx = tx_from_any(raw_psbt)
+        self.assertEqual(1, len(tx.inputs()))
+        self.assertIsNone(tx.inputs()[0].script_sig)
+        self.assertTrue(tx.inputs()[0].is_complete())
+        self.assertTrue(tx.is_complete())
+
 
 class TestInvalidPSBT(ElectrumTestCase):
     # test cases from BIP-0174

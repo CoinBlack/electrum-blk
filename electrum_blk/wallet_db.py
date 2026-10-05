@@ -30,14 +30,15 @@ from typing import (Dict, Optional, List, Tuple, Set, Iterable, NamedTuple, Sequ
                     Union, AbstractSet)
 import time
 from functools import partial
-
-import attr
+import dataclasses
 
 from . import bitcoin
 from . import constants
-from .util import profiler, WalletFileException, multisig_type, TxMinedInfo, MyEncoder
+from .bolt11 import BOLT11InvoiceException
+from .util import profiler, WalletFileException, multisig_type, TxMinedInfo, MyEncoder, bfh
 from .keystore import bip44_derivation
-from .transaction import Transaction, TxOutpoint, tx_from_any, PartialTransaction, PartialTxOutput, BadHeaderMagic
+from .transaction import (Transaction, TxOutpoint, tx_from_any, PartialTransaction, PartialTxOutput, BadHeaderMagic,
+                          BCDataStream)
 from .logging import Logger
 
 from .lnutil import HTLCOwner, ChannelType, RecvMPPResolution
@@ -71,7 +72,7 @@ class WalletUnfinished(WalletFileException):
 # seed_version is now used for the version of the wallet file
 OLD_SEED_VERSION = 4        # electrum versions < 2.0
 NEW_SEED_VERSION = 11       # electrum versions >= 2.0
-FINAL_SEED_VERSION = 71     # electrum >= 2.7 will set this to prevent
+FINAL_SEED_VERSION = 73     # electrum >= 2.7 will set this to prevent
                             # old versions from overwriting new format
 
 
@@ -83,10 +84,10 @@ class TxFeesValue(NamedTuple):
 
 
 @stored_at('/db_metadata')
-@attr.s
+@dataclasses.dataclass
 class DBMetadata(StoredObject):
-    creation_timestamp = attr.ib(default=None, type=int)
-    first_electrum_version_used = attr.ib(default=None, type=str)
+    creation_timestamp: Optional[int] = None
+    first_electrum_version_used: Optional[str] = None
 
     def to_str(self) -> str:
         ts = self.creation_timestamp
@@ -106,6 +107,7 @@ class WalletFileExceptionVersion51(WalletFileException): pass
 # register dicts that require value conversions not handled by constructor
 register_name('/transactions/*', None, lambda x: tx_from_any(x, deserialize=False, sanitize=False))
 register_name('/channels/*/data_loss_protect_remote_pcp/*', None, lambda x: bytes.fromhex(x))
+register_name('/channels/*/onion_keys/*', None, lambda x: bytes.fromhex(x))
 # register tuples, otherwise they will default to StoredList
 register_name('/contacts/*', None, tuple)
 register_name('/lightning_preimages/*', None, tuple)
@@ -259,6 +261,8 @@ class WalletDBUpgrader(Logger):
         self._convert_version_69()
         self._convert_version_70()
         self._convert_version_71()
+        self._convert_version_72()
+        self._convert_version_73()
         self.put('seed_version', FINAL_SEED_VERSION)  # just to be sure
 
     def _convert_wallet_type(self):
@@ -927,13 +931,18 @@ class WalletDBUpgrader(Logger):
         # the new key for all requests is a wallet address, not done here
         for name in ['invoices', 'payment_requests']:
             invoices = self.data.get(name, {})
-            for key, item in invoices.items():
+            for key, item in list(invoices.items()):
                 is_lightning = item['type'] == 2
                 lightning_invoice = item['invoice'] if is_lightning else None
                 outputs = item['outputs'] if not is_lightning else None
                 bip70 = item['bip70'] if not is_lightning else None
                 if is_lightning:
-                    lnaddr = decode_bolt11_invoice(item['invoice'])
+                    try:
+                        lnaddr = decode_bolt11_invoice(item['invoice'])
+                    except BOLT11InvoiceException as e:
+                        self.logger.warning(f"removing {name} item {key} that fails bolt11 decode: {e}")
+                        del invoices[key]
+                        continue
                     amount_msat = lnaddr.get_amount_msat()
                     timestamp = lnaddr.date
                     exp_delay = lnaddr.get_expiry()
@@ -994,7 +1003,12 @@ class WalletDBUpgrader(Logger):
         for key, item in list(requests.items()):
             lnaddr = item.get('lightning_invoice')
             if lnaddr:
-                lnaddr = decode_bolt11_invoice(lnaddr)
+                try:
+                    lnaddr = decode_bolt11_invoice(lnaddr)
+                except BOLT11InvoiceException as e:
+                    self.logger.warning(f"removing request {key} that fails bolt11 decode: {e}")
+                    del requests[key]
+                    continue
                 rhash = lnaddr.paymenthash.hex()
                 if key != rhash:
                     requests[rhash] = item
@@ -1044,7 +1058,12 @@ class WalletDBUpgrader(Logger):
             if lightning_invoice is None:
                 payment_hash = None
             else:
-                lnaddr = decode_bolt11_invoice(lightning_invoice)
+                try:
+                    lnaddr = decode_bolt11_invoice(lightning_invoice)
+                except BOLT11InvoiceException as e:
+                    self.logger.warning(f"removing request {key} that fails bolt11 decode: {e}")
+                    del requests[key]
+                    continue
                 payment_hash = lnaddr.paymenthash.hex()
             item['payment_hash'] = payment_hash
         self.data['seed_version'] = 51
@@ -1435,6 +1454,64 @@ class WalletDBUpgrader(Logger):
         self.data['genesis_blockhash'] = constants.net.GENESIS
         self.data['seed_version'] = 71
 
+    def _convert_version_72(self):
+        """Serialize imported channel backups into their internal binary blob format (hex), instead of json
+        StoredObjects."""
+        if not self._is_upgrade_method_needed(71, 71):
+            return
+
+        def _serialize_imported_channel_backup(cb: dict) -> str:
+            # this mirrors the wire format read by lnutil.ImportedChannelBackupStorage.from_bytes.
+            if cb['multisig_funding_privkey'] is not None:
+                version = 2
+            elif cb['local_payment_pubkey'] is not None:
+                version = 1
+            else:
+                version = 0
+            vds = BCDataStream()
+            vds.write_uint16(version)
+            vds.write_boolean(cb['is_initiator'])
+            vds.write_bytes(bfh(cb['privkey']), 32)
+            vds.write_bytes(bfh(cb['channel_seed']), 32)
+            vds.write_bytes(bfh(cb['node_id']), 33)
+            vds.write_bytes(bfh(cb['funding_txid']), 32)
+            # note: Electrum < 4.4.0 parsed the uint16 fields as int16 (see 5a4c39cb94), so
+            # imported backups may hold negative values (e.g. port 42069 stored as -23467): mask them
+            vds.write_uint16(cb['funding_index'] & 0xffff)
+            vds.write_string(cb['funding_address'])
+            vds.write_bytes(bfh(cb['remote_payment_pubkey']), 33)
+            vds.write_bytes(bfh(cb['remote_revocation_pubkey']), 33)
+            vds.write_uint16(cb['local_delay'] & 0xffff)
+            vds.write_uint16(cb['remote_delay'] & 0xffff)
+            vds.write_string(cb['host'])
+            vds.write_uint16(cb['port'] & 0xffff)
+            if version >= 1:
+                vds.write_bytes(bfh(cb['local_payment_pubkey']), 33)
+            if version >= 2:
+                vds.write_bytes(bfh(cb['multisig_funding_privkey']), 32)
+            return bytes(vds.input).hex()
+
+        channel_backups = self.data.get('imported_channel_backups', {})
+        for channel_id, storage in channel_backups.items():
+            channel_backups[channel_id] = _serialize_imported_channel_backup(storage)
+        self.data['seed_version'] = 72
+
+    def _convert_version_73(self):
+        from .bolt11 import decode_bolt11_invoice
+        if not self._is_upgrade_method_needed(72, 72):
+            return
+        # remove invoices not passing stricter bolt11 invoice parsing (https://github.com/spesmilo/electrum/pull/10940)
+        invoices = self.data.get('invoices', {})
+        for key, item in list(invoices.items()):
+            lnaddr = item.get('lightning_invoice')
+            if lnaddr:
+                try:
+                    decode_bolt11_invoice(lnaddr)
+                except BOLT11InvoiceException as e:
+                    self.logger.warning(f"removing invoice {key} that fails bolt11 decode: {e}")
+                    del invoices[key]
+        self.data['seed_version'] = 73
+
     def _convert_imported(self):
         if not self._is_upgrade_method_needed(0, 13):
             return
@@ -1624,7 +1701,8 @@ class WalletDB(JsonDB):
         return {int(n): (v, cb) for (n, (v, cb)) in d.items()}
 
     @modifier
-    def add_txi_addr(self, tx_hash: str, addr: str, ser: str, v: int) -> None:
+    def add_txi_addr(self, tx_hash: str, addr: str, ser: str, v: int) -> bool:
+        """Returns True if the item was newly added to the DB, or False if it was already there."""
         assert isinstance(tx_hash, str)
         assert isinstance(addr, str)
         assert isinstance(ser, str)
@@ -1634,7 +1712,10 @@ class WalletDB(JsonDB):
         d = self.txi[tx_hash]
         if addr not in d:
             d[addr] = {}
+        if d[addr].get(ser) == v:
+            return False
         d[addr][ser] = v
+        return True
 
     @modifier
     def add_txo_addr(self, tx_hash: str, addr: str, n: Union[int, str], v: int, is_coinbase: bool) -> None:

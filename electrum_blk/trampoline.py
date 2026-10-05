@@ -1,3 +1,14 @@
+# Copyright (C) 2021-2026 The Electrum developers
+# Distributed under the MIT software license, see the accompanying
+# file LICENCE or http://www.opensource.org/licenses/mit-license.php
+#
+# To understand the intricacies of inner/outer onions and what values they contain,
+# see t-bast's magnificent ASCII drawings:
+# - end-to-end trampoline payments (ref https://github.com/lightning/bolts/pull/829)
+#       https://github.com/lightning/bolts/blob/bc7a1a0bc97b2293e7f43dd8a06529e5fdcf7cd2/proposals/trampoline.md?plain=1#L609
+# - pay-to-legacy payments:
+#       https://github.com/ACINQ/eclair/blob/407b330f0405e8766fdc2dbcd701982f37e5c489/eclair-core/src/main/scala/fr/acinq/eclair/wire/Onion.scala#L88
+
 import io
 import os
 import random
@@ -18,6 +29,7 @@ from .lntransport import LNPeerAddr
 from . import constants
 from .logging import get_logger
 from .util import random_shuffled_copy
+from . import crandom
 
 if TYPE_CHECKING:
     from .lnchannel import Channel
@@ -184,9 +196,9 @@ PLACEHOLDER_FEE = None
 def _extend_trampoline_route(
         route: List[TrampolineEdge],
         *,
-        start_node: bytes = None,
+        start_node: bytes | None = None,
         end_node: bytes,
-        fee_info: tuple = None,
+        fee_info: tuple | None = None,
 ):
     """Extends the route and modifies it in place."""
     if start_node is None:
@@ -433,7 +445,7 @@ def create_trampoline_onion(
         hops_data[index] = dataclasses.replace(hops_data[index], payload=payload)
         _logger.debug(f"Using {len(routing_info_to_use)} of {len(invoice_routing_info)} r_tags")
 
-    trampoline_session_key = os.urandom(32)
+    trampoline_session_key = crandom.get_rand_bytes(32)
     trampoline_onion = new_onion_packet(payment_path_pubkeys, trampoline_session_key, hops_data, associated_data=payment_hash, trampoline=True)
     trampoline_onion = dataclasses.replace(
         trampoline_onion,

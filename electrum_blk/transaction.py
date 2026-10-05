@@ -51,7 +51,7 @@ from .bitcoin import (
 )
 from .crypto import sha256d, sha256
 from .logging import get_logger
-from .util import ShortID, OldTaskGroup
+from .util import ShortID, OldTaskGroup, TxMinedInfo
 from .descriptor import Descriptor, MissingSolutionPiece, create_dummy_descriptor_from_address, DUMMY_DER_SIG
 
 if TYPE_CHECKING:
@@ -331,9 +331,9 @@ class TxInput:
 
     def __init__(self, *,
                  prevout: TxOutpoint,
-                 script_sig: bytes = None,
+                 script_sig: bytes | None = None,
                  nsequence: int = 0xffffffff - 1,
-                 witness: bytes = None,
+                 witness: bytes | None = None,
                  is_coinbase_output: bool = False):
         self.prevout = prevout
         self.script_sig = script_sig
@@ -367,9 +367,17 @@ class TxInput:
             return self.nsequence & 0xffff
         return None
 
+    def set_mined_info(self, info: TxMinedInfo) -> None:
+        self.block_height = info.height()
+        self.block_txpos = info.txpos
+
+    def has_short_id(self) -> bool:
+        return (self.block_height is not None and self.block_height > 0
+                and self.block_txpos is not None and self.block_txpos >= 0)
+
     @property
     def short_id(self):
-        if self.block_txpos is not None and self.block_txpos >= 0:
+        if self.has_short_id():
             return ShortID.from_components(self.block_height, self.block_txpos, self.prevout.out_idx)
         else:
             return self.prevout.short_name()
@@ -439,7 +447,7 @@ class TxInput:
             d['witness'] = [x.hex() for x in self.witness_elements()]
         return d
 
-    def serialize_to_network(self, *, script_sig: bytes = None) -> bytes:
+    def serialize_to_network(self, *, script_sig: bytes | None = None) -> bytes:
         if script_sig is None:
             script_sig = self.script_sig
         # Prev hash and index
@@ -458,10 +466,13 @@ class TxInput:
         n = vds.read_compact_size()
         return list(vds.read_bytes(vds.read_compact_size()) for i in range(n))
 
-    def is_segwit(self, *, guess_for_address=False) -> bool:
+    def has_witness(self) -> bool:
         if self.witness not in (b'\x00', b'', None):
             return True
         return False
+
+    def is_segwit(self, *, guess_for_address=False) -> bool:
+        return self.has_witness()
 
     def is_taproot(self) -> Optional[bool]:
         if self._is_taproot is None:
@@ -593,7 +604,7 @@ class BCDataStream(object):
 
         return self.read_bytes(length).decode(encoding)
 
-    def write_string(self, string, encoding='ascii'):
+    def write_string(self, string: str | bytes | bytearray, encoding='ascii'):
         string = to_bytes(string, encoding)
         # Length-encoded as with read-string
         self.write_compact_size(len(string))
@@ -652,22 +663,12 @@ class BCDataStream(object):
         except IndexError as e:
             raise SerializationError("attempt to read past end of buffer") from e
 
-    def write_compact_size(self, size):
-        if size < 0:
-            raise SerializationError("attempt to write size < 0")
-        elif size < 253:
-            self.write(bytes([size]))
-        elif size < 2**16:
-            self.write(b'\xfd')
-            self._write_num('<H', size)
-        elif size < 2**32:
-            self.write(b'\xfe')
-            self._write_num('<I', size)
-        elif size < 2**64:
-            self.write(b'\xff')
-            self._write_num('<Q', size)
-        else:
-            raise Exception(f"size {size} too large for compact_size")
+    def write_compact_size(self, size: int) -> None:
+        try:
+            compact_size = var_int(size)
+        except OverflowError as e:
+            raise SerializationError(f"size {size} outside valid range for compact_size") from e
+        self.write(compact_size)
 
     def _read_num(self, format):
         try:
@@ -921,8 +922,8 @@ class Transaction:
             self._cached_network_ser = raw.hex()
         else:
             raise Exception(f"cannot initialize transaction from {raw}")
-        self._inputs = None  # type: List[TxInput]
-        self._outputs = None  # type: List[TxOutput]
+        self._inputs = None  # type: List[TxInput] | None
+        self._outputs = None  # type: List[TxOutput] | None
         self._time = 0
         self._locktime = 0
         self._version = 2
@@ -946,7 +947,7 @@ class Transaction:
         return self._locktime
 
     @locktime.setter
-    def locktime(self, value):
+    def locktime(self, value: int):
         assert isinstance(value, int), f"locktime must be int, not {value!r}"
         self._locktime = value
         self.invalidate_ser_cache()
@@ -1078,7 +1079,7 @@ class Transaction:
         txin_index: int,
         *,
         sighash: Optional[int] = None,
-        sighash_cache: SighashCache = None,
+        sighash_cache: SighashCache | None = None,
     ) -> bytes:
         nVersion = int.to_bytes(self.version, length=4, byteorder="little", signed=True)
         nTime = int.to_bytes(self.time, length=4, byteorder="little", signed=True)
@@ -1182,7 +1183,7 @@ class Transaction:
         txin_index: int,
         pubkey_bytes: bytes,
         sig: bytes,
-        sighash_cache: SighashCache = None,
+        sighash_cache: SighashCache | None = None,
     ) -> bool:
         txin = self.inputs()[txin_index]
         if txin.is_taproot():
@@ -1195,8 +1196,24 @@ class Transaction:
             sig64 = ecc.ecdsa_sig64_from_der_sig(der_sig)
             return pubkey.ecdsa_verify(sig64, msg_hash)
 
-    def is_segwit(self, *, guess_for_address=False):
+    def is_any_segwit(self, *, guess_for_address: bool = False) -> bool:
+        # If any input is segwit, the tx needs to serialized with a witness and it will have a wtxid != txid,
+        # however the non-segwit inputs are still malleable.
         return any(txin.is_segwit(guess_for_address=guess_for_address)
+                   for txin in self.inputs())
+
+    def is_all_segwit(self, *, guess_for_address: bool = False) -> bool:
+        """Returns whether *all* inputs are segwit.
+
+        If not, the txid is trivially malleable:
+        - by any signer, who can e.g. re-sign the non-segwit inputs using different nonces
+        - by miners: most third-party malleability results in the tx being non-standard,
+          so at least arbitrary tx relaying nodes cannot do it. But if they mine the tx, they can.
+
+        ref https://github.com/bitcoin/bips/blob/master/bip-0062.mediawiki#motivation
+        ref https://github.com/bitcoin/bitcoin/blob/05bc2f53ce0cb239c17dbdd6b261bd2db7d2a940/src/policy/policy.h#L118-L131
+        """
+        return all(txin.is_segwit(guess_for_address=guess_for_address)
                    for txin in self.inputs())
 
     def invalidate_ser_cache(self):
@@ -1234,8 +1251,8 @@ class Transaction:
             for txin in inputs)
         txouts = var_int(len(outputs)).hex() + ''.join(o.serialize_to_network().hex() for o in outputs)
 
-        use_segwit_ser_for_estimate_size = estimate_size and self.is_segwit(guess_for_address=True)
-        use_segwit_ser_for_actual_use = not estimate_size and self.is_segwit()
+        use_segwit_ser_for_estimate_size = estimate_size and self.is_any_segwit(guess_for_address=True)
+        use_segwit_ser_for_actual_use = not estimate_size and self.is_any_segwit()
         use_segwit_ser = use_segwit_ser_for_estimate_size or use_segwit_ser_for_actual_use
         if include_sigs and not force_legacy and use_segwit_ser:
             marker = '00'
@@ -1264,13 +1281,13 @@ class Transaction:
             tx.convert_all_utxos_to_witness_utxos()
             is_complete = False
         tx_bytes = tx.serialize_as_bytes()
-        return base_encode(tx_bytes, base=43), is_complete
+        tx_base43 = base_encode(tx_bytes, base=43)  # FIXME this takes quadratic time in len(tx)
+        return tx_base43, is_complete
 
     def txid(self) -> Optional[str]:
         if self._cached_txid is None:
             self.deserialize()
-            all_segwit = all(txin.is_segwit() for txin in self.inputs())
-            if not all_segwit and not self.is_complete():
+            if not self.is_all_segwit() and not self.is_complete():
                 return None
             try:
                 ser = self.serialize_to_network(force_legacy=True)
@@ -1339,7 +1356,7 @@ class Transaction:
         except Exception as e:
             has_errored = True
             _logger.error(f"tx.add_info_from_network() got exc: {e!r}")
-            if isinstance(e, NetworkException) and not ignore_network_issues:
+            if not (isinstance(e, NetworkException) and ignore_network_issues):
                 raise
         finally:
             has_finished = True
@@ -1449,7 +1466,7 @@ class Transaction:
     def estimated_witness_size(self):
         """Return an estimate of witness size in bytes."""
         estimate = not self.is_complete()
-        if not self.is_segwit(guess_for_address=estimate):
+        if not self.is_any_segwit(guess_for_address=estimate):
             return 0
         inputs = self.inputs()
         witness = b"".join(self.serialize_witness(x, estimate_size=estimate) for x in inputs)
@@ -1535,17 +1552,26 @@ def convert_raw_tx_to_hex(raw: Union[str, bytes]) -> str:
         return binascii.unhexlify(raw).hex()
     except Exception:
         pass
-    # try base43
-    try:
-        return base_decode(raw, base=43).hex()
-    except Exception:
-        pass
     # try base64
     if raw[0:6] in ('cHNidP', b'cHNidP'):  # base64 psbt
         try:
             return base64.b64decode(raw, validate=True).hex()
         except Exception:
             pass
+    # try base43
+    try:
+        # FIXME This takes quadratic time in len(tx).
+        #       We could prefix all txs we base43-serialize with e.g. "BASE43TX:",
+        #       (and break-compat with old versions).  Then at least we would not attempt
+        #       the expensive deser here if it's not needed.
+        if len(raw) > 30_000:
+            # note: base_decode for this length takes around 0.2 sec on my laptop.
+            # note: We only use/expect base43 inside QR codes. The max data a QR can fit is around 4 KB,
+            #       serializing that to b43 results in a length of ~5500. 30k is already over 5x that.
+            raise ValueError("raw tx too large for base43")
+        return base_decode(raw, base=43).hex()
+    except Exception:
+        pass
     # raw bytes
     if isinstance(raw, (bytes, bytearray)):
         return raw.hex()
@@ -1967,6 +1993,8 @@ class PartialTxInput(TxInput, PSBTSection):
             return True
         if self.script_sig is not None and not self.is_segwit():
             return True
+        if self.has_witness() and self.is_native_segwit():
+            return True
         if desc := self.script_descriptor:
             try:
                 desc.satisfy(allow_dummy=False, sigdata=self.sigs_ecdsa)
@@ -2071,7 +2099,7 @@ class PartialTxInput(TxInput, PSBTSection):
 
     def is_segwit(self, *, guess_for_address=False) -> bool:
         """Whether this input is segwit (any witness version)."""
-        if super().is_segwit():
+        if self.has_witness():
             return True
         if self.is_native_segwit() or self.is_p2sh_segwit():
             return True
@@ -2095,7 +2123,7 @@ class PartialTxInput(TxInput, PSBTSection):
 
     def already_has_some_signatures(self) -> bool:
         """Returns whether progress has been made towards completing this input."""
-        return (self.sigs_ecdsa
+        return (bool(self.sigs_ecdsa)
                 or self.tap_key_sig is not None
                 or self.script_sig is not None
                 or self.witness is not None)
@@ -2372,9 +2400,9 @@ class PartialTransaction(Transaction):
             inputs: Sequence[PartialTxInput],
             outputs: Sequence[PartialTxOutput],
             *,
-            time: int = None,
-            locktime: int = None,
-            version: int = None,
+            time: int | None = None,
+            locktime: int | None = None,
+            version: int | None = None,
             BIP69_sort: bool = True
     ) -> 'PartialTransaction':
         self = cls()
@@ -2516,6 +2544,11 @@ class PartialTransaction(Transaction):
         # keypairs:  pubkey_bytes -> secret_bytes
         sighash_cache = SighashCache()
         for i, txin in enumerate(self.inputs()):
+            if txin.has_witness():
+                # note: serialize_preimage relies on is_segwit(), which returns True
+                # if the PSBT contains a witness, even for non-segwit inputs.
+                _logger.info(f"not signing input {i}: it already has a witness")
+                continue
             for pubkey in txin.pubkeys:
                 if txin.is_complete():
                     break
@@ -2534,7 +2567,7 @@ class PartialTransaction(Transaction):
         txin_index: int,
         privkey_bytes: bytes,
         *,
-        sighash_cache: SighashCache = None,
+        sighash_cache: SighashCache | None = None,
     ) -> bytes:
         txin = self.inputs()[txin_index]
         txin.validate_data(for_signing=True)

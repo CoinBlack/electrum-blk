@@ -41,12 +41,15 @@ import threading
 import enum
 import asyncio
 from dataclasses import dataclass
+import base64
 
 import electrum_ecc as ecc
 from aiorpcx import ignore_after, run_in_thread
 
 from . import util, keystore, transaction, bitcoin, coinchooser, bip32, descriptor
 from . import constants
+from . import crandom
+from . import crypto
 from .i18n import _
 from .bip32 import BIP32Node, convert_bip32_intpath_to_strpath, convert_bip32_strpath_to_intpath
 from .logging import get_logger, Logger
@@ -55,7 +58,7 @@ from .util import (
     WalletFileException, BitcoinException, InvalidPassword, format_time, timestamp_to_datetime,
     Satoshis, Fiat, TxMinedInfo, quantize_feerate, OrderedDictWithIndex, multisig_type, parse_max_spend,
     OnchainHistoryItem, read_json_file, write_json_file, UserFacingException, FileImportFailed, EventListener,
-    event_listener
+    event_listener, is_hex_str,
 )
 from .bitcoin import COIN, is_address, is_minikey, relayfee, dust_threshold, DummyAddress, DummyAddressUsedInTxException
 from .keystore import (
@@ -74,7 +77,7 @@ from .address_synchronizer import (
     AddressSynchronizer, TX_HEIGHT_LOCAL, TX_HEIGHT_UNCONF_PARENT, TX_HEIGHT_UNCONFIRMED, TX_HEIGHT_FUTURE,
     TX_TIMESTAMP_INF
 )
-from .invoices import BaseInvoice, Invoice, Request, PR_PAID, PR_UNPAID, PR_EXPIRED, PR_UNCONFIRMED
+from .invoices import BaseInvoice, Invoice, Request, PR_PAID, PR_UNPAID, PR_EXPIRED, PR_UNCONFIRMED, PR_INFLIGHT
 from .contacts import Contacts
 from .mnemonic import Mnemonic
 from .lnworker import LNWallet
@@ -271,8 +274,8 @@ class TxSighashDanger:
         self,
         *,
         risk_level: TxSighashRiskLevel = TxSighashRiskLevel.SAFE,
-        short_message: str = None,
-        messages: List[str] = None,
+        short_message: str | None = None,
+        messages: List[str] | None = None,
     ):
         self.risk_level = risk_level
         self.short_message = short_message
@@ -375,6 +378,13 @@ class TxWalletDetails(NamedTuple):
     can_remove: bool  # whether user should be allowed to delete tx
     is_lightning_funding_tx: bool
     is_related_to_wallet: bool
+
+
+class WalletWarning(NamedTuple):
+    key: str      # stable identifier, used to remember that the user has seen this warning
+    title: str
+    message: str
+    show_once: bool  # if True acceptance is persisted and the warning won't be shown again
 
 
 @dataclass(kw_only=True, slots=True, frozen=True)
@@ -509,12 +519,27 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         if self.lnworker:
             channel_backups = new_db.get_dict('imported_channel_backups')
             for chan_id, chan in self.lnworker.channels.items():
-                channel_backups[chan_id.hex()] = self.lnworker.create_channel_backup(chan_id)
+                channel_backups[chan_id.hex()] = self.lnworker.create_channel_backup(chan_id).to_bytes().hex()
             new_db.put('channels', None)
-            new_db.put('lightning_privkey2', None)
         new_db.set_modified(True)
         new_db.write()
         return new_path
+
+    def get_startup_warnings(self) -> Sequence[WalletWarning]:
+        """Warnings that should be shown to the user once, when the wallet is opened in a GUI."""
+        warnings = []  # type: List[WalletWarning]
+        if self.lnworker:
+            warnings += self.lnworker.get_lightning_startup_warnings()
+        acknowledged = self.db.get('acknowledged_warnings', [])
+        return [warning for warning in warnings if warning.key not in acknowledged or warning.show_once is False]
+
+    def acknowledge_warning(self, key: str) -> None:
+        """Remember that the user has seen this warning, so that it is not shown again."""
+        acknowledged = self.db.get('acknowledged_warnings', [])
+        if key in acknowledged:
+            return
+        self.db.put('acknowledged_warnings', list(acknowledged) + [key])
+        self.save_db()
 
     def has_lightning(self) -> bool:
         return bool(self.lnworker)
@@ -544,7 +569,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             # bip39 seeds and imported zprv.
             # also, watching-only and hw wallets, if the user disables anchors.
             # todo: we should kill that branch, it is a footgun.
-            seed = os.urandom(32)
+            seed = crandom.get_rand_bytes(32)
             node = BIP32Node.from_rootseed(seed, xtype='standard')
             ln_xprv = node.to_xprv()
             self.db.put('lightning_privkey2', ln_xprv)
@@ -619,8 +644,6 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         if not self.tx_is_related(tx):
             return
         self.clear_tx_parents_cache()
-        if self.lnworker:
-            self.lnworker.maybe_add_backup_from_tx(tx)
         self._update_invoices_and_reqs_touched_by_tx(tx)
         util.trigger_callback('new_transaction', self, tx)
 
@@ -670,6 +693,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         self.taskgroup = OldTaskGroup()
         self.network = network
         if network:
+            assert network.config is self.config
             asyncio.run_coroutine_threadsafe(self.main_loop(), self.network.asyncio_loop)
             self.adb.start_network(network)
             if self.lnworker:
@@ -736,7 +760,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             else:
                 self._labels[key] = value
 
-    def set_label(self, name: str, text: str = None) -> bool:
+    def set_label(self, name: str, text: str | None = None) -> bool:
         if not name:
             return False
         changed = False
@@ -1884,7 +1908,11 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             return addrs[0]
         return None
 
-    def get_new_sweep_address_for_channel(self) -> str:
+    def get_new_sweep_address(self) -> str:
+        """Returns an ismine address to sweep funds to.
+        NOTE: this ignores the 'use_change' setting, as the funds we are sweeping are not
+              in the wallet yet, so there is no "sending address" we could send them back to.
+        """
         addrs = self._get_change_addresses_we_can_use_now(allow_reuse=True)
         if addrs:
             return addrs[0]
@@ -1968,7 +1996,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             outputs: List[PartialTxOutput],
             inputs: Optional[List[PartialTxInput]] = None,
             fee_policy: FeePolicy,
-            change_addr: str = None,
+            change_addr: str | None = None,
             is_sweep: bool = False,  # used by Wallet_2fa subclass
             rbf: bool = True,
             BIP69_sort: Optional[bool] = True,
@@ -2059,6 +2087,13 @@ class Abstract_Wallet(ABC, Logger, EventListener):
                 # even if the option use multiple change outputs is enabled there should be only
                 # one change address if there are 0 txos as this is a sweep tx, or if we want to swap change to ln
                 change_addrs = change_addrs[0:1]
+            if not change_addrs:
+                # We have no change address, e.g. because 'use_change' is disabled. The coin chooser
+                # then sends the change back to the address of the first input, which is only sane if
+                # all inputs are ismine. That is not the case when sweeping (e.g. a lightning ctx
+                # output or a swap claim output), and not guaranteed when batching sweeps with payments.
+                if len(txo) == 0 or not all(self.is_mine(self.adb.get_txin_address(txin)) for txin in txi):
+                    change_addrs = [self.get_new_sweep_address()]
             tx = coin_chooser.make_tx(
                 coins=coins,
                 inputs=txi,
@@ -2631,7 +2666,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             self,
             txin: PartialTxInput,
             *,
-            address: str = None,
+            address: str | None = None,
     ) -> None:
         # - We prefer to include UTXO (full tx), even for segwit inputs (see #6198).
         # - For witness v0 inputs, we include *both* UTXO and WITNESS_UTXO. UTXO is a strict superset,
@@ -2686,10 +2721,11 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             is_mine = self._learn_derivation_path_for_address_from_txinout(txin, address)
         if not is_mine:
             return
-        txin.script_descriptor = self.get_script_descriptor_for_address(address)
+        if desc := self.get_script_descriptor_for_address(address):
+            txin.script_descriptor = desc
         txin.is_mine = True
         self._add_txinout_derivation_info(txin, address, only_der_suffix=only_der_suffix)
-        txin.block_height = self.adb.get_tx_height(txin.prevout.txid.hex()).height()
+        txin.set_mined_info(self.adb.get_tx_height(txin.prevout.txid.hex()))
 
     def has_support_for_slip_19_ownership_proofs(self) -> bool:
         return False
@@ -3085,7 +3121,8 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         self._receive_requests.pop(request_id, None)
         if addr := req.get_address():
             self._requests_addr_to_key[addr].discard(request_id)
-        if req.is_lightning() and self.lnworker:
+        if req.is_lightning() and self.lnworker \
+                and self.lnworker.get_invoice_status(req) != PR_PAID:
             self.lnworker.delete_payment_info(req.rhash, direction=RECEIVED)
         if write_to_disk:
             self.save_db()
@@ -3096,7 +3133,10 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         if inv is None:
             return
         self._paid_invoice_keys_cache.discard(invoice_id)
-        if inv.is_lightning() and self.lnworker:
+        if inv.is_lightning() and self.lnworker \
+                and self.lnworker.get_invoice_status(inv) not in (PR_PAID, PR_INFLIGHT):
+            # if an invoice was paid we need the PaymentInfo for the history and don't delete it.
+            # if it is still inflight and the payment fails later on we leak it and never delete it.
             self.lnworker.delete_payment_info(inv.rhash, direction=SENT)
         if write_to_disk:
             self.save_db()
@@ -3222,16 +3262,95 @@ class Abstract_Wallet(ABC, Logger, EventListener):
     def _update_password_for_keystore(self, old_pw: Optional[str], new_pw: Optional[str]) -> None:
         pass
 
-    def sign_message(self, address: str, message: str, password) -> bytes:
+    def sign_message(self, *, address: str, message: str, password, strip_inputs: bool = True) -> bytes:
+        """Caller must handle UserFacingException."""
+        assert isinstance(address, str), f"address must be str. got {type(address)}"
+        assert isinstance(message, str), f"message must be str. got {type(message)}"
+        if strip_inputs:
+            # stripping whitespaces leads to better UX for GUIs, but it's counter-productive for CLI
+            address = address.strip()
+            message = message.strip()
+        if not bitcoin.is_address(address):
+            raise UserFacingException(_("Invalid Bitcoin address."))
+        if self.is_watching_only():
+            raise UserFacingException(_("This is a watching-only wallet."))
+        if not self.is_mine(address):
+            raise UserFacingException(_("Address not in wallet."))
+        txin_type = self.get_txin_type(address)
+        assert txin_type != "address"  # logic error, as this implies watching-only
+        if txin_type not in ['p2pkh', 'p2wpkh', 'p2wpkh-p2sh']:
+            raise UserFacingException(
+                _("Cannot sign messages with this type of address:") +
+                " " + txin_type + "\n\n"
+                + _("Signing with an address actually means signing with the corresponding "
+                     "private key, and verifying with the corresponding public key. The "
+                     "address you have entered does not have a unique public key, so these "
+                     "operations cannot be performed.") + "\n\n"
+                + _("The operation is undefined. Not just in Electrum, but in general.")
+            )
         index = self.get_address_index(address)
-        script_type = self.get_txin_type(address)
-        assert script_type != "address"
-        return self.keystore.sign_message(index, message, password, script_type=script_type)
+        return self.keystore.sign_message(index, message, password, script_type=txin_type)
 
-    def decrypt_message(self, pubkey: str, message, password) -> bytes:
-        addr = self.pubkeys_to_address([pubkey])
-        index = self.get_address_index(addr)
-        return self.keystore.decrypt_message(index, message, password)
+    @classmethod
+    def verify_message(cls, *, address: str, signature: str, message: str, strip_inputs: bool = True) -> bool:
+        """Caller must handle UserFacingException."""
+        assert isinstance(address, str), f"address must be str. got {type(address)}"
+        assert isinstance(signature, str), f"signature must be str. got {type(signature)}"
+        assert isinstance(message, str), f"message must be str. got {type(message)}"
+        if strip_inputs:
+            # stripping whitespaces leads to better UX for GUIs, but it's counter-productive for CLI
+            address = address.strip()
+            signature = signature.strip()
+            message = message.strip()
+        if not is_address(address):
+            raise UserFacingException(_("Invalid Bitcoin address."))
+        try:
+            sig = base64.b64decode(signature, validate=True)
+        except ValueError:
+            # note: unicode chars in signature would result in ValueError,
+            #       so it is insufficient to catch binascii.Error(ValueError)
+            return False
+        message = util.to_bytes(message)
+        return bitcoin.verify_usermessage_with_address(address, sig, message)
+
+    def decrypt_message(self, *, pubkey: str, message: str, password) -> bytes:
+        """Caller must handle UserFacingException."""
+        assert isinstance(pubkey, str), f"pubkey must be str. got {type(pubkey)}"
+        assert isinstance(message, str), f"message must be str. got {type(message)}"
+        if self.is_watching_only():
+            raise UserFacingException(_("This is a watching-only wallet."))
+        if isinstance(self, Multisig_Wallet):  # FIXME does not work with multisig wallets. (see #5856)
+            raise UserFacingException(_("Decrypting messages is currently not implemented for multisig wallets."))
+        if not is_hex_str(pubkey):
+            raise UserFacingException(f"pubkey must be a hex string instead of {type(pubkey)}")
+        if isinstance(self, Imported_Wallet):
+            # this branch is significantly faster. Imported_Wallet.pubkeys_to_address is slow.
+            addr_index = pubkey
+            assert isinstance(self.keystore, keystore.Imported_KeyStore)
+            if pubkey not in self.keystore.keypairs:
+                raise UserFacingException(_("Pubkey unrelated to wallet."))
+        else:
+            addr = self.pubkeys_to_address([pubkey])  # note: broken for multisig
+            addr_index = self.get_address_index(addr)
+            if addr_index is None:
+                raise UserFacingException(_("Pubkey unrelated to wallet."))
+        return self.keystore.decrypt_message(addr_index, message, password)
+
+    @classmethod
+    def encrypt_message(cls, *, pubkey: str, message: str) -> str:
+        """Caller must handle UserFacingException."""
+        assert isinstance(pubkey, str), f"pubkey must be str. got {type(pubkey)}"
+        assert isinstance(message, str), f"message must be str. got {type(message)}"
+        message = util.to_bytes(message)
+        if not is_hex_str(pubkey):
+            raise UserFacingException(f"pubkey must be a hex string instead of {type(pubkey)}")
+        pubkey_bytes = bytes.fromhex(pubkey)
+        try:
+            eckey = ecc.ECPubkey(pubkey_bytes)
+        except ecc.InvalidECPointException as e:
+            raise UserFacingException(_("Invalid Public key")) from e
+        encrypted = crypto.ecies_encrypt_message(eckey, message)
+        return encrypted.decode("ascii")
 
     @abstractmethod
     def pubkeys_to_address(self, pubkeys: Sequence[str]) -> Optional[str]:
@@ -3378,6 +3497,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
 
         rl = TxSighashRiskLevel
         hintmap = {
+            -1:                   (rl.INSANE_SIGHASH, _('Input {} is using an unknown sighash.')),
             0:                    (rl.SAFE,           None),
             Sighash.NONE:         (rl.INSANE_SIGHASH, _('Input {} is marked SIGHASH_NONE.')),
             Sighash.SINGLE:       (rl.WEIRD_SIGHASH,  _('Input {} is marked SIGHASH_SINGLE.')),
@@ -3394,8 +3514,12 @@ class Abstract_Wallet(ABC, Logger, EventListener):
                 sh_base = txin.sighash & (Sighash.ANYONECANPAY ^ 0xff)
                 sh_acp = txin.sighash & Sighash.ANYONECANPAY
                 for sh in [sh_base, sh_acp]:
-                    if msg := hintmap[sh][1]:
-                        risk_level = hintmap[sh][0]
+                    try:
+                        hint = hintmap[sh]
+                    except KeyError:
+                        hint = hintmap[-1]  # "unknown sighash"
+                    if msg := hint[1]:
+                        risk_level = hint[0]
                         header = _('Fatal') if TxSighashDanger(risk_level=risk_level).needs_reject() else _('Warning')
                         shd = TxSighashDanger(
                             risk_level=risk_level,
@@ -3471,12 +3595,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         lightning_online = self.lnworker and self.lnworker.lnpeermgr.num_peers() > 0
         num_sats_can_receive = self.lnworker.num_sats_can_receive() if self.lnworker else 0
         can_receive_lightning = self.lnworker and num_sats_can_receive > 0 and amount_sat <= num_sats_can_receive
-        try:
-            zeroconf_nodeid = extract_nodeid(self.config.ZEROCONF_TRUSTED_NODE)[0]
-        except Exception:
-            zeroconf_nodeid = None
-        can_get_zeroconf_channel = (self.lnworker and self.config.OPEN_ZEROCONF_CHANNELS
-                                    and self.lnworker.lnpeermgr.get_peer_by_pubkey(zeroconf_nodeid) is not None)
+        can_get_zeroconf_channel = self.lnworker and self.lnworker.can_get_zeroconf_channel()
         status = self.get_invoice_status(req)
 
         if status == PR_EXPIRED:
@@ -3705,8 +3824,11 @@ class Abstract_Wallet(ABC, Logger, EventListener):
 
     def get_user_notifications_for_new_txns(self, txns: Sequence[Transaction]) -> Sequence[str]:
         notifications = []
-        # Combine the transactions if there are at least three
-        if len(txns) >= 3:
+        if len(txns) > 20:
+            # skip the delta calculation if there are many txs, otherwise it may block the UI for seconds
+            notifications.append(_('{} new transactions').format(len(txns)))
+        elif len(txns) >= 3:
+            # Combine the transactions if there are at least three
             total_amount = 0
             total_debit = 0
             total_credit = 0
@@ -3946,8 +4068,11 @@ class Imported_Wallet(Simple_Wallet):
         else:
             raise BitcoinException(str(bad_keys[0][1]))
 
-    def get_txin_type(self, address):
-        return self.db.get_imported_address(address).get('type', 'address')
+    def get_txin_type(self, address) -> str:
+        x = self.db.get_imported_address(address)
+        if x is None:
+            return 'unknown'
+        return x.get('type', 'address')
 
     @profiler
     def try_detecting_internal_addresses_corruption(self):
@@ -3983,10 +4108,6 @@ class Imported_Wallet(Simple_Wallet):
             if self.db.get_imported_address(addr)['pubkey'] == pubkey:
                 return addr
         return None
-
-    def decrypt_message(self, pubkey: str, message, password) -> bytes:
-        # this is significantly faster than the implementation in the superclass
-        return self.keystore.decrypt_message(pubkey, message, password)
 
 
 class Deterministic_Wallet(Abstract_Wallet):

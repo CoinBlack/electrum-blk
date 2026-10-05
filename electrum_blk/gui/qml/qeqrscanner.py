@@ -3,6 +3,7 @@ import os
 from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject, Qt
 from PyQt6.QtGui import QGuiApplication
 
+from electrum_blk.gui.qml.qeconfig import QEConfig
 from electrum_blk.gui.qml.qetypes import QEBytes
 from electrum_blk.util import send_exception_to_crash_reporter
 from electrum_blk.logging import get_logger
@@ -54,6 +55,7 @@ class QEQRScanner(QObject):
         jSimpleScannerActivity = autoclass("org.blackcoin.qr.SimpleScannerActivity")
         intent = jIntent(jpythonActivity, jSimpleScannerActivity)
         intent.putExtra(jIntent.EXTRA_TEXT, jString(self._hint))
+        intent.putExtra('allow_screenshots', QEConfig.instance.config.GUI_QML_ALWAYS_ALLOW_SCREENSHOTS)
 
         activity.bind(on_activity_result=self.on_qr_activity_result)
         jpythonActivity.startActivityForResult(intent, self.REQUEST_CODE_SIMPLE_SCANNER_ACTIVITY)
