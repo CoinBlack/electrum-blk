@@ -98,7 +98,8 @@ def hash_raw_header(header: bytes) -> str:
     return hash_encode(sha256d(header))
 
 
-pow_hash_header = hash_header
+def pow_hash_header(header: dict) -> str:
+    return hash_encode(getPoWHash(serialize_header(header)))
 
 
 # block hash -> chain work; up to and including that block
@@ -291,9 +292,35 @@ class Blockchain(Logger):
         return constants.net.CHECKPOINTS
 
     @classmethod
+    def is_protocol_v1_retargeting_fixed(cls, timestamp: int, net=None) -> bool:
+        net = net or constants.net
+        return timestamp > net.FIRST_POSV1RF_BLOCK_TIME and timestamp != 1395631999
+
+    @classmethod
+    def is_protocol_v2(cls, timestamp: int, net=None) -> bool:
+        net = net or constants.net
+        return timestamp > net.FIRST_POSV2_BLOCK_TIME and timestamp != 1407053678
+
+    @classmethod
+    def is_protocol_v3(cls, timestamp: int, net=None) -> bool:
+        net = net or constants.net
+        return timestamp > net.FIRST_POSV3_BLOCK_TIME and timestamp != 1444028400
+
+    @classmethod
+    def is_protocol_v3_1(cls, timestamp: int, net=None) -> bool:
+        net = net or constants.net
+        return timestamp > net.FIRST_POSV3_1_BLOCK_TIME and timestamp != 1713938400
+
+    @classmethod
     def ispos(cls, header: dict) -> bool:
-        """Check if block is Proof-of-Stake (height > LAST_POW_BLOCK)"""
-        return header.get('block_height', 0) > constants.net.LAST_POW_BLOCK
+        """Check if block is Proof-of-Stake."""
+        if constants.net is constants.BitcoinRegtest:
+            return False
+        if header.get('version', 0) > 6:
+            return header.get('nonce', 0) == 0
+        if header.get('block_height', 0) > constants.net.LAST_POW_BLOCK:
+            return True
+        return False
 
     def get_max_child(self) -> Optional[int]:
         children = self.get_direct_children()
@@ -403,19 +430,55 @@ class Blockchain(Logger):
             raise InvalidHeader("hash mismatches with expected: {} vs {}".format(expected_header_hash, _hash))
         if prev_hash != header.get('prev_block_hash'):
             raise InvalidHeader("prev hash mismatch: %s vs %s" % (prev_hash, header.get('prev_block_hash')))
+        if constants.net is constants.BitcoinRegtest:
+            return _hash
+
         height = header.get('block_height', 0)
-        if cls.ispos(header) and height > constants.net.LAST_POW_BLOCK + 2 and (target > 0 or height > constants.net.max_checkpoint() + 2):
+        version = header.get('version', 0)
+        timestamp = header.get('timestamp', 0)
+        is_v2 = cls.is_protocol_v2(timestamp)
+
+        # Blackcoin Core CheckBlockHeader: block version rules
+        if height == 0:
+            if version != 1:
+                raise InvalidHeader(f"bad genesis block version {version}")
+        elif is_v2:
+            if version < 7 or version >= 0x80000000:
+                raise InvalidHeader(f"bad block version {version} at height {height} (Protocol V2 requires version >= 7)")
+            if version != 7 and (version & 0xE0000000) != 0x20000000:
+                raise InvalidHeader(f"bad BIP9 block version {version:#x} at height {height}")
+        else:
+            if not (1 <= version <= 6):
+                raise InvalidHeader(f"bad pre-V2 block version {version} at height {height}")
+
+        is_pos = cls.ispos(header)
+
+        # Blackcoin Core ContextualCheckBlockHeader: reject PoW after LAST_POW_BLOCK
+        if height > constants.net.LAST_POW_BLOCK and not is_pos:
+            raise InvalidHeader(f"proof-of-work rejected at height {height} > LAST_POW_BLOCK ({constants.net.LAST_POW_BLOCK})")
+
+        # Blackcoin Core ContextualCheckBlockHeader / CheckStakeBlockTimestamp: stake timestamp mask in Protocol V2+
+        if is_pos and is_v2 and hasattr(constants.net, 'STAKE_TIMESTAMP_MASK'):
+            if (timestamp & constants.net.STAKE_TIMESTAMP_MASK) != 0:
+                raise InvalidHeader(f"stake timestamp mask violation at height {height}")
+
+        # Blackcoin Core ContextualCheckBlockHeader: difficulty target (nBits) check for both PoS and PoW
+        if target > 0 or (is_pos and not constants.net.TESTNET and height > constants.net.max_checkpoint() + 2):
             bits = cls.target_to_bits(target)
             if bits != header.get('bits'):
                 raise InvalidHeader("bits mismatch: %s vs %s at height %d" % (bits, header.get('bits'), height))
-        if cls.ispos(header) and header.get('version', 0) > 6 and hasattr(constants.net, 'STAKE_TIMESTAMP_MASK'):
-            if (header.get('timestamp', 0) & constants.net.STAKE_TIMESTAMP_MASK) != 0:
-                raise InvalidHeader(f"stake timestamp mask violation at height {height}")
-        if not constants.net.TESTNET:
-            hdr_target = cls.bits_to_target(header.get('bits'))
-            max_limit = constants.net.POS_LIMIT if cls.ispos(header) else constants.net.POW_LIMIT
-            if hdr_target > max_limit:
-                raise InvalidHeader(f"bits target exceeds limit at height {height}")
+
+        # Blackcoin Core GetTargetLimit & CheckProofOfWork
+        hdr_target = cls.bits_to_target(header.get('bits'))
+        if is_pos:
+            max_limit = constants.net.POS_LIMITV2 if height >= constants.net.FIRST_POSV2_BLOCK else constants.net.POS_LIMIT
+        else:
+            max_limit = constants.net.POW_LIMIT
+        if hdr_target > max_limit:
+            raise InvalidHeader(f"bits target exceeds limit at height {height}")
+        if not is_pos and (height == 0 or version > 6):
+            if int(pow_hash_header(header), 16) > hdr_target:
+                raise InvalidHeader(f"insufficient proof of work at height {height}")
         return _hash
 
     def verify_chunk(self, index: int, data: bytes) -> None:
@@ -670,7 +733,7 @@ class Blockchain(Logger):
     @classmethod
     def get_limit(cls, prev_timestamp: int, net, ispos: bool):
         if ispos:
-            if prev_timestamp > net.FIRST_POSV2_BLOCK_TIME and prev_timestamp != 1407053678:
+            if cls.is_protocol_v2(prev_timestamp, net):
                 return net.POS_LIMITV2
             else:
                 return net.POS_LIMIT
@@ -682,7 +745,7 @@ class Blockchain(Logger):
         net = constants.net
 
         if height <= 2:
-            return net.POW_LIMIT
+            return net.POW_LIMIT if not ispos else 0
 
         if not prev:
             prev = self.read_header(height - 1)
@@ -692,18 +755,45 @@ class Blockchain(Logger):
             raise MissingHeader(height - 1)
         if not pprev:
             raise MissingHeader(height - 2)
+        # In Protocol V1 (version <= 6) below LAST_POW_BLOCK, 80-byte headers do not distinguish PoW from PoS
+        if not (height - 2 > net.LAST_POW_BLOCK or (prev.get('version', 0) > 6 and pprev.get('version', 0) > 6)):
+            return 0
+        if ispos != self.ispos(prev) or ispos != self.ispos(pprev):
+            # Blackcoin Core GetLastBlockIndex(pindexLast, fProofOfStake): walk backwards to find
+            # the last two blocks of the same PoS/PoW type when headers are available on disk
+            last_ts = prev.get('timestamp')
+            cur_h = prev.get('block_height', height - 1)
+            cur = prev
+            while cur is not None and cur_h > 0 and self.ispos(cur) != ispos:
+                cur_h -= 1
+                cur = pprev if cur_h == pprev.get('block_height') else self.read_header(cur_h)
+            if cur is None:
+                return 0
+            if cur_h == 0:
+                return self.get_limit(last_ts, net, ispos)
+            prev = cur
+            cur_h -= 1
+            cur = pprev if cur_h == pprev.get('block_height') else self.read_header(cur_h)
+            while cur is not None and cur_h > 0 and self.ispos(cur) != ispos:
+                cur_h -= 1
+                cur = self.read_header(cur_h)
+            if cur is None:
+                return 0
+            if cur_h == 0:
+                return self.get_limit(last_ts, net, ispos)
+            pprev = cur
 
         # New target
         new_target = self.bits_to_target(prev.get('bits'))
         prev_timestamp = prev.get('timestamp')
 
         # Limit adjustment step
-        nTargetSpacing = net.TARGET_SPACING if (prev_timestamp > net.FIRST_POSV2_BLOCK_TIME and prev_timestamp != 1407053678) else net.TARGET_SPACING_V1
+        nTargetSpacing = net.TARGET_SPACING if self.is_protocol_v2(prev_timestamp, net) else net.TARGET_SPACING_V1
         nActualSpacing = prev_timestamp - pprev.get('timestamp')
 
-        if (prev_timestamp > net.FIRST_POSV1RF_BLOCK_TIME and prev_timestamp != 1395631999) and nActualSpacing < 0:
+        if self.is_protocol_v1_retargeting_fixed(prev_timestamp, net) and nActualSpacing < 0:
             nActualSpacing = nTargetSpacing
-        if (prev_timestamp > net.FIRST_POSV3_BLOCK_TIME and prev_timestamp != 1444028400) and nActualSpacing > nTargetSpacing * 10:
+        if self.is_protocol_v3(prev_timestamp, net) and nActualSpacing > nTargetSpacing * 10:
             nActualSpacing = nTargetSpacing * 10
 
         # Retarget
@@ -766,7 +856,7 @@ class Blockchain(Logger):
     def get_chainwork(self, height=None) -> int:
         if height is None:
             height = max(0, self.height())
-        if constants.net.TESTNET:
+        if constants.net is constants.BitcoinRegtest:
             return height
         cp = constants.net.max_checkpoint()
         if height <= cp:

@@ -168,6 +168,7 @@ class BitcoinMainnet(AbstractNet):
     POS_LIMIT = 0x00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
     POS_LIMITV2 = 0x000000000000ffffffffffffffffffffffffffffffffffffffffffffffffffff
     LAST_POW_BLOCK = 10000
+    POW_ALLOW_MIN_DIFFICULTY_BLOCKS = False
     TARGET_TIMESPAN = 16 * 60
     TARGET_SPACING_V1 = 60
     TARGET_SPACING = 64
@@ -175,6 +176,10 @@ class BitcoinMainnet(AbstractNet):
     FIRST_POSV1RF_BLOCK = 38425
     FIRST_POSV2_BLOCK = 319002
     FIRST_POSV3_BLOCK = 872456
+    CSV_HEIGHT = 4908715
+    SEGWIT_HEIGHT = 5805000
+    MIN_BIP9_WARNING_HEIGHT = 5820000
+    TAPROOT_START_TIME = 1783832400
     # Protocol version transition timestamps (from Core's nProtocolV*Time in chainparams.cpp)
     # Used for timestamp-based gating matching IsProtocolV1RetargetingFixed/V2/V3 predicates
     FIRST_POSV1RF_BLOCK_TIME = 1395631999  # nProtocolV1RetargetingFixedTime
@@ -231,9 +236,15 @@ class BitcoinTestnet(AbstractNet):
     TARGET_SPACING = 64
     STAKE_TIMESTAMP_MASK = 0xf
     LAST_POW_BLOCK = 0x7fffffff
-    FIRST_POSV1RF_BLOCK = 38425
-    FIRST_POSV2_BLOCK = 319002
-    FIRST_POSV3_BLOCK = 872456
+    POW_ALLOW_MIN_DIFFICULTY_BLOCKS = True
+    FIRST_POSV1RF_BLOCK = 1
+    FIRST_POSV2_BLOCK = 1
+    FIRST_POSV3_BLOCK = 1
+    CSV_HEIGHT = 1320664
+    SEGWIT_HEIGHT = 2070000
+    MIN_BIP9_WARNING_HEIGHT = 2085000
+    TAPROOT_HEIGHT = 2865000
+    TAPROOT_START_TIME = 1780300000
     # Protocol version transition timestamps (from Core's nProtocolV*Time in chainparams.cpp)
     FIRST_POSV1RF_BLOCK_TIME = 1395631999  # nProtocolV1RetargetingFixedTime
     FIRST_POSV2_BLOCK_TIME   = 1407053625  # nProtocolV2Time

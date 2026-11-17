@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Generate electrum_blk/chains/mainnet/checkpoints.json from a Blackcoin Core RPC node
-(and optionally cross-verify against local ~/.electrum-blk/blockchain_headers).
+"""Generate checkpoints.json (mainnet or testnet) from a Blackcoin Core RPC node
+(and optionally cross-verify against local blockchain_headers).
 
 Stores the block hash at the end of every 2016-block chunk ((index + 1) * 2016 - 1),
 plus historical protocol transition milestone heights, stopping at least MAX_REORG_DEPTH
@@ -20,7 +20,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from electrum_blk import blockchain, constants
 
 CHUNK_SIZE = blockchain.CHUNK_SIZE  # 2016
-MILESTONE_HEIGHTS = [
+MAINNET_MILESTONES = [
     5001,
     10000,
     38425,
@@ -31,6 +31,13 @@ MILESTONE_HEIGHTS = [
     4908715,
     5805000,
     5930110,
+]
+TESTNET_MILESTONES = [
+    90235,
+    1320664,
+    1415393,
+    2070000,
+    2865000,
 ]
 
 
@@ -48,37 +55,25 @@ def rpc_call(url: str, user: str, password: str, payload):
         return json.loads(resp.read().decode())
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Generate Blackcoin checkpoints.json")
-    parser.add_argument("--rpc-url", default=os.environ.get("BLK_RPC_URL", "http://192.168.0.207:15715/"))
-    parser.add_argument("--rpc-user", default=os.environ.get("BLK_RPC_USER", "blackcoin"))
-    parser.add_argument("--rpc-password", default=os.environ.get("BLK_RPC_PASSWORD", "blackcoin"))
-    parser.add_argument(
-        "--headers-file",
-        default=str(Path.home() / ".electrum-blk" / "blockchain_headers"),
-        help="Optional local blockchain_headers file to cross-verify against",
-    )
-    parser.add_argument(
-        "--output",
-        default=str(REPO_ROOT / "electrum_blk" / "chains" / "mainnet" / "checkpoints.json"),
-    )
-    args = parser.parse_args()
+def generate_for_network(*, testnet: bool, rpc_url: str, rpc_user: str, rpc_password: str, headers_file: str, output: str):
+    net = constants.BitcoinTestnet if testnet else constants.BitcoinMainnet
+    milestones = TESTNET_MILESTONES if testnet else MAINNET_MILESTONES
 
     info_resp = rpc_call(
-        args.rpc_url,
-        args.rpc_user,
-        args.rpc_password,
+        rpc_url,
+        rpc_user,
+        rpc_password,
         {"jsonrpc": "1.0", "id": "info", "method": "getblockchaininfo", "params": []},
     )
     blocks = info_resp["result"]["blocks"]
-    safe_height = blocks - constants.BitcoinMainnet.MAX_REORG_DEPTH
+    safe_height = blocks - net.MAX_REORG_DEPTH
     num_chunks = safe_height // CHUNK_SIZE
     max_cp_height = num_chunks * CHUNK_SIZE - 1
-    print(f"RPC chain tip: {blocks}, generating {num_chunks} chunk checkpoints up to height {max_cp_height}...")
+    print(f"[{net.NET_NAME}] RPC chain tip: {blocks}, generating {num_chunks} chunk checkpoints up to height {max_cp_height}...")
 
     heights = sorted(
         set(((i + 1) * CHUNK_SIZE - 1 for i in range(num_chunks)))
-        | {h for h in MILESTONE_HEIGHTS if h <= max_cp_height}
+        | {h for h in milestones if h <= max_cp_height}
     )
 
     checkpoints = {}
@@ -89,14 +84,13 @@ def main():
             {"jsonrpc": "1.0", "id": h, "method": "getblockhash", "params": [h]}
             for h in batch_heights
         ]
-        responses = rpc_call(args.rpc_url, args.rpc_user, args.rpc_password, payload)
+        responses = rpc_call(rpc_url, rpc_user, rpc_password, payload)
         for item in responses:
             if item.get("error"):
                 raise RuntimeError(f"RPC error for height {item.get('id')}: {item['error']}")
             checkpoints[str(item["id"])] = item["result"]
 
-    # Cross-verify against local blockchain_headers if present
-    headers_path = Path(args.headers_file)
+    headers_path = Path(headers_file)
     if headers_path.exists():
         data = headers_path.read_bytes()
         local_num_headers = len(data) // 80
@@ -111,13 +105,42 @@ def main():
                     if local_hash != rpc_hash:
                         raise RuntimeError(f"Hash mismatch at height {h}: local={local_hash} != rpc={rpc_hash}")
                     verified += 1
-        print(f"Cross-verified {verified}/{len(checkpoints)} checkpoints against {headers_path}")
+        print(f"[{net.NET_NAME}] Cross-verified {verified}/{len(checkpoints)} checkpoints against {headers_path}")
 
-    # Sort keys numerically
     ordered = {str(h): checkpoints[str(h)] for h in heights}
-    out_path = Path(args.output)
+    out_path = Path(output)
     out_path.write_text(json.dumps(ordered, indent=2) + "\n", encoding="utf-8")
-    print(f"Wrote {len(ordered)} checkpoints (max height {max_cp_height}) to {out_path}")
+    print(f"[{net.NET_NAME}] Wrote {len(ordered)} checkpoints (max height {max_cp_height}) to {out_path}")
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Generate Blackcoin checkpoints.json")
+    parser.add_argument("--testnet", action="store_true", help="Generate testnet checkpoints (default port 25715)")
+    parser.add_argument("--rpc-url", default=None)
+    parser.add_argument("--rpc-user", default=os.environ.get("BLK_RPC_USER", "blackcoin"))
+    parser.add_argument("--rpc-password", default=os.environ.get("BLK_RPC_PASSWORD", "blackcoin"))
+    parser.add_argument("--headers-file", default=None)
+    parser.add_argument("--output", default=None)
+    args = parser.parse_args(argv)
+
+    default_port = 25715 if args.testnet else 15715
+    chain_name = "testnet" if args.testnet else "mainnet"
+    rpc_url = args.rpc_url or os.environ.get("BLK_RPC_URL", f"http://192.168.0.207:{default_port}/")
+    headers_file = args.headers_file or str(
+        (Path.home() / ".electrum-blk" / "testnet" / "blockchain_headers")
+        if args.testnet
+        else (Path.home() / ".electrum-blk" / "blockchain_headers")
+    )
+    output = args.output or str(REPO_ROOT / "electrum_blk" / "chains" / chain_name / "checkpoints.json")
+
+    generate_for_network(
+        testnet=args.testnet,
+        rpc_url=rpc_url,
+        rpc_user=args.rpc_user,
+        rpc_password=args.rpc_password,
+        headers_file=headers_file,
+        output=output,
+    )
 
 
 if __name__ == "__main__":

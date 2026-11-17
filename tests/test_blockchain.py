@@ -458,3 +458,62 @@ class TestVerifyHeader(ElectrumTestCase):
         with self.assertRaises(InvalidHeader):
             Blockchain.verify_header(self.header, self.prev_hash, self.target,
                                      expected_header_hash="foo")
+
+    def test_blackcoin_version_and_pos_pow_rules(self):
+        orig_net = constants.net
+        try:
+            # 1. Testnet: v6 block at height 1 (timestamp in Protocol V2) must be rejected
+            constants.BitcoinTestnet.set_as_network()
+            bad_v6_testnet = dict(
+                version=6,
+                prev_block_hash=constants.BitcoinTestnet.GENESIS,
+                merkle_root="12630d16a97f24b287c8c2594dda5fb98c9e6c70fc61d44191931ea2aa08dc90",
+                timestamp=1538682334,
+                bits=0x1d00ffff,
+                nonce=0,
+                block_height=1,
+            )
+            with self.assertRaises(InvalidHeader):
+                Blockchain.verify_header(bad_v6_testnet, constants.BitcoinTestnet.GENESIS, 0)
+
+            # 2. Mainnet: PoW block (nonce != 0) above LAST_POW_BLOCK (10000) must be rejected
+            constants.BitcoinMainnet.set_as_network()
+            bad_pow_mainnet = dict(
+                version=7,
+                prev_block_hash=self.prev_hash,
+                merkle_root="12630d16a97f24b287c8c2594dda5fb98c9e6c70fc61d44191931ea2aa08dc90",
+                timestamp=1450000000,
+                bits=0x1d00ffff,
+                nonce=12345,
+                block_height=320000,
+            )
+            with self.assertRaises(InvalidHeader):
+                Blockchain.verify_header(bad_pow_mainnet, self.prev_hash, 0)
+
+            # 3. Mainnet: PoS block in Protocol V2 violating stake timestamp mask (0xf) must be rejected
+            bad_mask_pos = dict(
+                version=7,
+                prev_block_hash=self.prev_hash,
+                merkle_root="12630d16a97f24b287c8c2594dda5fb98c9e6c70fc61d44191931ea2aa08dc90",
+                timestamp=1450000001,  # not divisible by 16
+                bits=0x1d00ffff,
+                nonce=0,
+                block_height=320000,
+            )
+            with self.assertRaises(InvalidHeader):
+                Blockchain.verify_header(bad_mask_pos, self.prev_hash, 0)
+
+            # 4. Mainnet: PoS block after FIRST_POSV2_BLOCK exceeding POS_LIMITV2 must be rejected
+            bad_limit_pos = dict(
+                version=7,
+                prev_block_hash=self.prev_hash,
+                merkle_root="12630d16a97f24b287c8c2594dda5fb98c9e6c70fc61d44191931ea2aa08dc90",
+                timestamp=1450000000,
+                bits=0x1e0fffff,  # POS_LIMIT (V1), exceeds POS_LIMITV2
+                nonce=0,
+                block_height=320000,
+            )
+            with self.assertRaises(InvalidHeader):
+                Blockchain.verify_header(bad_limit_pos, self.prev_hash, 0)
+        finally:
+            orig_net.set_as_network()
