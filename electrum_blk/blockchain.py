@@ -198,7 +198,8 @@ class BlockchainManager(Logger):
     def _init_headers_file_for_best_chain(self):
         b = self.get_best_chain()
         filename = b.path()
-        length = HEADER_SIZE * len(constants.net.CHECKPOINTS) * CHUNK_SIZE
+        cp = constants.net.max_checkpoint()
+        length = HEADER_SIZE * (cp + 1) if cp > 0 else 0
         if not filename.exists() or filename.stat().st_size < length:
             with open(filename, 'wb') as f:
                 if length > 0:
