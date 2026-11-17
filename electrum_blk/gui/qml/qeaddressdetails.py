@@ -3,7 +3,7 @@ from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject, QVariant
 from electrum_blk.logging import get_logger
 from electrum_blk.util import UserFacingException
 
-from electrum.gui.common_qt.util import QtEventListener, qt_event_listener
+from electrum_blk.gui.common_qt.util import QtEventListener, qt_event_listener
 
 from .auth import auth_protect, AuthMixin
 from .qetransactionlistmodel import QETransactionListModel

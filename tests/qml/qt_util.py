@@ -8,9 +8,9 @@ from unittest import SkipTest
 from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent, QMetaObject, Qt, pyqtSlot, QObject
 
-from electrum.address_synchronizer import TX_HEIGHT_UNCONFIRMED
-from electrum.bitcoin import address_to_script
-from electrum.transaction import Transaction
+from electrum_blk.address_synchronizer import TX_HEIGHT_UNCONFIRMED
+from electrum_blk.bitcoin import address_to_script
+from electrum_blk.transaction import Transaction
 
 
 class TestQCoreApplication(QCoreApplication):

@@ -9,26 +9,26 @@ from typing import NamedTuple, Tuple, Dict, Mapping, TYPE_CHECKING, Sequence
 
 import electrum
 import electrum.trampoline
-from electrum import (
+from electrum_blk import (
     bitcoin, lnpeer, lnchannel, lnutil, util,
 )
-from electrum.coinchooser import PRNG
-from electrum.network import ProxySettings
-from electrum.bitcoin import COIN, sha256
-from electrum.bolt11 import encode_bolt11_invoice, BOLT11Addr, decode_bolt11_invoice
-from electrum.invoices import PR_UNPAID, Invoice, LN_EXPIRY_NEVER
-from electrum.lnpeer import Peer
-from electrum.lnutil import (
+from electrum_blk.coinchooser import PRNG
+from electrum_blk.network import ProxySettings
+from electrum_blk.bitcoin import COIN, sha256
+from electrum_blk.bolt11 import encode_bolt11_invoice, BOLT11Addr, decode_bolt11_invoice
+from electrum_blk.invoices import PR_UNPAID, Invoice, LN_EXPIRY_NEVER
+from electrum_blk.lnpeer import Peer
+from electrum_blk.lnutil import (
     LnFeatures, PaymentFeeBudget, LOCAL, REMOTE, ChannelType, ChannelConfig, ChannelKeys,
     RECEIVED,
 )
-from electrum.lnchannel import ChannelState, Channel
-from electrum.lnrouter import LNPathFinder
-from electrum.channel_db import ChannelDB
-from electrum.lnworker import LNWallet, PaySession, PaymentInfo
-from electrum.simple_config import SimpleConfig
-from electrum.fee_policy import FeeTimeEstimates, FEE_ETA_TARGETS
-from electrum.wallet import  Standard_Wallet
+from electrum_blk.lnchannel import ChannelState, Channel
+from electrum_blk.lnrouter import LNPathFinder
+from electrum_blk.channel_db import ChannelDB
+from electrum_blk.lnworker import LNWallet, PaySession, PaymentInfo
+from electrum_blk.simple_config import SimpleConfig
+from electrum_blk.fee_policy import FeeTimeEstimates, FEE_ETA_TARGETS
+from electrum_blk.wallet import  Standard_Wallet
 
 from . import restore_wallet_from_text__for_unittest
 

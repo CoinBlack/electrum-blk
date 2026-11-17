@@ -1,12 +1,12 @@
 import gc
 from unittest.mock import patch, MagicMock
 
-from electrum import SimpleConfig
-from electrum.address_synchronizer import TX_HEIGHT_UNCONFIRMED
-from electrum.fee_policy import FixedFeePolicy
-from electrum.gui.qml.qeaddresslistmodel import QEAddressCoinListModel
-from electrum.gui.qml.qeconfig import QEConfig
-from electrum.transaction import PartialTxOutput
+from electrum_blk import SimpleConfig
+from electrum_blk.address_synchronizer import TX_HEIGHT_UNCONFIRMED
+from electrum_blk.fee_policy import FixedFeePolicy
+from electrum_blk.gui.qml.qeaddresslistmodel import QEAddressCoinListModel
+from electrum_blk.gui.qml.qeconfig import QEConfig
+from electrum_blk.transaction import PartialTxOutput
 
 from .. import ElectrumTestCase, restore_wallet_from_text__for_unittest
 from .qt_util import create_qcoreapplication, delete_qobject, receive_incoming_tx

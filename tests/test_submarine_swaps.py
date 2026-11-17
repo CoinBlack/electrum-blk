@@ -6,23 +6,23 @@ from unittest import mock
 
 from electrum_ecc import ECPrivkey
 
-from electrum import bitcoin, util
-from electrum.address_synchronizer import TX_HEIGHT_LOCAL
-from electrum.bitcoin import COIN, DUST_LIMIT_P2WSH
-from electrum.util import bfh, now
-from electrum.crypto import sha256
-from electrum.lnonion import OnionRoutingFailure
-from electrum.lnutil import generate_random_keypair
-from electrum.plugins.swapserver.server import HttpSwapServer
-from electrum.plugins.swapserver.swapserver import SwapServerPlugin
-from electrum.simple_config import SimpleConfig
-from electrum.submarine_swaps import (
+from electrum_blk import bitcoin, util
+from electrum_blk.address_synchronizer import TX_HEIGHT_LOCAL
+from electrum_blk.bitcoin import COIN, DUST_LIMIT_P2WSH
+from electrum_blk.util import bfh, now
+from electrum_blk.crypto import sha256
+from electrum_blk.lnonion import OnionRoutingFailure
+from electrum_blk.lnutil import generate_random_keypair
+from electrum_blk.plugins.swapserver.server import HttpSwapServer
+from electrum_blk.plugins.swapserver.swapserver import SwapServerPlugin
+from electrum_blk.simple_config import SimpleConfig
+from electrum_blk.submarine_swaps import (
     SwapManager, SwapData, NostrTransport, SwapServerTransport, LOCKTIME_DELTA_REFUND,
     MIN_LOCKTIME_DELTA_FOR_CLAIM, SPENDER_FINALITY_DELAY, _construct_swap_scriptcode)
-from electrum.transaction import (
+from electrum_blk.transaction import (
     PartialTransaction, PartialTxOutput, Transaction, TxOutput, TxOutpoint)
-from electrum.txbatcher import TxBatcher
-from electrum.wallet import Standard_Wallet, Wallet, Abstract_Wallet
+from electrum_blk.txbatcher import TxBatcher
+from electrum_blk.wallet import Standard_Wallet, Wallet, Abstract_Wallet
 
 from . import ElectrumTestCase
 from .toyserver.testcase import ToyServerTestCase

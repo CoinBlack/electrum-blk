@@ -9,7 +9,7 @@ from electrum_blk.util import Satoshis
 from electrum_blk.gui.common_qt.util import QtEventListener, qt_event_listener
 
 if TYPE_CHECKING:
-    from electrum.network import Network
+    from electrum_blk.network import Network
 
 
 class QEServerListModel(QAbstractListModel, QtEventListener):
