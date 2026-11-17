@@ -894,7 +894,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         if self.is_watching_only():
             raise UserFacingException(_("This is a watching-only wallet"))
         if not is_address(address):
-            raise UserFacingException(_('Invalid blackcoinaddress: {}').format(address))
+            raise UserFacingException(_('Invalid blackcoin address: {}').format(address))
         if not self.is_mine(address):
             raise UserFacingException(_('Address not in wallet: {}').format(address))
         index = self.get_address_index(address)
