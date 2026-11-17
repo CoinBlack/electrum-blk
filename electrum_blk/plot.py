@@ -63,5 +63,6 @@ def plot_history(history):
         r2 = axarr[1].bar(dates, values, width, color='r', label='outgoing')
         axarr[1].legend(loc='upper left')
     if r1 is None and r2 is None:
+        plt.close(f)
         raise NothingToPlotException()
     return plt

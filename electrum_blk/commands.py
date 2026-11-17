@@ -965,7 +965,7 @@ class Commands(Logger):
 
     @command('wp')
     async def payto(self, destination, amount, fee=None, feerate=None, from_addr=None, from_coins=None, change_addr=None,
-                    unsigned=False, rbf=True, password=None, locktime=None, addtransaction=False, wallet: Abstract_Wallet = None):
+                    unsigned=False, password=None, locktime=None, addtransaction=False, wallet: Abstract_Wallet = None):
         """Create an on-chain transaction.
 
         arg:str:destination:Bitcoin address, contact or alias
@@ -974,7 +974,6 @@ class Commands(Logger):
         arg:decimal:feerate:Transaction fee rate (in sat/vbyte)
         arg:str:from_addr:Source address (must be a wallet address; use sweep to spend from non-wallet address)
         arg:str:change_addr:Change address. Default is a spare address, or the source address if it's not in the wallet
-        arg:bool:rbf:Whether to signal opt-in Replace-By-Fee in the transaction (true/false)
         arg:bool:addtransaction:Whether transaction is to be used for broadcasting afterwards. Adds transaction to the wallet
         arg:int:locktime:Set locktime block number
         arg:bool:unsigned:Do not sign transaction
@@ -988,7 +987,6 @@ class Commands(Logger):
             from_coins=from_coins,
             change_addr=change_addr,
             unsigned=unsigned,
-            rbf=rbf,
             password=password,
             locktime=locktime,
             addtransaction=addtransaction,
@@ -997,11 +995,10 @@ class Commands(Logger):
 
     @command('wp')
     async def paytomany(self, outputs, fee=None, feerate=None, from_addr=None, from_coins=None, change_addr=None,
-                        unsigned=False, rbf=True, password=None, locktime=None, addtransaction=False, wallet: Abstract_Wallet = None):
+                        unsigned=False, password=None, locktime=None, addtransaction=False, wallet: Abstract_Wallet = None):
         """Create a multi-output transaction.
 
         arg:json:outputs:json list of ["address", "amount in BTC"]
-        arg:bool:rbf:Whether to signal opt-in Replace-By-Fee in the transaction (true/false)
         arg:decimal:fee:Transaction fee (absolute, in BTC)
         arg:decimal:feerate:Transaction fee rate (in sat/vbyte)
         arg:str:from_addr:Source address (must be a wallet address; use sweep to spend from non-wallet address)
@@ -1026,12 +1023,13 @@ class Commands(Logger):
         coins = wallet.get_spendable_coins(domain_addr)
         if domain_coins is not None:
             coins = [coin for coin in coins if (coin.prevout.to_str() in domain_coins)]
+        # Blackcoin: Replace-By-Fee (BIP-125) is disabled and False
         tx = wallet.make_unsigned_transaction(
             outputs=final_outputs,
             fee_policy=fee_policy,
             change_addr=change_addr,
             coins=coins,
-            rbf=rbf,
+            rbf=False,
             locktime=locktime,
         )
         if not unsigned:
@@ -1080,51 +1078,12 @@ class Commands(Logger):
         await tx.add_info_from_network(self.network)
         return tx
 
-    @command('wp')
+    # Blackcoin: Replace-By-Fee (BIP-125) is disabled and False; bumpfee and dscancel are not exposed as CLI commands
     async def bumpfee(self, tx, new_fee_rate, from_coins=None, decrease_payment=False, password=None, unsigned=False, wallet: Abstract_Wallet = None):
-        """
-        Bump the fee for an unconfirmed transaction.
-        'tx' can be either a raw hex tx or a txid. If txid, the corresponding tx must already be part of the wallet history.
+        raise UserFacingException("Replace-By-Fee (BIP-125) is disabled and False for Blackcoin.")
 
-        arg:str:tx:Serialized transaction (hexadecimal)
-        arg:decimal:new_fee_rate: The Updated/Increased Transaction fee rate (in sats/vbyte)
-        arg:bool:decrease_payment:Whether payment amount will be decreased (true/false)
-        arg:bool:unsigned:Do not sign transaction
-        arg:json:from_coins:Coins that may be used to inncrease the fee (must be in wallet)
-        """
-        tx = await self._get_tx_for_replacement(tx, wallet)
-        domain_coins = from_coins.split(',') if from_coins else None
-        coins = wallet.get_spendable_coins(None)
-        if domain_coins is not None:
-            coins = [coin for coin in coins if (coin.prevout.to_str() in domain_coins)]
-        new_tx = wallet.bump_fee(
-            tx=tx,
-            coins=coins,
-            strategy=BumpFeeStrategy.DECREASE_PAYMENT if decrease_payment else BumpFeeStrategy.PRESERVE_PAYMENT,
-            new_fee_rate=new_fee_rate)
-        if not unsigned:
-            wallet.sign_transaction(new_tx, password)
-        return new_tx.serialize()
-
-    @command('wp')
     async def dscancel(self, tx, new_fee_rate, password=None, unsigned=False, wallet: Abstract_Wallet = None):
-        """
-        Cancel an unconfirmed transaction by double-spending its inputs back to the wallet (RBF).
-        'tx' can be either a raw hex tx or a txid; either way it must be an unconfirmed tx in the wallet history.
-
-        arg:str:tx:Serialized transaction (hexadecimal)
-        arg:decimal:new_fee_rate: The Updated/Increased Transaction fee rate (in sats/vbyte)
-        arg:bool:unsigned:Do not sign transaction
-        """
-        tx = await self._get_tx_for_replacement(tx, wallet)
-        if not wallet.get_tx_info(tx).can_dscancel:
-            raise UserFacingException(
-                "This transaction cannot be cancelled. Only unconfirmed transactions from the wallet history "
-                "that spend coins of this wallet, signal RBF and pay to an address outside of it can be cancelled.")
-        new_tx = wallet.dscancel(tx=tx, new_fee_rate=new_fee_rate)
-        if not unsigned:
-            wallet.sign_transaction(new_tx, password)
-        return new_tx.serialize()
+        raise UserFacingException("Replace-By-Fee (BIP-125) is disabled and False for Blackcoin.")
 
     @command('w')
     async def onchain_history(

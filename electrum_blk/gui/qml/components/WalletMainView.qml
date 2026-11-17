@@ -597,7 +597,8 @@ Item {
             title: qsTr('Confirm Payment')
             finalizer: TxFinalizer {
                 wallet: Daemon.currentWallet
-                canRbf: true
+                // Blackcoin: Replace-By-Fee (BIP-125) is disabled and false
+                canRbf: false
                 onFinished: (signed, saved, complete) => {
                     if (!complete) {
                         var msg
@@ -646,7 +647,8 @@ Item {
             satoshis: MAX
             finalizer: SweepFinalizer {
                 wallet: Daemon.currentWallet
-                canRbf: true
+                // Blackcoin: Replace-By-Fee (BIP-125) is disabled and false
+                canRbf: false
                 privateKeys: _confirmSweepDialog.privateKeys
             }
         }

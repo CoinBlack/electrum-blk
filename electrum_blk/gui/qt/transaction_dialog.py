@@ -1058,7 +1058,8 @@ class TxDialog(QDialog, MessageBoxMixin):
         vbox.addWidget(hbox_stats_w)
 
         # set visibility after parenting can be determined by Qt
-        self.rbf_label.setVisible(True)
+        # Blackcoin: RBF (BIP-125) is disabled and False; do not show in UI
+        self.rbf_label.setVisible(False)
         self.locktime_final_label.setVisible(True)
 
     def set_title(self):

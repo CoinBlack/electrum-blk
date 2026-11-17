@@ -461,10 +461,12 @@ class QETxFinalizer(TxFeeSlider):
 
     @canRbf.setter
     def canRbf(self, canRbf):
+        # Blackcoin: Replace-By-Fee (BIP-125) is disabled and False
+        canRbf = False
         if self._canRbf != canRbf:
             self._canRbf = canRbf
             self.canRbfChanged.emit()
-        self.rbf = self._canRbf  # if we can RbF, we do RbF
+        self.rbf = False
 
     @profiler
     def make_tx(self, amount):
@@ -945,7 +947,8 @@ class QETxCpfpFeeBumper(TxFeeSlider, TxMonMixin):
         self._parent_fee = 0  # type: int | None
         self._max_fee = 0
         self._txid = ''
-        self._rbf = True
+        # Blackcoin: Replace-By-Fee (BIP-125) is disabled and False
+        self._rbf = False
 
     totalFeeChanged = pyqtSignal()
     @pyqtProperty(QVariant, notify=totalFeeChanged)

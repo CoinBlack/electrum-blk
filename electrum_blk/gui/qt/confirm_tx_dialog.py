@@ -704,10 +704,7 @@ class TxEditor(WindowModalDialog, SubmarineSwapMixin, Logger):
         num_ismine = sum(int(o.is_mine) for o in self.tx.outputs())
         if num_change > 1:
             messages.append(_('This transaction has {} change outputs.'.format(num_change)))
-        # warn if there is no ismine output, as it might be problematic to RBF the tx later.
-        # (though RBF is still possible by adding new inputs, if the wallet has more utxos)
-        if num_ismine == 0:
-            messages.append(_('Make sure you pay enough mining fees; you will not be able to bump the fee later.'))
+        # Blackcoin: Replace-By-Fee (BIP-125) is disabled and False
 
         # TODO: warn if we send change back to input address
         return messages
@@ -1076,7 +1073,8 @@ class ConfirmTxDialog(TxEditor):
             self.tx = None
             self.main_window.show_error(str(e))
             raise
-        self.tx.set_rbf(True)
+        # Blackcoin: Replace-By-Fee (BIP-125) is disabled and False
+        self.tx.set_rbf(False)
 
     def can_pay_assuming_zero_fees(self, confirmed_only: bool) -> bool:
         # called in send_tab.py

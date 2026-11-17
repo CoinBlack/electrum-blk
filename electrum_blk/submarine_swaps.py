@@ -1225,14 +1225,15 @@ class SwapManager(Logger):
         # this is taken care of in wallet._is_rbf_allowed_to_touch_tx_output
         if tx is None:
             funding_output = self.create_funding_output(swap)
+            # Blackcoin: Replace-By-Fee (BIP-125) is disabled and False
             tx = self.wallet.make_unsigned_transaction(
                 outputs=[funding_output],
-                rbf=True,
+                rbf=False,
                 fee_policy=fee_policy,
             )
         else:
             tx.replace_output_address(DummyAddress.SWAP, swap.lockup_address)
-            tx.set_rbf(True)
+            tx.set_rbf(False)
         self.wallet.sign_transaction(tx, password)
         return tx
 

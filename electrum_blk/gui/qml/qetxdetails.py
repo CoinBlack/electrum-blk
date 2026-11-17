@@ -404,12 +404,13 @@ class QETxDetails(QObject, QtEventListener):
             self._lnamount.satsInt = 0
 
         self._is_complete = self._tx.is_complete()
-        self._is_rbf_enabled = self._tx.is_rbf_enabled()
+        # Blackcoin: Replace-By-Fee (BIP-125) is disabled and False
+        self._is_rbf_enabled = False
         self._is_unrelated = txinfo.amount is None and self._lnamount.isEmpty
         self._is_lightning_funding_tx = txinfo.is_lightning_funding_tx
         self._can_broadcast = txinfo.can_broadcast
-        self._can_bump = txinfo.can_bump
-        self._can_dscancel = txinfo.can_dscancel
+        self._can_bump = False
+        self._can_dscancel = False
         self._can_cpfp = txinfo.can_cpfp
         self._can_save_as_local = txinfo.can_save_as_local
         self._can_remove = txinfo.can_remove

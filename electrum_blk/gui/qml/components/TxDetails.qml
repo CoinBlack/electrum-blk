@@ -380,13 +380,10 @@ Pane {
                 id: feebumpButton
                 icon.source: '../../icons/add.png'
                 text: qsTr('Bump fee...')
-                visible: txdetails.canBump || txdetails.canCpfp
+                // Blackcoin: Replace-By-Fee (BIP-125) is disabled and false; only CPFP is available
+                visible: txdetails.canCpfp
                 onClicked: {
-                    if (txdetails.canBump) {
-                        var dialog = rbfBumpFeeDialog.createObject(root, { txid: txdetails.txid })
-                    } else {
-                        var dialog = cpfpBumpFeeDialog.createObject(root, { txid: txdetails.txid })
-                    }
+                    var dialog = cpfpBumpFeeDialog.createObject(root, { txid: txdetails.txid })
                     dialog.open()
                 }
             }
@@ -396,7 +393,8 @@ Pane {
                 id: cancelButton
                 icon.source: '../../icons/closebutton.png'
                 text: qsTr('Cancel Tx...')
-                visible: txdetails.canCancel
+                // Blackcoin: Replace-By-Fee (BIP-125) is disabled and false
+                visible: false
                 onClicked: {
                     var dialog = rbfCancelDialog.createObject(root, { txid: txdetails.txid })
                     dialog.open()

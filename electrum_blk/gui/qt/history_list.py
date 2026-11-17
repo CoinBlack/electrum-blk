@@ -681,7 +681,7 @@ class HistoryList(MyTreeView, AcceptFileDragDrop):
         try:
             from electrum_blk.plot import plot_history, NothingToPlotException
         except ImportError as e:
-            _logger.error(f"could not import electrum.plot. This feature needs matplotlib to be installed. exc={e!r}")
+            _logger.error(f"could not import electrum_blk.plot. This feature needs matplotlib to be installed. exc={e!r}")
             self.main_window.show_message("\n\n".join([
                 _("This feature requires the 'matplotlib' Python library which is not "
                   "included in Electrum by default."),
@@ -692,7 +692,7 @@ class HistoryList(MyTreeView, AcceptFileDragDrop):
             return
         try:
             plt = plot_history(list(self.hm.transactions.values()))
-            plt.show()
+            plt.show(block=False)
         except NothingToPlotException as e:
             self.main_window.show_message(str(e))
 
@@ -785,13 +785,9 @@ class HistoryList(MyTreeView, AcceptFileDragDrop):
         if channel_id and self.wallet.lnworker and (chan := self.wallet.lnworker.get_channel_by_id(bytes.fromhex(channel_id))):
             menu.addAction(_("View Channel"), lambda: self.main_window.show_channel_details(chan))
         if is_unconfirmed and tx:
-            if tx_details.can_bump:
-                menu.addAction(_("Increase fee"), lambda: self.main_window.bump_fee_dialog(tx))
-            else:
-                if tx_details.can_cpfp:
-                    menu.addAction(_("Child pays for parent"), lambda: self.main_window.cpfp_dialog(tx))
-            if tx_details.can_dscancel:
-                menu.addAction(_("Cancel (double-spend)"), lambda: self.main_window.dscancel_dialog(tx))
+            # Blackcoin: RBF (BIP-125) is disabled and False; only CPFP is available
+            if tx_details.can_cpfp:
+                menu.addAction(_("Child pays for parent"), lambda: self.main_window.cpfp_dialog(tx))
         invoices = self.wallet.get_relevant_invoices_for_tx(tx_hash)
         if len(invoices) == 1:
             menu.addAction(_("View invoice"), lambda inv=invoices[0]: self.main_window.show_onchain_invoice(inv))

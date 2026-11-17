@@ -202,7 +202,8 @@ async def sweep(
     if locktime is None:
         locktime = get_locktime_for_new_transaction(network)
     tx = PartialTransaction.from_io(inputs, outputs, locktime=locktime, version=tx_version)
-    tx.set_rbf(True)
+    # Blackcoin: Replace-By-Fee (BIP-125) is disabled and False
+    tx.set_rbf(False)
     tx.sign(keypairs)
     return tx
 
@@ -1019,9 +1020,9 @@ class Abstract_Wallet(ABC, Logger, EventListener):
                         size = tx.estimated_size()
                         fee_per_byte = fee / size
                         exp_n = self.network.mempool_fees.fee_to_depth(fee_per_byte)
-                    can_bump = (is_any_input_ismine or is_swap) and self.can_rbf_tx(tx)
-                    can_dscancel = (is_any_input_ismine and self.can_rbf_tx(tx, is_dscancel=True)
-                                    and not all([self.is_mine(txout.address) for txout in tx.outputs()]))
+                    # Blackcoin: Replace-By-Fee (BIP-125) is disabled and False
+                    can_bump = False
+                    can_dscancel = False
                     try:
                         self.cpfp(tx, 0)
                         can_cpfp = True
@@ -1034,7 +1035,8 @@ class Abstract_Wallet(ABC, Logger, EventListener):
                         num_blocks_remainining = max(0, num_blocks_remainining)
                         status = _('Local (future: {})').format(_('in {} blocks').format(num_blocks_remainining))
                     can_broadcast = self.network is not None
-                    can_bump = (is_any_input_ismine or is_swap) and self.can_rbf_tx(tx)
+                    # Blackcoin: Replace-By-Fee (BIP-125) is disabled and False
+                    can_bump = False
             else:
                 status = _("Signed")
                 can_broadcast = self.network is not None
@@ -2036,7 +2038,8 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             fee_policy: FeePolicy,
             change_addr: str | None = None,
             is_sweep: bool = False,  # used by Wallet_2fa subclass
-            rbf: bool = True,
+            # Blackcoin: Replace-By-Fee (BIP-125) is disabled and False by default
+            rbf: bool = False,
             BIP69_sort: Optional[bool] = True,
             base_tx: Optional[Transaction] = None,
             send_change_to_lightning: bool = False,
@@ -2685,7 +2688,8 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         outputs = [PartialTxOutput.from_address_and_value(out_address, output_value)]
         locktime = get_locktime_for_new_transaction(self.network)
         tx_new = PartialTransaction.from_io(inputs, outputs, locktime=locktime)
-        tx_new.set_rbf(True)
+        # Blackcoin: Replace-By-Fee (BIP-125) is disabled and False
+        tx_new.set_rbf(False)
         tx_new.add_info_from_wallet(self)
         return tx_new
 
@@ -2739,7 +2743,8 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             raise CannotDoubleSpendTx(_("The output value remaining after fee is too low."))
         outputs = [PartialTxOutput.from_address_and_value(out_address, value - new_fee)]
         tx_new = PartialTransaction.from_io(inputs, outputs, locktime=locktime)
-        tx_new.set_rbf(True)
+        # Blackcoin: Replace-By-Fee (BIP-125) is disabled and False
+        tx_new.set_rbf(False)
         tx_new.add_info_from_wallet(self)
         return tx_new
 
