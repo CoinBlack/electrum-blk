@@ -666,7 +666,7 @@ class Plugins(DaemonThread):
             raise Exception(f"could not find plugin {name!r}")
 
     def base_module_name(self, name: str) -> str:
-        return ('electrum_external_plugins.' if self.is_external(name) else 'electrum.plugins.') + name
+        return ('electrum_external_plugins.' if self.is_external(name) else 'electrum_blk.plugins.') + name
 
     def maybe_load_plugin_init_method(self, name: str) -> None:
         """Loads the __init__.py module of the plugin if it is not already loaded."""
