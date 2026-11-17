@@ -5,6 +5,3 @@ PyQt6<6.7
 PyQt6-Qt6<6.7,!=6.6.3
 
 cryptography>=2.6
-
-# Blackcoin uses scrypt for pre-PoSv2 blocks
-scrypt>=0.9.4

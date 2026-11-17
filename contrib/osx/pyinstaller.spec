@@ -26,7 +26,7 @@ block_cipher = None
 hiddenimports = []
 hiddenimports += collect_submodules('pkg_resources')  # workaround for https://github.com/pypa/setuptools/issues/1963
 hiddenimports += collect_submodules(f"{PYPKG}.plugins")
-hiddenimports += ['_scrypt']
+
 
 binaries = []
 # Workaround for "Retro Look":
