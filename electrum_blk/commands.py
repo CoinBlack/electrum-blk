@@ -2535,6 +2535,9 @@ def add_network_options(parser):
     group.add_argument(
         "--skipmerklecheck", action="store_true", dest=SimpleConfig.NETWORK_SKIPMERKLECHECK.key(), default=None,
         help="Tolerate invalid merkle proofs from Electrum server")
+    group.add_argument(
+        "--full-sync", action="store_true", dest=SimpleConfig.BLOCKCHAIN_FULL_HEADER_SYNC.key(), default=None,
+        help="Download and verify all block headers from genesis (block 0)")
 
 
 def add_global_options(parser, suppress=False):

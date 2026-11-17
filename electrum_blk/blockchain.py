@@ -140,6 +140,18 @@ class BlockchainManager(Logger):
         self.blockchains[constants.net.GENESIS] = best_chain
 
         # consistency checks
+        if best_chain.size() > 0:
+            header_0 = best_chain.read_header(0)
+            max_cp = constants.net.max_checkpoint()
+            cp_hdr = best_chain.read_header(max_cp) if max_cp > 0 and best_chain.height() >= max_cp else None
+            cp_invalid = (
+                cp_hdr is not None
+                and hash_header(cp_hdr) != constants.net.CHECKPOINTS.get(str(max_cp))
+            )
+            if (header_0 is not None and hash_header(header_0) != constants.net.GENESIS) or cp_invalid:
+                self.logger.warning("[blockchain] deleting best chain due to genesis or checkpoint hash mismatch.")
+                best_chain.path().unlink()
+                best_chain.update_size()
         if best_chain.height() > constants.net.max_checkpoint():
             header_after_cp = best_chain.read_header(constants.net.max_checkpoint()+1)
             if not header_after_cp or not best_chain.can_connect(header_after_cp, check_height=False):
@@ -201,7 +213,7 @@ class BlockchainManager(Logger):
         cp = constants.net.max_checkpoint()
         length = HEADER_SIZE * (cp + 1) if cp > 0 else 0
         if not filename.exists() or filename.stat().st_size < length:
-            with open(filename, 'wb') as f:
+            with open(filename, 'rb+' if filename.exists() else 'wb') as f:
                 if length > 0:
                     f.seek(length - 1)
                     f.write(b'\x00')
@@ -385,32 +397,63 @@ class Blockchain(Logger):
         self._size = os.path.getsize(p)//HEADER_SIZE if p.exists() else 0
 
     @classmethod
-    def verify_header(cls, header: dict, prev_hash: str, target: int, expected_header_hash: str=None) -> None:
+    def verify_header(cls, header: dict, prev_hash: str, target: int, expected_header_hash: str=None) -> str:
         _hash = hash_header(header)
         if expected_header_hash and expected_header_hash != _hash:
             raise InvalidHeader("hash mismatches with expected: {} vs {}".format(expected_header_hash, _hash))
         if prev_hash != header.get('prev_block_hash'):
             raise InvalidHeader("prev hash mismatch: %s vs %s" % (prev_hash, header.get('prev_block_hash')))
+        height = header.get('block_height', 0)
+        if cls.ispos(header) and height > constants.net.LAST_POW_BLOCK + 2 and (target > 0 or height > constants.net.max_checkpoint() + 2):
+            bits = cls.target_to_bits(target)
+            if bits != header.get('bits'):
+                raise InvalidHeader("bits mismatch: %s vs %s at height %d" % (bits, header.get('bits'), height))
+        if cls.ispos(header) and header.get('version', 0) > 6 and hasattr(constants.net, 'STAKE_TIMESTAMP_MASK'):
+            if (header.get('timestamp', 0) & constants.net.STAKE_TIMESTAMP_MASK) != 0:
+                raise InvalidHeader(f"stake timestamp mask violation at height {height}")
+        if not constants.net.TESTNET:
+            hdr_target = cls.bits_to_target(header.get('bits'))
+            max_limit = constants.net.POS_LIMIT if cls.ispos(header) else constants.net.POW_LIMIT
+            if hdr_target > max_limit:
+                raise InvalidHeader(f"bits target exceeds limit at height {height}")
+        return _hash
 
     def verify_chunk(self, index: int, data: bytes) -> None:
         num = len(data) // HEADER_SIZE
         start_height = index * CHUNK_SIZE
+        if (index + 1) * CHUNK_SIZE - 1 <= constants.net.max_checkpoint() and num != CHUNK_SIZE:
+            raise InvalidHeader(f"incomplete chunk {index} inside checkpoint region ({num} != {CHUNK_SIZE})")
 
         prev_header = None
         pprev_header = None
         if index != 0:
             prev_header = self.read_header(start_height - 1)
             pprev_header = self.read_header(start_height - 2)
+            if prev_header is not None:
+                prev_header_hash = hash_header(prev_header)
+            elif str(start_height - 1) in self.checkpoints and self.checkpoints[str(start_height - 1)] != "0":
+                prev_header_hash = self.checkpoints[str(start_height - 1)]
+            else:
+                raise InvalidHeader(f"missing previous header at height {start_height - 1}")
+        else:
+            prev_header_hash = '00' * 32
 
         for i in range(num):
             height = start_height + i
             raw_header = data[i*HEADER_SIZE : (i+1)*HEADER_SIZE]
             header = deserialize_header(raw_header, height)
-            target = self.get_target(height, ispos=self.ispos(header), prev=prev_header, pprev=pprev_header)
-            if prev_header is not None:
-                self.verify_header(header, hash_header(prev_header), target)
-            elif height > 0 and height - 1 > constants.net.max_checkpoint():
-                raise InvalidHeader(f"missing previous header at height {height - 1}")
+            if prev_header is not None and pprev_header is not None:
+                target = self.get_target(height, ispos=self.ispos(header), prev=prev_header, pprev=pprev_header)
+            elif height <= 2:
+                target = constants.net.POW_LIMIT
+            elif height - 2 <= constants.net.max_checkpoint():
+                target = 0
+            else:
+                raise MissingHeader(height - 1 if prev_header is None else height - 2)
+            expected_hash = constants.net.GENESIS if height == 0 else self.checkpoints.get(str(height))
+            if expected_hash == "0":
+                expected_hash = None
+            prev_header_hash = self.verify_header(header, prev_header_hash, target, expected_header_hash=expected_hash)
             pprev_header = prev_header
             prev_header = header
 
@@ -442,7 +485,7 @@ class Blockchain(Logger):
         if delta_bytes < 0:
             chunk = chunk[-delta_bytes:]
             delta_bytes = 0
-        truncate = not chunk_within_checkpoint_region
+        truncate = (delta_bytes + len(chunk) >= self._size * HEADER_SIZE) or not chunk_within_checkpoint_region
         self.write(chunk, delta_bytes, truncate)
         self.swap_with_parent()
 
@@ -496,7 +539,7 @@ class Blockchain(Logger):
         # swap parameters
         self.parent, parent.parent = parent.parent, self  # type: Optional[Blockchain], Optional[Blockchain]
         self.forkpoint, parent.forkpoint = parent.forkpoint, self.forkpoint
-        self._forkpoint_hash, parent._forkpoint_hash = parent._forkpoint_hash, hash_raw_header(parent_data[:HEADER_SIZE])
+        self._forkpoint_hash, parent._forkpoint_hash = parent._forkpoint_hash, hash_header(deserialize_header(parent_data[:HEADER_SIZE], forkpoint))
         self._prev_hash, parent._prev_hash = parent._prev_hash, self._prev_hash
         # parent's new name
         os.replace(child_old_name, parent.path())
@@ -590,14 +633,34 @@ class Blockchain(Logger):
         if height == -1:
             return '0000000000000000000000000000000000000000000000000000000000000000'
         elif height == 0:
+            if self.height() < 0:
+                raise MissingHeader(0)
             return constants.net.GENESIS
-        elif str(height) in self.checkpoints:
-            return self.checkpoints[str(height)]
-        else:
-            header = self.read_header(height)
-            if header is None:
-                raise MissingHeader(height)
+        header = self.read_header(height)
+        if header is not None:
             return hash_header(header)
+        if height <= self.height() and str(height) in self.checkpoints and self.checkpoints[str(height)] != "0":
+            return self.checkpoints[str(height)]
+        raise MissingHeader(height)
+
+    @with_lock
+    def get_missing_checkpoint_chunks(self, max_count: int = 10) -> Sequence[int]:
+        cp = constants.net.max_checkpoint()
+        if cp <= 0:
+            return []
+        num_cp_chunks = (cp + 1) // CHUNK_SIZE
+        missing = []
+        start_idx = getattr(self, '_next_backfill_chunk_idx', 0)
+        for idx in range(start_idx, num_cp_chunks):
+            if self.read_header(idx * CHUNK_SIZE) is None or self.read_header((idx + 1) * CHUNK_SIZE - 1) is None:
+                missing.append(idx)
+                if len(missing) >= max_count:
+                    break
+            elif not missing:
+                self._next_backfill_chunk_idx = idx + 1
+        if not missing:
+            self._next_backfill_chunk_idx = num_cp_chunks
+        return missing
 
     # Blackcoin
     @classmethod
@@ -621,8 +684,10 @@ class Blockchain(Logger):
             prev = self.read_header(height - 1)
         if not pprev:
             pprev = self.read_header(height - 2)
-        if not prev or not pprev:
-            return self.get_limit(0, net, ispos)
+        if not prev:
+            raise MissingHeader(height - 1)
+        if not pprev:
+            raise MissingHeader(height - 2)
 
         # New target
         new_target = self.bits_to_target(prev.get('bits'))
@@ -686,12 +751,44 @@ class Blockchain(Logger):
             bitsBase >>= 8
         return bitsN << 24 | bitsBase
 
+    @classmethod
+    def get_block_work(cls, header: dict) -> int:
+        target = cls.bits_to_target(header['bits'])
+        work = ((2 ** 256 - target - 1) // (target + 1)) + 1
+        return work
+
     # Blackcoin
     @with_lock
     def get_chainwork(self, height=None) -> int:
         if height is None:
             height = max(0, self.height())
-        return height
+        if constants.net.TESTNET:
+            return height
+        cp = constants.net.max_checkpoint()
+        if height <= cp:
+            return height
+        cp_hash = self.get_hash(cp)
+        if cp_hash not in _CHAINWORK_CACHE:
+            _CHAINWORK_CACHE[cp_hash] = cp
+        work_to_add = []
+        cur_height = height
+        while cur_height > cp:
+            hdr = self.read_header(cur_height)
+            if hdr is None:
+                raise MissingHeader(cur_height)
+            h_hash = hash_header(hdr)
+            if h_hash in _CHAINWORK_CACHE:
+                cached_work = _CHAINWORK_CACHE[h_hash]
+                break
+            work_to_add.append((h_hash, self.get_block_work(hdr)))
+            cur_height -= 1
+        else:
+            cached_work = _CHAINWORK_CACHE[cp_hash]
+        total = cached_work
+        for h_hash, w in reversed(work_to_add):
+            total += w
+            _CHAINWORK_CACHE[h_hash] = total
+        return total
 
     def can_connect(self, header: Optional[dict], *, check_height: bool = True) -> bool:
         if header is None:
@@ -710,9 +807,15 @@ class Blockchain(Logger):
         try:
             target = self.get_target(height, ispos=self.ispos(header))
         except MissingHeader:
-            return False
+            if height - 2 <= constants.net.max_checkpoint():
+                target = 0
+            else:
+                return False
         try:
-            self.verify_header(header, prev_hash, target)
+            expected_hash = self.checkpoints.get(str(height))
+            if expected_hash == "0":
+                expected_hash = None
+            self.verify_header(header, prev_hash, target, expected_header_hash=expected_hash)
         except BaseException as e:
             return False
         return True
@@ -720,8 +823,7 @@ class Blockchain(Logger):
     def connect_chunk(self, idx: int, data: bytes) -> bool:
         assert idx >= 0, idx
         try:
-            if ((idx + 1) * CHUNK_SIZE) >= constants.net.max_checkpoint():
-                self.verify_chunk(idx, data)
+            self.verify_chunk(idx, data)
             self.save_chunk(idx, data)
             return True
         except BaseException as e:

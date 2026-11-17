@@ -943,6 +943,11 @@ Warning: setting this to too low will result in lots of payment failures."""),
         long_desc=lambda: _("Select which language is used in the GUI (after restart)."),
     )
     BLOCKCHAIN_PREFERRED_BLOCK = ConfigVar('blockchain_preferred_block', default=None)
+    BLOCKCHAIN_FULL_HEADER_SYNC = ConfigVar(
+        'full_header_sync', default=False, type_=bool,
+        short_desc=lambda: _('Sync all block headers from genesis'),
+        long_desc=lambda: _('Download and verify all historical block headers from block 0 instead of only syncing on-demand below the latest checkpoint.'),
+    )
     DONT_SHOW_TESTNET_WARNING = ConfigVar('dont_show_testnet_warning', default=False, type_=bool)
     RECENTLY_OPEN_WALLET_FILES = ConfigVar('recently_open', default=None)
     IO_DIRECTORY = ConfigVar('io_dir', default=os.path.expanduser('~'), type_=str)

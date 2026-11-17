@@ -1178,7 +1178,44 @@ class Interface(Logger):
             util.trigger_callback('network_updated')
             await self.network.switch_unwanted_fork_interface()
             await self.network.switch_lagging_interface()
+            if self.network.config.BLOCKCHAIN_FULL_HEADER_SYNC and getattr(self, '_backfill_task', None) is None:
+                self._backfill_task = await self.taskgroup.spawn(self._backfill_checkpoint_headers())
             await self.taskgroup.spawn(self._maybe_send_noise())
+
+    async def _backfill_checkpoint_headers(self) -> None:
+        try:
+            while self.network.config.BLOCKCHAIN_FULL_HEADER_SYNC:
+                missing = self.blockchain.get_missing_checkpoint_chunks(max_count=10)
+                if not missing:
+                    self.logger.info("full_header_sync: all checkpoint chunks are present and verified on disk.")
+                    return
+                if not self.is_main_server():
+                    await asyncio.sleep(5)
+                    continue
+                self.logger.info(f"full_header_sync: backfilling checkpoint chunks {missing[0]}..{missing[-1]}")
+                async with OldTaskGroup() as group:
+                    tasks = []
+                    for idx in missing:
+                        if idx in self._requested_chunks:
+                            continue
+                        self._requested_chunks.add(idx)
+                        tasks.append((idx, await group.spawn(
+                            self.get_block_headers(start_height=idx * CHUNK_SIZE, count=CHUNK_SIZE)
+                        )))
+                try:
+                    async with self.network.bhi_lock:
+                        for idx, task in tasks:
+                            headers = task.result()
+                            conn = self.blockchain.connect_chunk(idx, data=b"".join(headers))
+                            if not conn:
+                                raise RequestCorrupted(f"backfill chunk {idx} failed verification")
+                finally:
+                    for idx, _ in tasks:
+                        self._requested_chunks.discard(idx)
+                util.trigger_callback('blockchain_updated')
+                await asyncio.sleep(0.05)
+        finally:
+            self._backfill_task = None
 
     async def _process_header_at_tip(self) -> bool:
         """Returns:

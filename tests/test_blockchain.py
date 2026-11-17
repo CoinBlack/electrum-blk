@@ -1,7 +1,7 @@
 from pathlib import Path
 import os
 
-from electrum_blk import constants
+from electrum_blk import constants, blockchain
 from electrum_blk.simple_config import SimpleConfig
 from electrum_blk.blockchain import Blockchain, deserialize_header, hash_header, InvalidHeader, BlockchainManager
 from electrum_blk.util import bfh
