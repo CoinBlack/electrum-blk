@@ -645,8 +645,11 @@ class Blockchain(Logger):
 
     @with_lock
     def get_missing_checkpoint_chunks(self, max_count: int = 10) -> Sequence[int]:
+        if getattr(self, '_backfill_complete', False):
+            return []
         cp = constants.net.max_checkpoint()
         if cp <= 0:
+            self._backfill_complete = True
             return []
         num_cp_chunks = (cp + 1) // CHUNK_SIZE
         missing = []
@@ -660,6 +663,7 @@ class Blockchain(Logger):
                 self._next_backfill_chunk_idx = idx + 1
         if not missing:
             self._next_backfill_chunk_idx = num_cp_chunks
+            self._backfill_complete = True
         return missing
 
     # Blackcoin

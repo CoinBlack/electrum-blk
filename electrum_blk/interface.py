@@ -1178,7 +1178,10 @@ class Interface(Logger):
             util.trigger_callback('network_updated')
             await self.network.switch_unwanted_fork_interface()
             await self.network.switch_lagging_interface()
-            if self.network.config.BLOCKCHAIN_FULL_HEADER_SYNC and getattr(self, '_backfill_task', None) is None:
+            if (self.network.config.BLOCKCHAIN_FULL_HEADER_SYNC
+                    and self.is_main_server()
+                    and not getattr(self.blockchain, '_backfill_complete', False)
+                    and getattr(self, '_backfill_task', None) is None):
                 self._backfill_task = await self.taskgroup.spawn(self._backfill_checkpoint_headers())
             await self.taskgroup.spawn(self._maybe_send_noise())
 
