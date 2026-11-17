@@ -44,12 +44,13 @@ from . import crypto
 from .crypto import (pw_decode, pw_encode, sha256, sha256d, PW_HASH_VERSION_LATEST,
                      SUPPORTED_PW_HASH_VERSIONS, UnsupportedPasswordHashVersion, hash_160,
                      CiphertextFormatError)
-from .util import (InvalidPassword, WalletFileException,
+from .util import (InvalidPassword, WalletFileException, UserFacingException,
                    BitcoinException, bfh, inv_dict, is_hex_str)
 from .mnemonic import Mnemonic, Wordlist, calc_seed_type, is_seed
 from .plugin import run_hook
 from .logging import Logger
 from .lrucache import LRUCache
+from .i18n import _
 
 if TYPE_CHECKING:
     from .gui.common_qt.util import TaskThread
@@ -290,6 +291,8 @@ class Imported_KeyStore(Software_KeyStore):
 
     def import_privkey(self, sec: str, password) -> Tuple[str, str]:
         txin_type, privkey, compressed = deserialize_privkey(sec)
+        if txin_type not in bitcoin.PUBKEYHASH_SCRIPT_TYPES:
+            raise NotImplementedError(txin_type)
         pubkey = ecc.ECPrivkey(privkey).get_public_key_hex(compressed=compressed)
         # re-serialize the key so the internal storage format is consistent
         serialized_privkey = serialize_privkey(
@@ -307,13 +310,12 @@ class Imported_KeyStore(Software_KeyStore):
         for key in keys:
             try:
                 txin_type, pubkey = self.import_privkey(key, password)
+            except NotImplementedError as e:
+                bad_keys.append((key, 'not implemented type' + f': {e}'))
             except Exception as e:
                 bad_keys.append((key, 'invalid private key' + f': {e}'))
-                continue
-            if txin_type not in ('p2pkh', 'p2wpkh', 'p2wpkh-p2sh'):
-                bad_keys.append((key, 'not implemented type' + f': {txin_type}'))
-                continue
-            good_inputs.append((txin_type, pubkey))
+            else:
+                good_inputs.append((txin_type, pubkey))
         return good_inputs, bad_keys
 
     def delete_imported_key(self, key: str) -> None:
@@ -746,6 +748,15 @@ class BIP32_KeyStore(Xpub, Deterministic_KeyStore):
         node = rootnode.subkey_at_private_derivation("m/67'/")
         return node.to_xprv()
 
+
+def _is_maybe_old_hex_seed(text: Any) -> bool:
+    # Accept any hex str, even odd length. (though not in the wizard as a user-input hex-seed!)
+    # We only ever generated "old" seeds whose hex-char-len is a multiple of 8 (see old_mnemonic.mn_encode),
+    # however some users hand-constructed malformed "old" seeds that map to different lengths,
+    # that mn_decode still accepts. We also accept those... (ref #3149)
+    return is_hex_str(text, allow_odd_len=True)
+
+
 class Old_KeyStore(MasterPublicKeyMixin, Deterministic_KeyStore):
 
     type = 'old'
@@ -760,10 +771,10 @@ class Old_KeyStore(MasterPublicKeyMixin, Deterministic_KeyStore):
         return Old_KeyStore({'mpk': self.mpk})
 
     def _get_hex_seed(self, password) -> str:
-        if not is_hex_str(self.seed) and password is None:
+        if not _is_maybe_old_hex_seed(self.seed) and password is None:
             raise InvalidPassword()
         hex_str = pw_decode(self.seed, password, version=self.pw_hash_version)
-        assert is_hex_str(hex_str), f"expected hex str, got {type(hex_str)} with {len(hex_str)=}"
+        assert _is_maybe_old_hex_seed(hex_str), f"expected hex str, got {type(hex_str)} with {len(hex_str)=}"
         return hex_str
 
     def dump(self):
@@ -802,6 +813,9 @@ class Old_KeyStore(MasterPublicKeyMixin, Deterministic_KeyStore):
     def get_seed(self, password):
         from . import old_mnemonic
         hex_seed = self._get_hex_seed(password)
+        if len(hex_seed) % 8 != 0:
+            raise UserFacingException(
+                _("This seed cannot be shown as words. Keep the seed phrase the wallet was restored from."))
         return ' '.join(old_mnemonic.mn_encode(hex_seed))
 
     @classmethod
@@ -812,7 +826,7 @@ class Old_KeyStore(MasterPublicKeyMixin, Deterministic_KeyStore):
 
     @classmethod
     def stretch_key(cls, hex_seed: str) -> int:
-        assert is_hex_str(hex_seed), f"expected hex str, got {type(hex_seed)} with {len(hex_seed)=}"
+        assert _is_maybe_old_hex_seed(hex_seed), f"expected hex str, got {type(hex_seed)} with {len(hex_seed)=}"
         encoded_hex_seed = hex_seed.encode('ascii')
         x = encoded_hex_seed
         for i in range(100000):

@@ -55,6 +55,8 @@ source.exclude_dirs =
 
 # (list) List of exclusions using pattern matching
 source.exclude_patterns = Makefile,setup*,
+    # the android zxing scanner is built through the p4a recipe
+    electrum/libZXing.*,
     # not reproducible:
     packages/aiohttp-*.dist-info/*,
     packages/frozenlist-*.dist-info/*
@@ -73,13 +75,12 @@ requirements =
     python3,
     android,
     openssl,
-    plyer,
     libffi,
     libsecp256k1,
     pycryptodomex,
     pyqt6sip,
     pyqt6,
-    libzbar
+    libzxing
 
 # (str) Presplash of the application
 presplash.filename = %(source.dir)s/electrum_blk/gui/icons/electrum_presplash.png
@@ -151,27 +152,19 @@ android.accept_sdk_license = True
 # down the build process. Allows wildcards matching, for example:
 # OUYA-ODK/libs/*.jar
 #android.add_jars = foo.jar,bar.jar,path/to/more/*.jar
-#android.add_jars = lib/android/zbar.jar
 
 android.add_jars = .buildozer/android/platform/*/build/libs_collections/ElectrumBLK/jar/*.jar
-
-
-android.add_aars =
-    contrib/android/.cache/aars/BarcodeScannerView.aar,
-    contrib/android/.cache/aars/CameraView.aar,
-    contrib/android/.cache/aars/zxing-cpp.aar
 
 
 # (list) List of Java files to add to the android project (can be java or a
 # directory containing the files)
 android.add_src = electrum_blk/gui/qml/java_classes/
 
-# kotlin-stdlib is required for zxing-cpp (BarcodeScannerView)
-android.gradle_dependencies =
-    androidx.core:core:1.16.0,
-    org.jetbrains.kotlin:kotlin-stdlib:1.8.22
+# (bool) Enable AndroidX support. We don't use any androidx packages, keep it
+# disabled so gradle fails the build if one gets pulled in.
+android.enable_androidx = False
 
-android.add_activities = org.blackcoin.qr.SimpleScannerActivity, org.blackcoin.biometry.BiometricActivity
+android.add_activities = org.blackcoin.biometry.BiometricActivity
 
 # (list) Put these files or directories in the apk res directory.
 # The option may be used in three ways, the value may contain one or zero ':'

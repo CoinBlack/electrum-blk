@@ -18,14 +18,14 @@ from electrum_blk.wallet import (Abstract_Wallet, Standard_Wallet, create_new_wa
 from electrum_blk.exchange_rate import ExchangeBase, FxThread
 from electrum_blk.util import TxMinedInfo, InvalidPassword
 from electrum_blk.bitcoin import COIN
-from . import ElectrumTestCase, as_testnet
 from electrum_blk.wallet_db import WalletDB, JsonDB
 from electrum_blk.simple_config import SimpleConfig
 from electrum_blk import util, storage
 from electrum_blk.daemon import Daemon
 from electrum_blk.invoices import PR_UNPAID, PR_PAID, PR_UNCONFIRMED
-from electrum_blk.transaction import tx_from_any
+from electrum_blk.transaction import tx_from_any, Transaction, PartialTransaction, PartialTxInput, PartialTxOutput, TxOutpoint
 from electrum_blk.address_synchronizer import TX_HEIGHT_UNCONFIRMED
+from electrum_blk import bitcoin
 
 from . import ElectrumTestCase
 
@@ -76,6 +76,12 @@ class TestWalletStorage(WalletTestCase):
         db = JsonDB(storage.read(), storage=storage)
         self.assertEqual("b", db.get("a"))
         self.assertEqual("d", db.get("c"))
+
+    def test_read_file_that_is_not_utf8(self):
+        with open(self.wallet_path, "wb") as f:
+            f.write(b"SQLite format 3\x00\xd8")
+        with self.assertRaises(util.WalletFileException):
+            WalletStorage(self.wallet_path)
 
     def test_write_dictionary_to_file(self):
 
@@ -134,13 +140,23 @@ class TestWalletStorage(WalletTestCase):
         wallet.import_private_keys(['p2wpkh:PhQbscMJXqTArr4LkJkXqbztn7sxNW9USE9sh39oQPzKPxhuYC1N'], password=None)
         self.assertEqual(3, len(wallet.get_receiving_addresses()))
         self.assertEqual(3, len(wallet.keystore.keypairs))
+
+        # keys with unsupported script types get rejected, and must not be persisted (see #10998)
+        keypairs_before = dict(wallet.keystore.keypairs)
+        good_addr, bad_keys = wallet.import_private_keys([
+            'p2wsh:L1cgMEnShp73r9iCukoPE3MogLeueNYRD9JVsfT1zVHyPBR3KqBY',
+            'p2wsh-p2sh:KzuqaaLp9zYjVuj8vQtCwFdiZFreW3NJNBachgVS8S9XMgj5y78b',
+        ], password=None)
+        self.assertEqual([], good_addr)
+        self.assertEqual(2, len(bad_keys))
+        self.assertEqual(keypairs_before, wallet.keystore.keypairs)
         await wallet.stop()
 
         # open the wallet anew again, and verify if the privkey was stored
         del wallet
         wallet = Daemon._load_wallet(self.wallet_path, password=None, config=self.config)
         self.assertEqual(3, len(wallet.get_receiving_addresses()))
-        self.assertEqual(3, len(wallet.keystore.keypairs))
+        self.assertEqual(keypairs_before, wallet.keystore.keypairs)
         self.assertTrue('03bf450797034dc95693096e575e3b3db14e5f074679b349b727f90fc7804ce7ab' in wallet.keystore.keypairs)
         self.assertTrue('030dac677b9484e23db6f9255eddf433f4f12c02f9b35e0100f2f103ffbccf540f' in wallet.keystore.keypairs)
         self.assertTrue('02f11d5f222a728fd08226cb5a1e85a74d58fc257bd3764bf1234346f91defed72' in wallet.keystore.keypairs)
@@ -476,3 +492,35 @@ class TestWalletPassword(WalletTestCase):
         with self.assertRaises(InvalidPassword):
             wallet.check_password("wrong password")
         wallet.check_password("1234")
+
+
+class TestTxParents(WalletTestCase):
+
+    async def test_num_parents_with_address_reuse(self):
+        a, b, c, d, external = [bitcoin.hash160_to_p2pkh(bytes([i]) * 20) for i in range(1, 6)]
+        wallet = restore_wallet_from_text__for_unittest(f'{a} {b} {c} {d}', path=None, config=self.config)['wallet']
+        wallet.db.put('stored_height', 1000)
+
+        def add_tx(prevouts, outputs, height=TX_HEIGHT_UNCONFIRMED, txpos=None) -> str:
+            inputs = [PartialTxInput(prevout=TxOutpoint.from_str(prevout)) for prevout in prevouts]
+            outputs = [PartialTxOutput.from_address_and_value(addr, value) for addr, value in outputs]
+            tx = Transaction(PartialTransaction.from_io(inputs, outputs, BIP69_sort=False).serialize_to_network(include_sigs=False))
+            wallet.adb.receive_tx_callback(tx, tx_height=height)
+            if height > 0:
+                wallet.adb.add_verified_tx(tx.txid(), TxMinedInfo(_height=height, timestamp=0, txpos=txpos, header_hash='00' * 32))
+            return tx.txid()
+
+        f1 = add_tx(['01' * 32 + ':0'], [(a, 1000)], height=100, txpos=1)
+        f2 = add_tx(['02' * 32 + ':0'], [(a, 2000), (b, 3000)], height=100, txpos=2)
+        s1 = add_tx([f1 + ':0'], [(external, 500), (c, 400)], height=101, txpos=1)
+        s2 = add_tx([f2 + ':0'], [(external, 1900)], height=102, txpos=1)  # reuses a: f1 is an uncle
+        s3 = add_tx([f2 + ':1', s1 + ':1'], [(d, 3300)], height=102, txpos=2)
+        u1 = add_tx([s3 + ':0'], [(c, 3200)])
+        u2 = add_tx([u1 + ':0'], [(external, 3100)])  # reuses c, but unmined: no uncles
+
+        self.assertEqual(([f1], []), wallet.get_tx_parents(s1)[s1])  # s2 spent from a later
+        self.assertEqual(([f2], [f1]), wallet.get_tx_parents(s2)[s2])
+        self.assertEqual(([u1], []), wallet.get_tx_parents(u2)[u2])
+        expected = {f1: 1, f2: 1, s1: 2, s2: 3, s3: 4, u1: 5, u2: 6}
+        for txid, num_parents in expected.items():
+            self.assertEqual(num_parents, len(wallet.get_tx_parents(txid)))

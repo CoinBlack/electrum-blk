@@ -1,4 +1,5 @@
 import asyncio
+import gc
 from datetime import datetime
 from decimal import Decimal
 
@@ -188,12 +189,17 @@ class TestUtil(ElectrumTestCase):
         self.assertTrue(is_hex_str('2A5C3F4062E4F2FCCE7A1C7B4310CB647B327409F580F4ED72CB8FC0B1804DFA'))
         self.assertTrue(is_hex_str('00' * 33))
 
+        self.assertFalse(is_hex_str('123'))
+        self.assertTrue(is_hex_str('123', allow_odd_len=True))
+        self.assertFalse(is_hex_str('000'))
+        self.assertTrue(is_hex_str('000', allow_odd_len=True))
+        self.assertFalse(is_hex_str('aAbBc'))
+        self.assertTrue(is_hex_str('aAbBc', allow_odd_len=True))
+
         self.assertFalse(is_hex_str('0x09a4'))
         self.assertFalse(is_hex_str('2A 5C3F'))
         self.assertFalse(is_hex_str(' 2A5C3F'))
         self.assertFalse(is_hex_str('2A5C3F '))
-        self.assertFalse(is_hex_str('000'))
-        self.assertFalse(is_hex_str('123'))
         self.assertFalse(is_hex_str('0x123'))
         self.assertFalse(is_hex_str('qweqwe'))
         self.assertFalse(is_hex_str(b'09a4'))
@@ -502,36 +508,34 @@ class TestUtil(ElectrumTestCase):
         # refs should be cleaned up by now:
         self.assertEqual(0, len(util._running_asyncio_tasks))
 
-    async def test_old_task_group_exception_retrieval(self):
-        from electrum_blk.util import OldTaskGroup
-        async def failing_task():
-            raise ValueError("Expected exception")
+    async def test_oldtaskgroup_retrieves_all_task_exceptions(self):
+        # If multiple tasks fail in the same event loop iteration, only the first exception is
+        # propagated, but the others must still be retrieved (and logged), or asyncio logs
+        # "Task exception was never retrieved" when the tasks get garbage collected.
+        async def run_group(wait):
+            evt = asyncio.Event()
+            async def fail(i):
+                await evt.wait()
+                raise ValueError(i)
+            async with util.OldTaskGroup(wait=wait) as group:
+                for i in range(5):
+                    await group.spawn(fail(i))
+                evt.set()
 
-        async def cancelled_task():
-            await asyncio.sleep(10)
+        loop = util.get_running_loop()
+        unretrieved = []
+        loop.set_exception_handler(lambda loop, context: unretrieved.append(context))
+        try:
+            for wait in (all, any):
+                with self.assertLogs(util._logger, level="DEBUG") as logs:
+                    with self.assertRaises(ValueError) as ctx:
+                        await run_group(wait)
+                self.assertEqual((0,), ctx.exception.args)
+                self.assertEqual(4, len(logs.output))
+                for i in range(1, 5):
+                    self.assertIn(f"exception=ValueError({i})", "".join(logs.output))
+                gc.collect()
+                self.assertEqual([], [c['message'] for c in unretrieved])
+        finally:
+            loop.set_exception_handler(None)
 
-        # 1. Test wait=all case (default)
-        with self.assertRaises(ValueError):
-            async with OldTaskGroup() as group:
-                await group.spawn(failing_task())
-                await group.spawn(cancelled_task())
-
-        # Check that exceptions were retrieved (task.exception() won't warn/error)
-        for task in group.tasks:
-            self.assertTrue(task.done())
-            # calling exception() should not raise CancelledError or throw warning
-            if not task.cancelled():
-                self.assertIsNotNone(task.exception())
-
-        # 2. Test wait=any case
-        async def successful_task():
-            return "ok"
-
-        async with OldTaskGroup(wait=any) as group:
-            await group.spawn(successful_task())
-            await group.spawn(failing_task())
-
-        for task in group.tasks:
-            self.assertTrue(task.done())
-            if not task.cancelled() and task.exception():
-                self.assertIsNotNone(task.exception())

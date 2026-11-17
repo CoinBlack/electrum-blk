@@ -17,10 +17,13 @@ from electrum_blk.wallet import (sweep, sweep_preparations, Multisig_Wallet, Sta
                              TransactionPotentiallyDangerousException,
                              TransactionDangerousException,
                              TxSighashRiskLevel, CannotDoubleSpendTx)
-from electrum_blk.util import bfh, NotEnoughFunds, UnrelatedTransactionException, UserFacingException, TxMinedInfo
+from electrum_blk.util import (
+    bfh, NotEnoughFunds, UnrelatedTransactionException, UserFacingException, TxMinedInfo, InvalidTxSignature,
+    InvalidPassword,
+)
 from electrum_blk.fee_policy import FixedFeePolicy
 from electrum_blk.transaction import Transaction, PartialTxOutput, tx_from_any, Sighash
-from electrum_blk.mnemonic import calc_seed_type
+from electrum_blk.mnemonic import calc_seed_type, is_old_seed
 from electrum_blk.network import Network
 
 from electrum_blk.plugins.trustedcoin import trustedcoin
@@ -181,6 +184,7 @@ class TestWalletKeystoreAddressIntegrityForMainnet(ElectrumTestCase):
         for seed_to_restore_from in (seed_words, seed_hex):
             with self.subTest(seed_to_restore_from=seed_to_restore_from):
                 self.assertEqual(calc_seed_type(seed_to_restore_from), 'old')
+                self.assertTrue(is_old_seed(seed_to_restore_from))
 
                 ks = keystore.from_seed(seed_to_restore_from, passphrase='', for_multisig=False)
 
@@ -197,6 +201,52 @@ class TestWalletKeystoreAddressIntegrityForMainnet(ElectrumTestCase):
 
                 self.assertEqual(w.get_receiving_addresses()[0], 'BJkJqtavStwWShWcMq6pAFRxi2haLsAmxY')
                 self.assertEqual(w.get_change_addresses()[0], 'BNsakXjJ2ksU8xcK6iA4nN8bWUKLy1h4P8')
+
+    async def test_electrum_seed_old_odd_length_hex(self):
+        """
+        "early given" is a technically invalid "old" electrum seed, which maps to 33 hex chars (ref #3149).
+        We never generated such seeds, however "old" seeds do not have a checksum, and some users
+        constructed their seed manually by hand-picking words. Not all selection of words conform to the expected rules,
+        so some hand-constructed old seeds are ~invalid, however we have grandfathered them in...
+        (The "bond decay curtain" word-triple decodes to 9 hex digits, instead of the expected 8)
+        """
+        seed_words = 'early given garden bond decay curtain companion random storm chair learn lust'
+        seed_hex = '976741d01001ab4b7a17d6ce83a1bca93'
+        self.assertEqual(calc_seed_type(seed_words), 'old')
+        self.assertTrue(is_old_seed(seed_words))
+        self.assertFalse(is_old_seed(seed_hex))  # normally the hex-seed we would also accept, but reject 33-len monsters
+
+        ks = keystore.from_seed(seed_words, passphrase='', for_multisig=False)
+
+        WalletIntegrityHelper.check_seeded_keystore_sanity(self, ks)
+        self.assertTrue(isinstance(ks, keystore.Old_KeyStore))
+
+        self.assertEqual(ks.mpk, '8ecdca16d021e997c2d01fc14d95de1ef4baf28ee2425e67646a769f45f2d8174ecf5e930b600b969dec9e0ceecc01e5cd2b7aea7d70bf2b37ee9a849f90254f')
+        self.assertEqual(ks.seed, seed_hex)
+        with self.assertRaises(UserFacingException):
+            ks.get_seed(password=None)
+
+        w = WalletIntegrityHelper.create_standard_wallet(ks, config=self.config)
+        self.assertEqual(w.txin_type, 'p2pkh')
+
+        self.assertEqual(w.get_receiving_addresses()[0], '1BjZwfcsFcS6NKiLTWZrSCb7AQTiNDtzgK')
+        self.assertEqual(w.get_change_addresses()[0], '14dEHoXTPk67jws7FtsVHfnhVpeonDdXRc')
+
+    async def test_electrum_seed_old_odd_length_hex_encrypted_keystore(self):
+        # keystore of the seed above, as stored by Electrum 4.2.1 with password "secret"
+        ks = keystore.Old_KeyStore({
+            'mpk': '8ecdca16d021e997c2d01fc14d95de1ef4baf28ee2425e67646a769f45f2d8174ecf5e930b600b969dec9e0ceecc01e5cd2b7aea7d70bf2b37ee9a849f90254f',
+            'pw_hash_version': 1,
+            'seed': 'oE+29vgAfW2fxsEeZywAp9nZRZ5+eiBTYwRAZwUL6F6wO1rfKRXai4b+83zupmeFqn8jCvBGJO2+WM+IkGvbfg==',
+            'seed_type': 'old',
+            'type': 'old',
+        })
+        with self.assertRaises(InvalidPassword):
+            ks.check_password(None)
+        ks.check_password('secret')
+        pk, compressed = ks.get_private_key((0, 0), 'secret')
+        self.assertEqual('p2pkh:5KT6sPpomFjbRtkgTH3p58trKTJ7NJ79mdmWzNoyWswkapLiiLH',
+                         bitcoin.serialize_privkey(pk, compressed, 'p2pkh'))
 
     async def test_electrum_seed_2fa_legacy_pre27_25words(self):
         # pre-version-2.7 2fa seed, containing 25 words
@@ -1048,6 +1098,15 @@ class TestWalletSending(ElectrumTestCase):
         self.assertEqual(tx.wtxid(), tx_copy.wtxid())
         self.assertEqual(txid, tx_copy.txid())
 
+        # signatures must be in the order of pubkeys
+        items = tx_copy.inputs()[0].witness_elements()
+        swapped_items = [items[0], items[2], items[1], items[3]]
+        swapped_tx = Transaction(str(tx_copy).replace(
+            bitcoin.construct_witness(items).hex(), bitcoin.construct_witness(swapped_items).hex()))
+        self.assertEqual(txid, swapped_tx.txid())
+        with self.assertRaises(InvalidTxSignature):
+            wallet1a.adb.receive_tx_callback(swapped_tx, tx_height=TX_HEIGHT_UNCONFIRMED)
+
         wallet1a.adb.receive_tx_callback(tx, tx_height=TX_HEIGHT_UNCONFIRMED)
         wallet2a.adb.receive_tx_callback(tx, tx_height=TX_HEIGHT_UNCONFIRMED)
 
@@ -1411,7 +1470,7 @@ class TestWalletSending(ElectrumTestCase):
         funding_tx = Transaction('020000000001022ea8f7940c2e4bca2f34f21ba15a5c8d5e3c93d9c6deb17983412feefa0f1f6d0100000000fdffffff9d4ba5ab41951d506a7fa8272ef999ce3df166fe28f6f885aa791f012a0924cf0000000000fdffffff027485010000000000160014f80e86af4246960a24cd21c275a8e8842973fbcaa0860100000000001600149c6b743752604b98d30f1a5d27a5d5ce8919f4400247304402203bf6dd875a775f356d4bb8c4e295a2cd506338c100767518f2b31fb85db71c1302204dc4ebca5584fc1cc08bd7f7171135d1b67ca6c8812c3723cd332eccaa7b848101210360bdbd16d9ef390fd3e804c421e6f30e6b065ac314f4d2b9a80d2f0682ad1431024730440220126b442d7988c5883ca17c2429f51ce770e3a57895524c8dfe07b539e483019e02200b50feed4f42f0035c9a9ddd044820607281e45e29e41a29233c2b8be6080bac01210245d47d08915816a5ecc934cff1b17e00071ca06172f51d632ba95392e8aad4fdd38a1d00')
         wallet.adb.receive_tx_callback(funding_tx, tx_height=TX_HEIGHT_UNCONFIRMED)
 
-        orig_rbf_tx = Transaction("0200000000010146f231f027fd3cf48ecf81454f1cdb1d053c62a9c13cc9b488d53c56d1f00bdd01000000000100000002c8af000000000000160014999a95482213a896c72a251b6cc9f3d137b0a45850c3000000000000160014ea76d391236726af7d7a9c10abe600129154eb5a02473044022076d298537b524a926a8fadad0e9ded5868c8f4cf29246048f76f00eb4afa56310220739ad9e0417e97ce03fad98a454b4977972c2805cef37bfa822c6d6c56737c870121024196fb7b766ac987a08b69a5e108feae8513b7e72bc9e47899e27b36100f2af4d48a1d00")
+        orig_rbf_tx = Transaction("0200000000010146f231f027fd3cf48ecf81454f1cdb1d053c62a9c13cc9b488d53c56d1f00bdd01000000000100000002c8af000000000000160014999a95482213a896c72a251b6cc9f3d137b0a45850c3000000000000160014ea76d391236726af7d7a9c10abe600129154eb5a02473044022076886c7d024af73bb6535f75f0bfd5a99c62453573861bbf1912c1e6b115b92402206a913b883291690a1f6bb46834a9b8d5a5baf2d5acdfd6e28825458c3cef00bb0121024196fb7b766ac987a08b69a5e108feae8513b7e72bc9e47899e27b36100f2af4d48a1d00")
         orig_rbf_txid = orig_rbf_tx.txid()
         self.assertEqual(orig_rbf_tx.get_block_based_relative_locktime(), 1)
 
@@ -2083,6 +2142,7 @@ class TestWalletSending(ElectrumTestCase):
         self.assertEqual(2, len(tx1.outputs()))
         wallet.adb.receive_tx_callback(tx1, tx_height=TX_HEIGHT_UNCONFIRMED)
         self.assertEqual((0, 298_000, 0), wallet.get_balance())
+        tx1_raw = str(tx1)  # make_unsigned_transaction mutates base_tx
 
         # second payment to dest_addr  (merged)
         outputs2 = [PartialTxOutput.from_address_and_value(dest_addr, 100_000)]
@@ -2099,7 +2159,7 @@ class TestWalletSending(ElectrumTestCase):
         self.assertEqual((0, 197_000, 0), wallet.get_balance())
 
         # remove tx2 from wallet, by replacing it with tx1
-        wallet.adb.receive_tx_callback(tx1, tx_height=TX_HEIGHT_UNCONFIRMED)
+        wallet.adb.receive_tx_callback(tx_from_any(tx1_raw), tx_height=TX_HEIGHT_UNCONFIRMED)
         self.assertEqual((0, 298_000, 0), wallet.get_balance())
 
         # second payment to dest_addr  (not merged, just duplicate outputs)
@@ -2174,6 +2234,72 @@ class TestWalletSending(ElectrumTestCase):
         self.assertIn(output1, outgoing_tx2.outputs())
         self.assertIn(output2, outgoing_tx2.outputs())
 
+    def _funded_wallet_setup(self):
+        wallet_faucet = self._create_cause_carbon_wallet()[0]
+        mywallet = self.create_standard_wallet_from_seed(
+            'response era cable net spike again observe dumb wage wonder sail tortoise',
+            config=self.config)
+        funding_tx = wallet_faucet.make_unsigned_transaction(
+            outputs=[PartialTxOutput.from_address_and_value(mywallet.get_receiving_address(), 40_000)],
+            fee_policy=FixedFeePolicy(200), locktime=4_000_000, rbf=True,
+        )
+        wallet_faucet.sign_transaction(funding_tx, password=None)
+        mywallet.adb.receive_tx_callback(funding_tx, tx_height=TX_HEIGHT_UNCONFIRMED)
+
+        def make_tx(addr) -> Transaction:
+            tx = mywallet.make_unsigned_transaction(
+                outputs=[PartialTxOutput.from_address_and_value(addr, 30_000)],
+                fee_policy=FixedFeePolicy(200), locktime=4_000_001, rbf=True,
+            )
+            mywallet.sign_transaction(tx, password=None)
+            return Transaction(tx.serialize())
+
+        external_addr = wallet_faucet.get_receiving_addresses()[0]
+        return mywallet, make_tx, external_addr
+
+    def _unsigned_parent_and_signed_child(self):
+        mywallet, make_tx, external_addr = self._funded_wallet_setup()
+        parent_tx = mywallet.make_unsigned_transaction(
+            outputs=[PartialTxOutput.from_address_and_value(external_addr, 30_000)],
+            fee_policy=FixedFeePolicy(200), locktime=4_000_001, rbf=True,
+        )
+        mywallet.adb.add_transaction(parent_tx)
+        coins = [c for c in mywallet.get_spendable_coins(domain=None, nonlocal_only=False, confirmed_only=False)
+                 if c.prevout.txid.hex() == parent_tx.txid()]
+        self.assertEqual(1, len(coins))
+        child_tx = mywallet.make_unsigned_transaction(
+            coins=coins, outputs=[PartialTxOutput.from_address_and_value(external_addr, '!')],
+            fee_policy=FixedFeePolicy(200), locktime=4_000_001, rbf=True,
+        )
+        mywallet.sign_transaction(child_tx, password=None)
+        self.assertFalse(parent_tx.is_complete())
+        self.assertTrue(child_tx.is_complete())
+        return mywallet, parent_tx, child_tx
+
+    async def test_signed_child_of_unsigned_parent(self):
+        mywallet, parent_tx, child_tx = self._unsigned_parent_and_signed_child()
+        mywallet.adb.add_transaction(child_tx)
+        self.assertIsNotNone(mywallet.db.get_transaction(child_tx.txid()))
+
+    async def test_signed_child_of_unsigned_parent_before_parent(self):
+        mywallet, parent_tx, child_tx = self._unsigned_parent_and_signed_child()
+        mywallet.adb.remove_transaction(parent_tx.txid())
+        mywallet.adb.add_transaction(child_tx)
+        mywallet.adb.add_transaction(parent_tx)
+        self.assertIsNotNone(mywallet.db.get_transaction(child_tx.txid()))
+        self.assertEqual(1, len(mywallet.db.get_txi_addresses(child_tx.txid())))
+
+    async def test_tx_with_huge_witness(self):
+        mywallet, make_tx, external_addr = self._funded_wallet_setup()
+        tx = make_tx(external_addr)
+        sig, pubkey = tx.inputs()[0].witness_elements()
+        tx.inputs()[0].witness = bitcoin.construct_witness([sig] * 1000 + [pubkey])
+        tx = Transaction(tx.serialize_to_network())
+        with mock.patch.object(Transaction, 'verify_sig_for_txin', autospec=True,
+                               side_effect=Transaction.verify_sig_for_txin) as verify_sig:
+            with self.assertRaises(InvalidTxSignature):
+                mywallet.adb.receive_tx_callback(tx, tx_height=TX_HEIGHT_UNCONFIRMED)
+        self.assertLessEqual(verify_sig.call_count, 1)
 
     async def test_join_psbts__merge_duplicate_outputs(self):
         """txos paying to the same address might be merged into a single output with a larger value"""

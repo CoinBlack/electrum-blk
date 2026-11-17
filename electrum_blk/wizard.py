@@ -16,7 +16,7 @@ from electrum_blk.storage import WalletStorage, StorageEncryptionVersion, Storag
 from electrum_blk.util import UserFacingException
 from electrum_blk.wallet_db import WalletDB
 from electrum_blk.bip32 import normalize_bip32_derivation, xpub_type
-from electrum_blk import descriptor, keystore, mnemonic, bitcoin
+from electrum_blk import keystore, mnemonic, bitcoin
 from electrum_blk.mnemonic import is_any_2fa_seed_type, can_seed_have_passphrase
 from electrum_blk.util import multisig_type
 
@@ -731,13 +731,13 @@ class NewWalletWizard(KeystoreWizard):
                 keys = keystore.get_private_keys(data['private_key_list'])
                 for pk in keys:
                     assert bitcoin.is_private_key(pk)
-                    txin_type, pubkey = k.import_privkey(pk, None)
                     try:
-                        addr = bitcoin.pubkey_to_address(txin_type, pubkey)
-                    except descriptor.NotLegacySinglesigScriptType as e:
+                        txin_type, pubkey = k.import_privkey(pk, None)
+                    except NotImplementedError as e:
                         raise UserFacingException(
-                            _("Importing individual private keys of type '{}' is not supported.").format(txin_type),
+                            _("Importing individual private keys of type '{}' is not supported.").format(e),
                         ) from e
+                    addr = bitcoin.pubkey_to_address(txin_type, pubkey)
                     addresses[addr] = {'type': txin_type, 'pubkey': pubkey}
             elif 'address_list' in data:
                 for addr in data['address_list'].split():
