@@ -3,8 +3,8 @@
 set -e
 
 # Parameterize
-PYTHON_VERSION=3.12.10
-PY_VER_MAJOR="3.12"  # as it appears in fs paths
+PYTHON_VERSION=3.14.10
+PY_VER_MAJOR="3.14"  # as it appears in fs paths
 PACKAGE=Electrum-BLK
 GIT_REPO=https://github.com/CoinBlack/electrum-blk
 
@@ -52,15 +52,15 @@ else
     if [ ! -f "$CACHEDIR/$PKG_FILE" ]; then
         curl -o "$CACHEDIR/$PKG_FILE" "https://www.python.org/ftp/python/${PYTHON_VERSION}/$PKG_FILE"
     fi
-    echo "8373e58da4ea146b3eb1c1f9834f19a319440b6b679b06050b1f9ee3237aa8e4  $CACHEDIR/$PKG_FILE" | shasum -a 256 -c \
+    echo "286c7018aa2730f6747ca433dccdc2b31be45f078a9ea0ffa44d5f06368fd2d7  $CACHEDIR/$PKG_FILE" | shasum -a 256 -c \
         || fail "python pkg checksum mismatched"
     sudo installer -pkg "$CACHEDIR/$PKG_FILE" -target / \
         || fail "failed to install python"
 
-    # sanity check the versioned binary matches what we just installed.
-    FOUND_PY_VERSION=$(${PYTHON} -c 'import sys; print(".".join(map(str, sys.version_info[:3])))')
-    if [[ "$FOUND_PY_VERSION" != "$PYTHON_VERSION" ]]; then
-        fail "python version mismatch: $FOUND_PY_VERSION != $PYTHON_VERSION"
+# sanity check "python3" has the version we just installed.
+FOUND_PY_VERSION=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:3])))')
+if [[ "$FOUND_PY_VERSION" != "$PYTHON_VERSION" ]]; then
+    fail "python version mismatch: $FOUND_PY_VERSION != $PYTHON_VERSION"
     fi
 fi
 
@@ -110,8 +110,8 @@ brew install autoconf automake libtool gettext coreutils pkgconfig cmake wget gc
 
 info "Building PyInstaller."
 PYINSTALLER_REPO="https://github.com/pyinstaller/pyinstaller.git"
-PYINSTALLER_COMMIT="306d4d92580fea7be7ff2c89ba112cdc6f73fac1"
-# ^ tag "v6.13.0"
+PYINSTALLER_COMMIT="7c5dcd97a7679c5f3b04c43a0aae0ffeabe7462b"
+# ^ tag "v6.15.0"
 (
     if [ -f "$CACHEDIR/pyinstaller/PyInstaller/bootloader/Darwin-64bit/runw" ]; then
         info "pyinstaller already built, skipping"
@@ -224,10 +224,11 @@ else
 fi
 cp -f "$DLL_TARGET_DIR/libusb-1.0.dylib" "$PROJECT_ROOT/electrum_blk/" || fail "Could not copy libusb dylib"
 
+
 # opt out of compiling C extensions
-export FROZENLIST_NO_EXTENSIONS=1
 export YARL_NO_EXTENSIONS=1
 export PROPCACHE_NO_EXTENSIONS=1
+export MULTIDICT_NO_EXTENSIONS=1
 
 export ELECTRUM_ECC_DONT_COMPILE=1
 
@@ -265,7 +266,7 @@ info "Faking timestamps..."
 find . -exec touch -t '200101220000' {} + || true
 
 # note: no --dirty, as we have dirtied electrum_blk/locale/ ourselves.
-VERSION=$(git describe --tags --always)
+VERSION=$(git describe --tags --always --abbrev=10)
 
 info "Building binary"
 ELECTRUM_VERSION=$VERSION pyinstaller --noconfirm --clean contrib/osx/pyinstaller.spec || fail "Could not build binary"

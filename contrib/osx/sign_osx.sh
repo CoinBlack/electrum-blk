@@ -60,7 +60,7 @@ function DoCodeSignMaybe { # ARGS: infoName fileOrDirName
 }
 
 # note: no --dirty, as we have dirtied electrum_blk/locale/ ourselves.
-VERSION=$(git describe --tags --always)
+VERSION=$(git describe --tags --always --abbrev=10)
 NATIVE_ARCH=$(uname -m)
 
 DoCodeSignMaybe "app bundle" "dist/${PACKAGE}.app"

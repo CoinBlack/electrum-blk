@@ -5,7 +5,7 @@ include <tunables/global>
 
 @{electrum_exec_path} = /{usr/,usr/local/,*/*/.local/,}bin/electrum-blk
 
-profile electrum @{electrum_exec_path} {
+profile electrum-blk @{electrum_exec_path} {
   include <abstractions/electrum-blk>
 
   @{electrum_exec_path} mr,
