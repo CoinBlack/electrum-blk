@@ -68,10 +68,10 @@ if [ ! -z "$ELECBUILD_COMMIT" ] ; then
         GIT_TAG="$(git describe --abbrev=0)"
         mkdir -p "$FRESH_CLONE_BASE/downloads_cache/$GIT_TAG/p4a_packages"
         mkdir -p "$FRESH_CLONE"/.buildozer/android/platform/build-{armeabi-v7a,arm64-v8a,x86,x86_64}/packages
-        DOCKER_RUN_FLAGS="$DOCKER_RUN_FLAGS -v $FRESH_CLONE_BASE/downloads_cache/$GIT_TAG/p4a_packages:/home/user/wspace/electrum/.buildozer/android/platform/build-armeabi-v7a/packages"
-        DOCKER_RUN_FLAGS="$DOCKER_RUN_FLAGS -v $FRESH_CLONE_BASE/downloads_cache/$GIT_TAG/p4a_packages:/home/user/wspace/electrum/.buildozer/android/platform/build-arm64-v8a/packages"
-        DOCKER_RUN_FLAGS="$DOCKER_RUN_FLAGS -v $FRESH_CLONE_BASE/downloads_cache/$GIT_TAG/p4a_packages:/home/user/wspace/electrum/.buildozer/android/platform/build-x86/packages"
-        DOCKER_RUN_FLAGS="$DOCKER_RUN_FLAGS -v $FRESH_CLONE_BASE/downloads_cache/$GIT_TAG/p4a_packages:/home/user/wspace/electrum/.buildozer/android/platform/build-x86_64/packages"
+        DOCKER_RUN_FLAGS="$DOCKER_RUN_FLAGS -v $FRESH_CLONE_BASE/downloads_cache/$GIT_TAG/p4a_packages:/home/user/wspace/electrum-blk/.buildozer/android/platform/build-armeabi-v7a/packages"
+        DOCKER_RUN_FLAGS="$DOCKER_RUN_FLAGS -v $FRESH_CLONE_BASE/downloads_cache/$GIT_TAG/p4a_packages:/home/user/wspace/electrum-blk/.buildozer/android/platform/build-arm64-v8a/packages"
+        DOCKER_RUN_FLAGS="$DOCKER_RUN_FLAGS -v $FRESH_CLONE_BASE/downloads_cache/$GIT_TAG/p4a_packages:/home/user/wspace/electrum-blk/.buildozer/android/platform/build-x86/packages"
+        DOCKER_RUN_FLAGS="$DOCKER_RUN_FLAGS -v $FRESH_CLONE_BASE/downloads_cache/$GIT_TAG/p4a_packages:/home/user/wspace/electrum-blk/.buildozer/android/platform/build-x86_64/packages"
     fi
 else
     info "not doing fresh clone."
