@@ -19,8 +19,8 @@ class TestQETransactionListModel(ElectrumTestCase):
         f = QETransactionListModel.get_section_by_timestamp
 
         mock_today = datetime(2023, 6, 15, 0, 0, 0, 0)  # thursday
-        with patch('electrum.gui.qml.qetransactionlistmodel.datetime') as mock_dt, \
-                patch('electrum.gui.qml.qetransactionlistmodel.QLocale') as mock_locale:
+        with patch('electrum_blk.gui.qml.qetransactionlistmodel.datetime') as mock_dt, \
+                patch('electrum_blk.gui.qml.qetransactionlistmodel.QLocale') as mock_locale:
             mock_dt.today.return_value = mock_today
             mock_dt.fromtimestamp = datetime.fromtimestamp
             mock_first_day_of_week = mock_locale.system.return_value.firstDayOfWeek

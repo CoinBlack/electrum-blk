@@ -2229,7 +2229,7 @@ class TestPeerForwarding(TestPeer):
 
         async def pay(lnaddr, pay_req):
             self.assertEqual(PR_UNPAID, graph.workers['alice'].get_payment_status(lnaddr.paymenthash, direction=RECEIVED))
-            with mock.patch('electrum.mpp_split.split_amount_normal',
+            with mock.patch('electrum_blk.mpp_split.split_amount_normal',
                                 side_effect=mocked_split_amount_normal):
                 result, log = await graph.workers['bob'].pay_invoice(pay_req)
             self.assertTrue(result)
@@ -2979,8 +2979,8 @@ class TestPeerForwarding(TestPeer):
         alice = graph.workers['alice']
         alice.config.INITIAL_TRAMPOLINE_FEE_LEVEL = 6  # set high so the first attempt would succeed
         with self.assertRaises(PaymentFailure):
-            with mock.patch('electrum.trampoline.new_onion_packet', side_effect=modified_new_onion_packet_trampoline), \
-                    mock.patch('electrum.lnworker.new_onion_packet', side_effect=modified_new_onion_packet_lnworker):
+            with mock.patch('electrum_blk.trampoline.new_onion_packet', side_effect=modified_new_onion_packet_trampoline), \
+                    mock.patch('electrum_blk.lnworker.new_onion_packet', side_effect=modified_new_onion_packet_lnworker):
                         await self._run_trampoline_payment(graph, attempts=1)
         bob_alice_channel = graph.channels[('bob', 'alice')][0]
         bob_hm = bob_alice_channel.hm
@@ -3008,7 +3008,7 @@ class TestPeerForwarding(TestPeer):
         alice = graph.workers['alice']
         alice.config.INITIAL_TRAMPOLINE_FEE_LEVEL = 6  # set high so the payment would succeed if bob forwarded
         with self.assertLogs('electrum', level='INFO') as logs, self.assertRaises(NoPathFound):
-            with mock.patch('electrum.lnworker.new_onion_packet', side_effect=modified_new_onion_packet_lnworker):
+            with mock.patch('electrum_blk.lnworker.new_onion_packet', side_effect=modified_new_onion_packet_lnworker):
                 await self._run_trampoline_payment(graph, attempts=1)
         self.assertTrue(any('MPP TIMEOUT' in record.getMessage() for record in logs.records))
         bob_carol_channel = graph.channels[('bob', 'carol')][0]

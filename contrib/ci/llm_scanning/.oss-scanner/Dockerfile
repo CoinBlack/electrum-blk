@@ -47,7 +47,7 @@ WORKDIR /src
 
 # libsecp256k1 as CI and the release builds make it. electrum_ecc finds it on the library path.
 RUN ./contrib/make_libsecp256k1.sh \
-    && mv electrum/libsecp256k1.so.* /usr/local/lib/ \
+    && mv electrum_blk/libsecp256k1.so.* /usr/local/lib/ \
     && ldconfig \
     && rm -rf contrib/secp256k1
 

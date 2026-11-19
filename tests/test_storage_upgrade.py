@@ -433,7 +433,7 @@ class TestStorageUpgrade(WalletTestCase):
 
 ##########
 
-    plugins: 'electrum.plugin.Plugins'
+    plugins: 'electrum_blk.plugin.Plugins'
 
     def setUp(self):
         super().setUp()

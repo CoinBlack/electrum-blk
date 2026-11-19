@@ -353,8 +353,8 @@ class TestLNWallet(ElectrumTestCase):
 
         wallet._cleanup_failed_jit_channel = mock.AsyncMock()
 
-        with mock.patch('electrum.lnworker.ZEROCONF_TIMEOUT', 0.01), \
-             mock.patch('electrum.lnworker.asyncio.sleep', new_callable=mock.AsyncMock):
+        with mock.patch('electrum_blk.lnworker.ZEROCONF_TIMEOUT', 0.01), \
+             mock.patch('electrum_blk.lnworker.asyncio.sleep', new_callable=mock.AsyncMock):
              with self.assertRaises(OnionRoutingFailure):
                 await wallet.open_channel_just_in_time(
                     next_peer=next_peer,

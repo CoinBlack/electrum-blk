@@ -56,7 +56,7 @@ source.exclude_dirs =
 # (list) List of exclusions using pattern matching
 source.exclude_patterns = Makefile,setup*,
     # the android zxing scanner is built through the p4a recipe
-    electrum/libZXing.*,
+    electrum_blk/libZXing.*,
     # not reproducible:
     packages/aiohttp-*.dist-info/*,
     packages/frozenlist-*.dist-info/*
