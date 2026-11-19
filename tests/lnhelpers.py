@@ -7,8 +7,8 @@ from decimal import Decimal
 from pprint import pformat
 from typing import NamedTuple, Tuple, Dict, Mapping, TYPE_CHECKING, Sequence
 
-import electrum
-import electrum.trampoline
+import electrum_blk
+import electrum_blk.trampoline
 from electrum_blk import (
     bitcoin, lnpeer, lnchannel, lnutil, util,
 )
@@ -212,11 +212,11 @@ class MockLNGossip:
         return None, None, None
 
 
-class MockWalletFactory(electrum.wallet.Wallet):
+class MockWalletFactory(electrum_blk.wallet.Wallet):
 
     @staticmethod
     def wallet_class(wallet_type):
-        real_wallet_class = electrum.wallet.Wallet.wallet_class(wallet_type)
+        real_wallet_class = electrum_blk.wallet.Wallet.wallet_class(wallet_type)
         if real_wallet_class is Standard_Wallet:
             return MockStandardWallet
         return real_wallet_class
