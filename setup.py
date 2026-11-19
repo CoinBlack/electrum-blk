@@ -9,7 +9,7 @@ import importlib.util
 import argparse
 import subprocess
 
-from setuptools import setup, find_namespace_packages
+from setuptools import setup, find_packages
 from setuptools.command.install import install
 
 MIN_PYTHON_VERSION = "3.11.2"
@@ -63,7 +63,7 @@ setup(
     extras_require=extras_require,
     packages=(['electrum_blk',]
               + [('electrum_blk.'+pkg) for pkg in
-                 find_namespace_packages('electrum_blk', exclude=["tests"])]),
+                 find_packages('electrum_blk', exclude=["tests"])]),
     package_dir={
         'electrum_blk': 'electrum_blk'
     },
