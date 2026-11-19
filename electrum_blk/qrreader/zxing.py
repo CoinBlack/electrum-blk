@@ -9,8 +9,8 @@ from typing import List, Optional, Tuple
 from . import MissingLib
 from .abstract_base import AbstractQrCodeReader, QrCodeResult
 
-from electrum.logging import get_logger
-from electrum import platform
+from electrum_blk.logging import get_logger
+from electrum_blk import platform
 
 _logger = get_logger(__name__)
 
