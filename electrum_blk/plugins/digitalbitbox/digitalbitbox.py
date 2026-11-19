@@ -23,9 +23,8 @@ from electrum_blk.crypto import sha256d, EncodeAES_bytes, DecodeAES_bytes, hmac_
 from electrum_blk.bitcoin import public_key_to_p2pkh, usermessage_magic, verify_usermessage_with_address
 from electrum_blk.bip32 import BIP32Node, convert_bip32_intpath_to_strpath, is_all_public_derivation
 from electrum_blk.bip32 import normalize_bip32_derivation
-from electrum_blk import descriptor
+from electrum_blk import descriptor, constants, crandom, platform
 from electrum_blk.wallet import Standard_Wallet
-from electrum_blk import constants
 from electrum_blk.transaction import Transaction, PartialTransaction, PartialTxInput, Sighash
 from electrum_blk.i18n import _
 from electrum_blk.keystore import Hardware_KeyStore
@@ -33,7 +32,6 @@ from electrum_blk.util import to_string, UserCancelled, UserFacingException, bfh
 from electrum_blk.network import Network
 from electrum_blk.logging import get_logger
 from electrum_blk.plugin import runs_in_hwd_thread, run_in_hwd_thread
-from electrum_blk import crandom
 
 from electrum_blk.hw_wallet import HW_PluginBase, HardwareClientBase, HardwareHandlerBase
 from electrum_blk.hw_wallet.plugin import OperationCancelled
@@ -284,9 +282,9 @@ class DigitalBitbox_Client(HardwareClientBase):
 
     def mobile_pairing_dialog(self):
         dbb_user_dir = None
-        if sys.platform == 'darwin':
+        if platform.is_mac():
             dbb_user_dir = os.path.join(os.environ.get("HOME", ""), "Library", "Application Support", "DBB")
-        elif sys.platform == 'win32':
+        elif platform.is_windows():
             dbb_user_dir = os.path.join(os.environ["APPDATA"], "DBB")
         else:
             dbb_user_dir = os.path.join(os.environ["HOME"], ".dbb")

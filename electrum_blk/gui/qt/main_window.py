@@ -49,8 +49,7 @@ import electrum_ecc as ecc
 
 import electrum_blk
 from electrum_blk.gui import messages
-from electrum_blk import (keystore, constants, util, bitcoin, commands,
-                      lnutil)
+from electrum_blk import keystore, constants, util, bitcoin, commands, lnutil, platform
 from electrum_blk.bitcoin import COIN, is_address, DummyAddress
 from electrum_blk.plugin import run_hook
 from electrum_blk.i18n import _
@@ -809,7 +808,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
 
         self.tools_menu = menubar.addMenu(_("&Tools"))  # type: QMenu
         preferences_action = self.tools_menu.addAction(_("Preferences"), self.settings_dialog)  # type: QAction
-        if sys.platform == 'darwin':
+        if platform.is_mac():
             # "Settings"/"Preferences" are all reserved keywords in macOS.
             # preferences_action will get picked up based on name (and put into a standardized location,
             # and given a standard reserved hotkey)
@@ -833,7 +832,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         self.raw_transaction_menu = raw_transaction_menu
 
         self.help_menu = menubar.addMenu(_("&Help"))
-        if sys.platform != 'darwin':
+        if not platform.is_mac():
             self.help_menu.addAction(_("&About"), self.show_about)
         else:
             # macOS reserves the "About" menu item name, similarly to "Preferences" (see above).

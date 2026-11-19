@@ -4,7 +4,7 @@
 
 import asyncio
 
-from electrum_blk import blockchain, util
+from electrum_blk import blockchain, util, network
 from electrum_blk.blockchain import Blockchain
 from electrum_blk.fee_policy import FeeTimeEstimates, FEE_ETA_TARGETS
 from electrum_blk.interface import Interface, ServerAddr
@@ -84,10 +84,11 @@ class ToyNetwork:
         pass
     def blockchain(self) -> Blockchain:
         return self.interface.blockchain
-    def get_local_height(self) -> int:
-        return self.blockchain().height()
     def is_connected(self) -> bool:
         return True
+
+    get_local_height = network.Network.get_local_height
+    get_server_height = network.Network.get_server_height
 
     # the wallet and the txbatcher broadcast through the network:
 

@@ -6,14 +6,14 @@
 #       This is to avoid evaluating module-level string-translations before we get
 #       a chance to set the default language.
 
-import os
 from typing import Optional
 
+from electrum_blk import platform
 from electrum_blk.i18n import languages
 
 
 jLocale = None
-if "ANDROID_DATA" in os.environ:
+if platform.is_android():
     from jnius import autoclass, cast
     jLocale = autoclass("java.util.Locale")
 
