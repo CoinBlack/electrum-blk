@@ -103,7 +103,7 @@ fi
 set -x
 
 # create tarball
-tarball="Electrum-BLK-$VERSION.tar.gz"
+tarball="electrum-blk-$VERSION.tar.gz"
 if test -f "dist/$tarball"; then
     info "file exists: $tarball"
 else
@@ -111,7 +111,7 @@ else
 fi
 
 # create source-only tarball
-srctarball="Electrum-BLK-sourceonly-$VERSION.tar.gz"
+srctarball="electrum-blk-sourceonly-$VERSION.tar.gz"
 if test -f "dist/$srctarball"; then
     info "file exists: $srctarball"
 else

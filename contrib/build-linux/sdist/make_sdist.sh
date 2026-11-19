@@ -51,9 +51,9 @@ info "preparing electrum-locale."
 
     VERSION=$("$CONTRIB"/print_electrum_version.py)
     if ([ "$OMIT_UNCLEAN_FILES" = 1 ]); then  # TODO rename tarballs to lowercase, to conform to PEP 625
-        FINAL_DISTNAME="Electrum-BLK-sourceonly-$VERSION.tar.gz"
+        FINAL_DISTNAME="electrum-blk-sourceonly-$VERSION.tar.gz"
     else
-        FINAL_DISTNAME="Electrum-BLK-$VERSION.tar.gz"
+        FINAL_DISTNAME="electrum-blk-$VERSION.tar.gz"
     fi
     if ([ "$OMIT_UNCLEAN_FILES" = 1 ]); then
         mv "$PY_DISTDIR/electrum-blk-$VERSION.tar.gz" "$PY_DISTDIR/../$FINAL_DISTNAME"

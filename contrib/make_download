@@ -42,8 +42,8 @@ download_page_str = download_page_str.replace("##VERSION_APK##", version_android
 # note: all dist files need to be listed here that we expect sigs for,
 #       even if they are not linked to from the website
 files = {
-    "tgz": f"Electrum-BLK-{version}.tar.gz",
-    "tgz_srconly": f"Electrum-BLK-sourceonly-{version}.tar.gz",
+    "tgz": f"electrum-blk-{version}.tar.gz",
+    "tgz_srconly": f"electrum-blk-sourceonly-{version}.tar.gz",
     "appimage": f"electrum-blk-{version}-x86_64.AppImage",
     "mac": f"electrum-blk-{version_mac}.dmg",
     "win": f"electrum-blk-{version_win}.exe",
